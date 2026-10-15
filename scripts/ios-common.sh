@@ -29,3 +29,28 @@ ios_ensure_tunnel() {
 ios_launch() {
   pymobiledevice3 developer dvt launch --tunnel '' "$@" | grep -oE '[0-9]+$'
 }
+
+# lldb_setup=(-o … ...): lldb commands every ios-lldb*.sh session runs right after `target create`.
+# - target.sdk-path: lldb can't map the DWARF SDK name to a path on Linux (HostInfoError), and
+#   without it the Swift expression context can't import Darwin.
+# - DINE_LLDB_LOG=<dir>: opt-in file logs (Swift type system + expressions, Swift health,
+#   gdb-remote packets with timestamps) that survive a killed or hung session.
+ios_lldb_setup() {
+  lldb_setup=(-o "settings set target.sdk-path \"$DINE_IOS_SDK\"")
+  if [[ -n ${DINE_LLDB_LOG:-} ]]; then
+    mkdir -p "$DINE_LLDB_LOG"
+    lldb_setup+=(
+      -o "log enable -T -f \"$DINE_LLDB_LOG/lldb.log\" lldb types expr"
+      -o "log enable -T -f \"$DINE_LLDB_LOG/swift-health.log\" swift health"
+      -o "log enable -T -f \"$DINE_LLDB_LOG/gdb-remote.log\" gdb-remote packets"
+    )
+  fi
+}
+
+# out/ios-symbols/<ProductVersion> (<BuildVersion>) for the connected phone (scripts/ios-symbols.sh).
+ios_symbols_dir() {
+  local v
+  v=$(pymobiledevice3 lockdown info 2>/dev/null | python3 -I -c \
+    'import json, sys; d = json.load(sys.stdin); print("%s (%s)" % (d["ProductVersion"], d["BuildVersion"]))')
+  echo "$DINE_ROOT/out/ios-symbols/$v"
+}

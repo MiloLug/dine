@@ -1,0 +1,19 @@
+# Python-based dev tooling for dine, installed into the in-repo .venv by `uv sync`.
+# Not a Python package: nothing here gets built or installed, only the tools group.
+[project]
+name = "dine"
+version = "0"
+# 3.12 exactly: swift-bin's lldb links libpython3.12, and tools/lldb borrows it from this
+# interpreter (uv-managed CPython). One interpreter for everything.
+requires-python = "==3.12.*"
+dependencies = []
+
+[dependency-groups]
+tools = [
+  "pymobiledevice3>=11.31",   # device access: tunneld, DVT launch, debugserver, syslog, symbols
+  "meson==1.12.1",            # ATL stack build (scripts/build-linux-stack.sh)
+]
+
+[tool.uv]
+package = false
+default-groups = ["tools"]

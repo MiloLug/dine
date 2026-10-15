@@ -1,9 +1,61 @@
 #!/usr/bin/env bash
-# Swift toolchain lldb (has Swift plugin + remote-ios platform). It links libpython3.12,
-# which Arch doesn't ship; borrow it from a uv-managed CPython 3.12.
+# Swift toolchain lldb (has Swift plugin + remote-ios platform), run from a relocated prefix in
+# out/lldb so it can evaluate Swift for iOS targets. iOS-only: don't use it for Linux Swift.
+#
+# lldb hardwires its Swift resource dir to <dir of liblldb.so>/swift (realpath'd) and offers no
+# setting for it. The Linux one breaks iOS expressions: no iphoneos/prebuilt-modules (this Swift
+# can't rebuild the SDK stdlib from .swiftinterface) and a CoreFoundation module map that clashes
+# with the SDK's. So copy lldb + liblldb into out/lldb, symlink the rest of the toolchain, and
+# make lib/swift xtool's Darwin resource dir.
+#
+# liblldb links libpython3.12, which Arch doesn't ship; borrow it from the .venv interpreter
+# (uv-managed CPython 3.12, pinned in pyproject.toml).
 set -euo pipefail
-py=$(uv python find 3.12 2>/dev/null) || { uv python install 3.12 >&2 && py=$(uv python find 3.12); }
-home=$(dirname "$(dirname "$(readlink -f "$py")")")
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+src=/usr/lib/swift/usr
+darwin=${DINE_IOS_SWIFT_RESOURCES:?source env.sh first}
+prefix=$root/out/lldb
+
+liblldb=$(readlink -f "$src/lib/liblldb.so")
+stamp="$(stat -c '%s %Y' "$liblldb") $darwin"
+if [[ $(cat "$prefix/.stamp" 2>/dev/null) != "$stamp" ]]; then
+  echo "tools/lldb: building relocated lldb in $prefix" >&2
+  rm -rf "$prefix"
+  mkdir -p "$prefix/bin" "$prefix/lib/swift"
+  # Real copies: $ORIGIN/../lib must resolve into the prefix, and lldb realpaths its shlib dir.
+  cp "$src/bin/lldb" "$prefix/bin/"
+  cp "$liblldb" "$prefix/lib/"
+  for f in "$src"/bin/*; do [[ -e $prefix/bin/${f##*/} ]] || ln -s "$f" "$prefix/bin/"; done
+  for f in "$src"/lib/*; do
+    case ${f##*/} in swift|liblldb.so*) ;; *) ln -s "$f" "$prefix/lib/" ;; esac
+  done
+  # Soname links (the originals would resolve back into $src).
+  n=${liblldb##*/}                                          # liblldb.so.21.0.0
+  ln -s "$n" "$prefix/lib/${n%.*}"                          # liblldb.so.21.0
+  ln -s "${n%.*}" "$prefix/lib/liblldb.so"
+  # Swift resource dir: Darwin's, except host plugins, Linux runtime libs (liblldb's RUNPATH
+  # wants lib/swift/linux) and shims, which must stay Linux-native.
+  for f in "$darwin"/*; do
+    case ${f##*/} in host|linux|shims) ;; *) ln -s "$f" "$prefix/lib/swift/" ;; esac
+  done
+  for d in host linux shims; do ln -s "$src/lib/swift/$d" "$prefix/lib/swift/"; done
+  # Python package: its _lldb*.so must be the copied liblldb, or Python maps a second one.
+  pkg=$(dirname "$(find "$src/local" "$src/lib" -path '*/site-packages/lldb/_lldb*.so' -print -quit)")
+  rel=${pkg#"$src"/}                                        # local/lib64/python3.12/site-packages/lldb
+  mkdir -p "$prefix/$rel"
+  for f in "$pkg"/*; do
+    case ${f##*/} in
+      _lldb*.so) ln -s "$(realpath -m --relative-to="$prefix/$rel" "$prefix/lib/liblldb.so")" "$prefix/$rel/${f##*/}" ;;
+      *) ln -s "$f" "$prefix/$rel/" ;;
+    esac
+  done
+  echo "$stamp" > "$prefix/.stamp"
+fi
+
+py=$root/.venv/bin/python
+[[ -x $py ]] || { echo "tools/lldb: no $py: run \`uv sync\` in $root" >&2; exit 1; }
+home=$("$py" -c 'import sys; print(sys.base_prefix)')
+[[ -e $home/lib/libpython3.12.so.1.0 ]] || { echo "tools/lldb: $home has no libpython3.12" >&2; exit 1; }
 export LD_LIBRARY_PATH="$home/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export PYTHONHOME="$home"
-exec /usr/lib/swift/usr/bin/lldb "$@"
+exec "$prefix/bin/lldb" "$@"

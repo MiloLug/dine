@@ -6,6 +6,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT/env.sh"   # meson comes from the .venv
 SRC="$ROOT/third_party"
 PREFIX="${DINE_LINUX_PREFIX:-$ROOT/out/linux/prefix}"
 BUILD="$ROOT/out/linux/build"

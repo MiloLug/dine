@@ -4,7 +4,10 @@ After=usbmuxd-bridge.service
 Requires=usbmuxd-bridge.service
 
 [Service]
-ExecStart=@HOME@/.local/bin/pymobiledevice3 remote tunneld
+# Runs as root from the user's .venv (uv sync); don't leave root-owned __pycache__ there, or
+# the next `uv sync` can't replace those packages.
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=@DINE_ROOT@/.venv/bin/pymobiledevice3 remote tunneld
 Restart=on-failure
 RestartSec=3
 
