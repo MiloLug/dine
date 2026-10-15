@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Build native libs, build/sign/install an xtool app, then launch it.
-# Usage: scripts/ios-run.sh [App]   (default: HelloDine)
+# Usage: scripts/ios-run.sh [App]   (default: Dine)
 # `xtool launch` uses the pre-iOS-17 debugserver and fails on this device, so launch via DVT.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/ios-common.sh"
-app=${1:-HelloDine}
+app=${1:-Dine}
 
 "$DINE_ROOT/scripts/build-ios-native.sh"
 # Installs fine, then its own launch step fails; tolerate only that error.

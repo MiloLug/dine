@@ -25,6 +25,7 @@ ios_ensure_tunnel() {
   pymobiledevice3 mounter auto-mount --tunnel '' >/dev/null 2>&1 || true
 }
 
+# ios_launch [dvt launch options...] <bundle>  → prints the pid
 ios_launch() {
-  pymobiledevice3 developer dvt launch --tunnel '' "$1" | grep -oE '[0-9]+$'
+  pymobiledevice3 developer dvt launch --tunnel '' "$@" | grep -oE '[0-9]+$'
 }

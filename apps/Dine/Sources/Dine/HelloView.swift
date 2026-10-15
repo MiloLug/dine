@@ -2,9 +2,9 @@ import CDineHello
 import OSLog
 import SwiftUI
 
-private let log = Logger(subsystem: "dev.dine.HelloDine", category: "app")
+private let log = Logger(subsystem: "dev.dine.Dine", category: "app")
 
-struct ContentView: View {
+struct HelloView: View {
     private let native = String(cString: dine_hello())
 
     var body: some View {
@@ -18,6 +18,8 @@ struct ContentView: View {
                 .multilineTextAlignment(.center)
         }
         .padding()
-        .onAppear { log.notice("HelloDine native: \(native, privacy: .public)") }
+        .navigationTitle("hello++")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear { log.notice("Dine native: \(native, privacy: .public)") }
     }
 }

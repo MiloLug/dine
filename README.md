@@ -170,9 +170,9 @@ cd .. && scripts/build-linux-stack.sh  # ~10 min on 16 cores; installs to out/li
 ```sh
 source env.sh
 pymobiledevice3 usbmux list                          # phone visible
-scripts/ios-run.sh                                   # HelloDine shows "Hello from C++ (libc++ ok, …)"
-pymobiledevice3 syslog live -m HelloDine             # "HelloDine native: Hello from C++ …"
-scripts/ios-lldb.sh HelloDine -b -o "expr -l c -- (const char *)dine_hello()" -o "process detach"
+scripts/ios-run.sh                                   # Dine shows the app grid
+pymobiledevice3 syslog live -m Dine                  # "loaded N apps"; tap hello++ → "Dine native: Hello from C++ …"
+scripts/ios-lldb.sh Dine -b -o "expr -l c -- (const char *)dine_hello()" -o "process detach"
 ANDROID_APP_DATA_DIR=$PWD/out/linux/appdata android-translation-layer \
   third_party/atl_test_apks/org.happysanta.gd_29.apk -l org/happysanta/gd/GDActivity -X -Xint
 ```
@@ -185,13 +185,13 @@ ANDROID_APP_DATA_DIR=$PWD/out/linux/appdata android-translation-layer \
 | `tools/usbmuxd-bridge.service` | `/var/run/usbmuxd` → Windows Apple Mobile Device Service (`127.0.0.1:27015`) |
 | `tools/dine-tunneld.service` | `pymobiledevice3 remote tunneld` (iOS 17+ developer services) |
 | `tools/ios.toolchain.cmake` | clang cross-compile → `arm64-apple-ios` with xtool's SDK |
-| `scripts/build-ios-native.sh` | builds `native/*` → `out/ios/{lib,include}` |
+| `scripts/build-ios-native.sh` | builds `native/*` → `out/ios/{lib,include}` (`DINE_IOS_BUILD_TYPE`, default `RelWithDebInfo`) |
 | `scripts/ios-run.sh [App]` | native libs → `xtool dev` (build/sign/install) → launch via DVT |
-| `scripts/ios-lldb.sh [App] [lldb args]` | launch + attach Swift lldb through the tunnel |
+| `scripts/ios-lldb.sh [--suspended] [App] [lldb args]` | launch (optionally suspended) + attach Swift lldb through the tunnel |
 | `tools/lldb` | Swift toolchain lldb wrapper (borrows libpython3.12 from uv) |
 | `scripts/build-linux-stack.sh` | bionic_translation → art_standalone → libopensles → ATL → `out/linux/prefix` |
 | `native/hello` | C++ static lib smoke test (stand-in for ART / bionic shim) |
-| `apps/HelloDine` | xtool SwiftUI app linking `native/hello` |
+| `apps/Dine` | xtool SwiftUI app: launcher grid (SQLite) + hello++ screen linking `native/hello` |
 | `third_party/` | editable clones of the ATL stack (gitignored, own git repos) |
 
 ## Device connection
@@ -219,7 +219,7 @@ scripts/ios-run.sh                   # = build-ios-native.sh + xtool dev + DVT l
 - `xtool launch` / the launch step of `xtool dev` fail with `DebugserverClient.Error.unknown`
   (pre-iOS-17 debugserver). Launch with
   `pymobiledevice3 developer dvt launch --tunnel '' XTL-<TeamID>.<bundleID>` (what the script does).
-- Free accounts install as `XTL-<TeamID>.<bundleID>` (e.g. `XTL-97U7V3FX2D.dev.dine.HelloDine`).
+- Free accounts install as `XTL-<TeamID>.<bundleID>` (e.g. `XTL-97U7V3FX2D.dev.dine.Dine`).
 - Run xtool from a real terminal: with stdin = `/dev/null` it crashes (`epoll_ctl ... Operation not permitted`).
 - **Keep the phone unlocked, app in foreground.** Locked → launch fails (same error as untrusted
   cert). Backgrounded → app suspended then killed. After reboot unlock once. Tip: Auto-Lock → Never.
@@ -227,13 +227,13 @@ scripts/ios-run.sh                   # = build-ios-native.sh + xtool dev + DVT l
 - First install: iPhone → Settings → General → VPN & Device Management → trust the developer.
 - `xtool auth status`, `xtool sdk status`.
 - Native libs: link prebuilt `.a` via a `.systemLibrary` module map + `-L` unsafeFlags
-  (see `apps/HelloDine/Package.swift`, `Sources/CDineHello/module.modulemap`).
+  (see `apps/Dine/Package.swift`, `Sources/CDineHello/module.modulemap`).
 
 ## Logs / crashes
 
 ```sh
-pymobiledevice3 syslog live -m HelloDine
-idevicesyslog -p HelloDine
+pymobiledevice3 syslog live -m Dine
+idevicesyslog -p Dine
 pymobiledevice3 crash pull out/crashes
 ```
 
@@ -244,7 +244,11 @@ stdout and never reaches syslog.
 
 ```sh
 scripts/ios-lldb.sh                                  # interactive
-scripts/ios-lldb.sh HelloDine -b -o bt -o "process detach"   # scripted
+scripts/ios-lldb.sh Dine -b -o bt -o "process detach"   # scripted
+# Break in startup code: the app waits for the debugger, so set breakpoints, then continue.
+scripts/ios-lldb.sh --suspended Dine -b -o "b hello.cpp:12" -o c -o "frame variable" -o "process detach"
+# Unoptimized native libs (C++ locals not "optimized out"); plain ios-run.sh switches back.
+DINE_IOS_BUILD_TYPE=Debug scripts/ios-run.sh
 ```
 
 What it does: ensure `dine-tunneld` (RemoteXPC tunnel, root for TUN) + personalized DDI
@@ -261,9 +265,20 @@ debug info) → async `process connect` (sync mode blocks with no process) → `
   no symbol names. Your own code is fully symbolicated. Fix later = split the DSC with a
   cross-platform extractor.
 - `ios-lldb.sh` always (re)launches the app via DVT, then attaches; it doesn't attach to an
-  already-running instance.
+  already-running instance. Without `--suspended`, startup code has already run by then.
 - `Error while searching for Xcode SDK: HostInfoError` during `expr` is harmless noise.
-- Verified: attach, `image lookup -n dine_hello` → `hello.cpp:8`, `expr (const char *)dine_hello()`.
+- `-b` stops at the first failing command, skipping the rest (including `process detach`), so put
+  speculative `expr`s last. Inside one `script …HandleCommand(…)` call, `frame select` and stops
+  from `expr -i false` don't update the frame later commands see; use real breakpoint hits.
+- Verified: attach, `image lookup -n dine_hello` → `hello.cpp:8`, `expr (const char *)dine_hello()`;
+  with `--suspended`, C++ breakpoints hit at startup, libc++ formatters (`std::vector<std::string>`,
+  `std::string`), and backtraces across C++ → Swift with file:line. Swift `frame variable` works.
+- Swift `expr`/`po` don't work (`failed to get module "Swift"`) and can hang lldb: see
+  `notes/swift-dbg.md`. If you kill a hung lldb, kill the app too (next item).
+- `xtool dev run` hanging after `[Installing] 100%` (no `[Verifying]`): a previous install is still
+  waiting for the old app process to terminate, e.g. one left stopped by a killed lldb
+  (installcoordinationd logs `operation was already pending`). Kill the app:
+  `pymobiledevice3 developer dvt proclist --tunnel ''` → `pymobiledevice3 developer dvt kill --tunnel '' <pid>`.
 
 ## Linux ATL / ART
 
