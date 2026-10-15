@@ -283,8 +283,9 @@ a clang/arm64-apple-ios build of the same sources.
 
 ## Gotchas
 
-- iOS 27 / A15 (iPhone 13): no JIT for sideloaded apps → ART must run interpreter-only
-  on device. Test with `-Xint` on Linux.
+- No JIT by default for sideloaded apps → ART must work interpreter-only on device (test with
+  `-Xint` on Linux). StikDebug can enable JIT for dev-signed apps on iOS 17.4+, but it's fragile
+  and untested on this phone / iOS 27; treat it as an optional speed-up.
 - Simulator doesn't exist here and wouldn't enforce code signing anyway; test on device.
 - xtool: no asset catalogs, no Interface Builder, no app extensions, no debugger launch.
 - Update xtool: download the newer `xtool-x86_64.AppImage` to `~/.local/bin/xtool`.
