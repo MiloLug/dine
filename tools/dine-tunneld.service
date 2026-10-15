@@ -1,0 +1,12 @@
+[Unit]
+Description=pymobiledevice3 tunneld (iOS 17+ RemoteXPC tunnel for developer services / debugserver)
+After=usbmuxd-bridge.service
+Requires=usbmuxd-bridge.service
+
+[Service]
+ExecStart=@HOME@/.local/bin/pymobiledevice3 remote tunneld
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

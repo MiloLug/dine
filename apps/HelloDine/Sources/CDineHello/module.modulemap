@@ -1,0 +1,7 @@
+// Prebuilt C++ static lib from native/hello (build with scripts/build-ios-native.sh).
+module CDineHello [system] {
+    header "../../../../native/hello/include/dinehello.h"
+    link "dinehello"
+    link "c++"
+    export *
+}

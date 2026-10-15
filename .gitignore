@@ -1,0 +1,6 @@
+out/
+third_party/
+*.xip
+.build/
+.swiftpm/
+xtool/

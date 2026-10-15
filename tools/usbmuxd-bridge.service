@@ -1,0 +1,11 @@
+[Unit]
+Description=usbmuxd relay: /var/run/usbmuxd -> Windows Apple Mobile Device Service (127.0.0.1:27015)
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/socat UNIX-LISTEN:/var/run/usbmuxd,fork,mode=666,unlink-early TCP:127.0.0.1:27015
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
