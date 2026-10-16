@@ -7,11 +7,11 @@ import sys
 import tomllib
 from pathlib import Path
 
-HARNESS = Path(__file__).resolve().parent
-RUNTIME = HARNESS.parent                    # tests/android-compat/runtime
-SHIMS = RUNTIME / "shims"
+HARNESS = Path(__file__).resolve().parent  # tests/harness: the engine
+SHIMS = HARNESS / "shims"
+ROOT = Path(os.environ.get("DINE_ROOT") or HARNESS.parents[1])
+RUNTIME = ROOT / "dine-art/tests/runtime"   # the suite: corpus.toml, expectations/, authored/
 AUTHORED = RUNTIME / "authored"
-ROOT = Path(os.environ.get("DINE_ROOT") or RUNTIME.parents[2])
 D8 = ROOT / "tools/bin/d8"                  # build-tools d8 on its own JDK
 OUT = ROOT / "out/tests/runtime"
 UPSTREAM = OUT / "upstream/art"             # sparse clone of AOSP art (test/ only)

@@ -208,25 +208,26 @@ scripts/ios-run.sh                     # from a real terminal (prompts!)
 ## 8. Linux ATL/ART stack
 
 ```sh
-git submodule update --init dine-art   # ART: our art_standalone fork (needs GitHub SSH access)
+git submodule update --init dine-art dine-atl   # our ART and ATL forks (need GitHub SSH access)
 mkdir -p third_party && cd third_party
-for r in bionic_translation libopensles-standalone android_translation_layer; do
+for r in bionic_translation libopensles-standalone; do
   git clone https://gitlab.com/android_translation_layer/$r.git
 done
 git clone --depth 1 https://gitlab.com/android_translation_layer/atl_test_apks.git
 cd .. && scripts/build-linux-stack.sh  # ~10 min on 16 cores; installs to out/linux/prefix (no sudo)
 ```
 
-- `dine-art/` is a submodule: our fork of
-  [art_standalone](https://gitlab.com/android_translation_layer/art_standalone) on branch `dine`,
-  pinned by the superproject. Our ART/libcore fixes are commits there. To follow upstream:
-  `git -C dine-art remote add upstream https://gitlab.com/android_translation_layer/art_standalone.git`.
-- `third_party/` is gitignored. Each clone is its own git repo, so patch them in place. Fixes that
-  must survive a fresh clone go in `patches/<repo>/*.patch`; `build-linux-stack.sh` applies them
-  (skipping ones already applied). Current ones, for ATL: dex with `d8` instead of `dx` (dine-art's
-  `d8` merge stops installing `dx`), and rebuild `framework-res.apk` with `aapt` only when
-  `-Dregenerate_framework_res=true`. Upstream ATL regenerates whenever any `aapt` is on `PATH`,
-  rewriting `src/api-impl/com/android/internal/{R,Manifest}.java` with different resource IDs.
+- `dine-art/` and `dine-atl/` are submodules: our forks of
+  [art_standalone](https://gitlab.com/android_translation_layer/art_standalone) and
+  [ATL](https://gitlab.com/android_translation_layer/android_translation_layer), both on branch
+  `dine`, pinned by the superproject. Our ART/ATL changes live there. To follow upstream:
+  `git -C dine-art remote add upstream https://gitlab.com/android_translation_layer/art_standalone.git`,
+  `git -C dine-atl remote add upstream https://gitlab.com/android_translation_layer/android_translation_layer.git`.
+- dine-atl dexes with `d8` (dine-art no longer installs `dx`) and only rebuilds
+  `framework-res.apk` with `-Dregenerate_framework_res=true`. Upstream ATL regenerates whenever
+  any `aapt` is on `PATH`, rewriting `src/api-impl/com/android/internal/{R,Manifest}.java` with
+  different resource IDs, and android-sdk-build-tools puts one there.
+- `third_party/` is gitignored; each clone is its own git repo.
 - dine-art builds with **gcc** using art_standalone's own make-based build (not clang), in-tree
   (`dine-art/out`, ~2 GB, gitignored by the fork). Its makefile links
   `-ldl_bio` without pkg-config, so the script exports `LIBRARY_PATH` and `CPATH` for the local

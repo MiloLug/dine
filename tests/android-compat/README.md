@@ -1,10 +1,11 @@
 # Android compatibility tests
 
-Tests for the code that runs Android apps, split by what they exercise:
+Tests for the code that runs Android apps. Suites that test one component live in that
+component's fork; only the end-to-end app tests live here.
 
-| Dir | What | Corpus | Status |
+| Suite | What | Lives in | Status |
 |---|---|---|---|
-| `runtime/` | ART interpreter + libcore (`java.*`), plain dex, no APK | AOSP ART run-tests | working (Linux) |
-| `framework/` | `android.*` APIs (ATL's api-impl) | CTS pieces + our own | placeholder |
-| `package/` | APK parsing and install: manifests, splits, signatures, multidex | small purpose-built APK set | placeholder |
-| `apps/` | real apps launch and reach `onResume` | F-Droid, `atl_test_apks` | placeholder |
+| runtime | ART interpreter + libcore (`java.*`), plain dex, no APK | `dine-art/tests/runtime/` | working (Linux) |
+| framework | `android.*` APIs (ATL's api-impl) | `dine-atl/tests/framework/` | placeholder |
+| package | APK parsing and install: manifests, splits, signatures, multidex | `dine-atl/tests/package/` | placeholder |
+| apps | real apps launch and reach `onResume` | `apps/` | placeholder |

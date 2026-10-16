@@ -1,11 +1,16 @@
 # Tests
 
-Two separate worlds, with their own runners:
+Two worlds: the code that runs Android apps (`android-compat`), and Dine itself (`launcher`).
+Each suite lives in the repo that owns the code it tests; the engine stays here.
 
-| Dir | Tests | Status |
+| Suite | Lives in | Status |
 |---|---|---|
-| `android-compat/` | the code that runs Android apps: runtime, framework, packages, real apps | `runtime/` works; the rest are placeholders |
-| `launcher/` | Dine itself: app grid, library database, settings | placeholder |
+| runtime: ART interpreter + libcore (AOSP ART run-tests) | `dine-art/tests/runtime/` | working (Linux) |
+| framework: `android.*` APIs (ATL's api-impl) | `dine-atl/tests/framework/` | placeholder |
+| package: APK parsing and install | `dine-atl/tests/package/` | placeholder |
+| apps: real APKs end to end | `tests/android-compat/apps/` | placeholder |
+| launcher: Dine's UI and logic | `tests/launcher/` | placeholder |
 
-The corpus is mostly **harvested** (AOSP ART run-tests, CTS, F-Droid apps), not written by hand.
-Our own tests cover edge cases the harvested ones miss.
+`tests/harness/` is the engine (`scripts/test-runtime.sh`). The corpus is mostly **harvested**
+(AOSP ART run-tests, CTS, F-Droid apps), not written by hand; our own tests cover edge cases the
+harvested ones miss.

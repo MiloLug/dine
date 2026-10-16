@@ -29,15 +29,15 @@ symbols, ATL build, and a verification checklist.
 | `scripts/ios-lldb-offline.sh [App] <breakpoint> [lldb args]` | same lldb setup on a synthetic core (`tools/ios-core.py`), no phone |
 | `scripts/ios-symbols.sh` | phone's dyld shared cache → per-dylib files in `out/ios-symbols/` (lldb `--sysroot`) |
 | `tools/lldb` | Swift toolchain lldb run from `out/lldb/` with the iOS Swift resource dir (borrows libpython3.12 from the `.venv`) |
-| `scripts/build-linux-stack.sh` | bionic_translation → dine-art → libopensles → ATL → `out/linux/prefix` (applies `patches/<repo>/*.patch` to `third_party/` first) |
-| `scripts/test-runtime.sh` | ART run-tests on the local `dalvikvm -Xint` (`tests/android-compat/runtime`) |
+| `scripts/build-linux-stack.sh` | bionic_translation → dine-art → libopensles → dine-atl → `out/linux/prefix` |
+| `scripts/test-runtime.sh` | ART run-tests on the local `dalvikvm -Xint` (suite `dine-art/tests/runtime`, engine `tests/harness`) |
 | `native/hello` | C++ static lib smoke test (stand-in for ART / bionic shim) |
 | `apps/Dine` | xtool SwiftUI app: launcher grid (SQLite) + hello++ screen linking `native/hello` |
-| `third_party/` | editable clones of the ATL stack (gitignored, own git repos) |
+| `third_party/` | upstream clones: bionic_translation, libopensles, atl_test_apks (gitignored) |
 | `dine-art/` | submodule: our fork of art_standalone (ART + libcore), branch `dine` |
-| `patches/<repo>/` | fixes to `third_party/` clones that must survive a fresh clone (ATL: d8 dexing, framework-res opt-in) |
+| `dine-atl/` | submodule: our fork of android_translation_layer, branch `dine` |
 | `tools/bin/d8` | build-tools d8 on JDK 21 (on `PATH` via `env.sh`), used by the ART/ATL build and the tests |
-| `tests/` | test worlds: `android-compat/{runtime,framework,package,apps}`, `launcher/` |
+| `tests/` | test engine (`harness/`), app and launcher tests; component suites live in `dine-art/tests`, `dine-atl/tests` |
 
 ## Device connection
 
@@ -160,7 +160,8 @@ a clang/arm64-apple-ios build of the same sources.
 
 `tests/README.md` describes the test worlds. Working today: ART run-tests on the local
 `dalvikvm -Xint`, `scripts/test-runtime.sh` (exit 1 = regression against
-`tests/android-compat/runtime/expectations/`). Details: `tests/android-compat/runtime/README.md`.
+`dine-art/tests/runtime/expectations/`). Details: `dine-art/tests/runtime/README.md` (suite) and
+`tests/harness/README.md` (engine).
 
 ## Gotchas
 

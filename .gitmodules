@@ -2,3 +2,7 @@
 	path = dine-art
 	url = git@github.com:MiloLug/dine-art.git
 	branch = dine
+[submodule "dine-atl"]
+	path = dine-atl
+	url = git@github.com:MiloLug/dine-atl.git
+	branch = dine
