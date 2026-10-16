@@ -4,7 +4,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from common import CORE_JAR, SHIMS, TOP, UPSTREAM
+from common import CORE_JAR, D8, SHIMS, TOP, UPSTREAM
 
 
 def _git(*args: str, cwd: Path | None = None) -> str:
@@ -40,12 +40,13 @@ def _link(link: Path, target: Path) -> None:
     link.symlink_to(target)
 
 
-def check_tools(corpus: dict) -> None:
-    tools = corpus["tools"]
+def check_tools() -> None:
     missing = [t for t in ("javac", "smali", "jasmin", "zipalign", "zip", "unzip", "dalvikvm")
                if not shutil.which(t)]
-    missing += [str(p) for p in (Path(tools["d8"]), Path(tools["d8_java_home"]) / "bin/java", CORE_JAR)
-                if not p.exists()]
+    if not CORE_JAR.exists():
+        missing.append(str(CORE_JAR))
+    if subprocess.run([D8, "--version"], capture_output=True).returncode:
+        missing.append("d8 (android-sdk-build-tools + jdk21-openjdk)")
     if missing:
         raise SystemExit("missing: " + ", ".join(missing) +
                          "\n(tools: docs/first-run.md; dalvikvm/libcore: scripts/build-linux-stack.sh art;"
@@ -64,4 +65,4 @@ def fetch(corpus: dict) -> None:
     _link(TOP / "art/tools/javac-helper.sh", SHIMS / "javac-helper.sh")
     _link(TOP / "art/tools/bootjars.sh", SHIMS / "bootjars.sh")
     _link(TOP / "development/docs/copyright-templates", SHIMS / "copyright-templates")
-    check_tools(corpus)
+    check_tools()

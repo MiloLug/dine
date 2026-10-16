@@ -38,8 +38,8 @@ A test is rebuilt only when its sources, `corpus.toml`, the shims, upstream `def
 build/classify code or art_standalone's libcore change. `bundle.json` is everything the run stage
 needs, so builds are done once and reused.
 
-The shims in `shims/` stand in for the AOSP tree: `d8` (build-tools d8 on JDK 21),
-`javac-helper.sh` / `bootjars.sh` (compile and desugar against art_standalone's
+`d8` is the repo's `tools/bin/d8` (build-tools d8 on JDK 21). The shims in `shims/` stand in for
+the AOSP tree: `javac-helper.sh` / `bootjars.sh` (compile and desugar against art_standalone's
 `core-all_classes.jar`), and a copyright template the test generators read.
 
 ## Statuses

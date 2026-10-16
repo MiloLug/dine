@@ -114,7 +114,7 @@ def main(argv=None) -> int:
     if args.stage == "run":
         bundles = _load_bundles(tests)
     else:
-        bundles = build_all(tests, corpus, args.jobs)
+        bundles = build_all(tests, args.jobs)
         built = sum(1 for b in bundles.values() if not b.get("cached"))
         failed = sum(1 for b in bundles.values() if b["status"] == "build-fail")
         print(f"build: {len(bundles)} tests, {built} (re)built, {failed} failed "

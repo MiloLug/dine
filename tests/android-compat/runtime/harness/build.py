@@ -15,7 +15,7 @@ import zipfile
 from pathlib import Path
 
 from classify import classify
-from common import BUILD, CORE_JAR, HARNESS, RUNTIME, SHIMS, TOP, UPSTREAM, parallel
+from common import BUILD, CORE_JAR, D8, HARNESS, RUNTIME, SHIMS, TOP, UPSTREAM, parallel
 from grade import expected_file
 
 BUILD_TIMEOUT = 600
@@ -32,7 +32,7 @@ def _shared_key() -> bytes:
     """Inputs common to every test."""
     h = hashlib.sha256()
     for p in [RUNTIME / "corpus.toml", UPSTREAM / "test/etc/default-build",
-              HARNESS / "build.py", HARNESS / "classify.py"]:
+              HARNESS / "build.py", HARNESS / "classify.py", D8]:
         h.update(p.read_bytes())
     _hash_tree(h, SHIMS)
     # Entry names + CRCs, not the jar bytes: a clean ART rebuild rewrites zip timestamps.
@@ -42,14 +42,13 @@ def _shared_key() -> bytes:
     return h.digest()
 
 
-def _env(corpus: dict) -> dict:
-    tools = corpus["tools"]
+def _env() -> dict:
     return os.environ | {
         # As upstream run-test (host mode) exports them.
         "JAVA": "java",
         "JAVAC": "javac -g -Xlint:-options -source 1.8 -target 1.8",
-        "D8": str(SHIMS / "d8"),
-        "DEXMERGER": str(SHIMS / "d8"),
+        "D8": str(D8),
+        "DEXMERGER": str(D8),
         "SMALI": "smali",
         "SMALI_ARGS": "",
         "JASMIN": "jasmin",
@@ -60,8 +59,6 @@ def _env(corpus: dict) -> dict:
         "USE_HIDDENAPI": "false",   # no hiddenapi tool; only matters for 4 tests
         "ANDROID_BUILD_TOP": str(TOP),
         # For the shims.
-        "DINE_D8": tools["d8"],
-        "DINE_D8_JAVA_HOME": tools["d8_java_home"],
         "DINE_CORE_JAR": str(CORE_JAR),
     }
 
@@ -118,8 +115,8 @@ def build_one(name: str, src: Path, env: dict, shared: bytes) -> dict:
     return bundle
 
 
-def build_all(tests: dict[str, Path], corpus: dict, jobs: int) -> dict[str, dict]:
-    env = _env(corpus)
+def build_all(tests: dict[str, Path], jobs: int) -> dict[str, dict]:
+    env = _env()
     shared = _shared_key()
     bundles = parallel(lambda item: build_one(*item, env, shared), list(tests.items()), jobs, "build")
     return {b["name"]: b for b in bundles}

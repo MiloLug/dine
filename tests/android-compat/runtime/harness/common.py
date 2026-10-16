@@ -12,6 +12,7 @@ RUNTIME = HARNESS.parent                    # tests/android-compat/runtime
 SHIMS = RUNTIME / "shims"
 AUTHORED = RUNTIME / "authored"
 ROOT = Path(os.environ.get("DINE_ROOT") or RUNTIME.parents[2])
+D8 = ROOT / "tools/bin/d8"                  # build-tools d8 on its own JDK
 OUT = ROOT / "out/tests/runtime"
 UPSTREAM = OUT / "upstream/art"             # sparse clone of AOSP art (test/ only)
 TOP = OUT / "top"                           # fake ANDROID_BUILD_TOP for upstream build scripts

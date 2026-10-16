@@ -8,6 +8,8 @@ export DINE_ROOT
 # Python tooling (pymobiledevice3, meson) lives in the in-repo .venv (`uv sync`); downloads no
 # package manager ships (the xtool AppImage) live in out/tools/bin. Nothing goes to ~/.local.
 case ":$PATH:" in *":$DINE_ROOT/.venv/bin:"*) ;; *) PATH="$DINE_ROOT/.venv/bin:$DINE_ROOT/out/tools/bin:$PATH" ;; esac
+# tools/bin: tracked wrappers (d8 on its own JDK).
+case ":$PATH:" in *":$DINE_ROOT/tools/bin:"*) ;; *) PATH="$DINE_ROOT/tools/bin:$PATH" ;; esac
 export PATH
 
 # --- iOS -------------------------------------------------------------------

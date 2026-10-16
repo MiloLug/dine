@@ -45,7 +45,7 @@
   },
   "656-annotation-lookup-generic-jni": {
     "expect": "fail",
-    "reason": "BootstrapMethodError from a lambda in libcore DexPathList.<init>"
+    "reason": "libcore 8.1/9 DexFile.createCookieWithArray has no ART 10 native (in-memory dex); also needs a JNI test lib. (Lambda BootstrapMethodError fixed by dine-art d8 merge.)"
   },
   "677-fsi": {
     "expect": "fail",

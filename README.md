@@ -35,7 +35,8 @@ symbols, ATL build, and a verification checklist.
 | `apps/Dine` | xtool SwiftUI app: launcher grid (SQLite) + hello++ screen linking `native/hello` |
 | `third_party/` | editable clones of the ATL stack (gitignored, own git repos) |
 | `dine-art/` | submodule: our fork of art_standalone (ART + libcore), branch `dine` |
-| `patches/<repo>/` | fixes to `third_party/` clones that must survive a fresh clone (none yet) |
+| `patches/<repo>/` | fixes to `third_party/` clones that must survive a fresh clone (ATL: d8 dexing, framework-res opt-in) |
+| `tools/bin/d8` | build-tools d8 on JDK 21 (on `PATH` via `env.sh`), used by the ART/ATL build and the tests |
 | `tests/` | test worlds: `android-compat/{runtime,framework,package,apps}`, `launcher/` |
 
 ## Device connection
