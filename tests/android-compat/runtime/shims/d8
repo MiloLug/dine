@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# d8 for upstream default-build (also used as DEXMERGER). Runs the build-tools d8 on its own JDK,
+# set by the harness from corpus.toml: DINE_D8, DINE_D8_JAVA_HOME.
+set -euo pipefail
+export JAVA_HOME=$DINE_D8_JAVA_HOME
+export PATH="$JAVA_HOME/bin:$PATH"
+exec "$DINE_D8" "$@"

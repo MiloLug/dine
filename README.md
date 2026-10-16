@@ -29,10 +29,14 @@ symbols, ATL build, and a verification checklist.
 | `scripts/ios-lldb-offline.sh [App] <breakpoint> [lldb args]` | same lldb setup on a synthetic core (`tools/ios-core.py`), no phone |
 | `scripts/ios-symbols.sh` | phone's dyld shared cache → per-dylib files in `out/ios-symbols/` (lldb `--sysroot`) |
 | `tools/lldb` | Swift toolchain lldb run from `out/lldb/` with the iOS Swift resource dir (borrows libpython3.12 from the `.venv`) |
-| `scripts/build-linux-stack.sh` | bionic_translation → art_standalone → libopensles → ATL → `out/linux/prefix` |
+| `scripts/build-linux-stack.sh` | bionic_translation → dine-art → libopensles → ATL → `out/linux/prefix` (applies `patches/<repo>/*.patch` to `third_party/` first) |
+| `scripts/test-runtime.sh` | ART run-tests on the local `dalvikvm -Xint` (`tests/android-compat/runtime`) |
 | `native/hello` | C++ static lib smoke test (stand-in for ART / bionic shim) |
 | `apps/Dine` | xtool SwiftUI app: launcher grid (SQLite) + hello++ screen linking `native/hello` |
 | `third_party/` | editable clones of the ATL stack (gitignored, own git repos) |
+| `dine-art/` | submodule: our fork of art_standalone (ART + libcore), branch `dine` |
+| `patches/<repo>/` | fixes to `third_party/` clones that must survive a fresh clone (none yet) |
+| `tests/` | test worlds: `android-compat/{runtime,framework,package,apps}`, `launcher/` |
 
 ## Device connection
 
@@ -150,6 +154,12 @@ Verified: Gravity Defied reaches `onResume` under `-Xint` in WSLg.
 
 Runs under WSLg (Wayland). ART here builds with gcc for x86_64; the iOS port will need
 a clang/arm64-apple-ios build of the same sources.
+
+## Tests
+
+`tests/README.md` describes the test worlds. Working today: ART run-tests on the local
+`dalvikvm -Xint`, `scripts/test-runtime.sh` (exit 1 = regression against
+`tests/android-compat/runtime/expectations/`). Details: `tests/android-compat/runtime/README.md`.
 
 ## Gotchas
 

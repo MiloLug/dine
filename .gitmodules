@@ -1,0 +1,4 @@
+[submodule "dine-art"]
+	path = dine-art
+	url = git@github.com:MiloLug/dine-art.git
+	branch = dine

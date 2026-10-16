@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Build the Linux ATL stack from third_party/ into a local prefix (no sudo).
-# Order: bionic_translation -> art_standalone -> libopensles-standalone -> android_translation_layer
+# Build the Linux ATL stack into a local prefix (no sudo). ART comes from the dine-art submodule
+# (our fork of art_standalone), the rest from third_party/ clones.
+# Order: bionic_translation -> dine-art -> libopensles-standalone -> android_translation_layer
 #
 # Usage: scripts/build-linux-stack.sh [stage...]   stages: bionic art opensles atl (default: all)
+# Before building, applies patches/<repo>/*.patch to each third_party clone (skipping applied ones).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -20,9 +22,24 @@ export LD_LIBRARY_PATH="$PREFIX/lib:$PREFIX/lib/art${LD_LIBRARY_PATH:+:$LD_LIBRA
 export LIBRARY_PATH="$PREFIX/lib${LIBRARY_PATH:+:$LIBRARY_PATH}"
 export CPATH="$PREFIX/include${CPATH:+:$CPATH}"
 
+# third_party/ clones are gitignored; fixes we need live in patches/<repo>/.
+apply_patches() {
+  local name=$1 p
+  for p in "$ROOT/patches/$name"/*.patch; do
+    [[ -e $p ]] || continue
+    if git -C "$SRC/$name" apply --check "$p" 2>/dev/null; then
+      echo "applying $(basename "$p")"
+      git -C "$SRC/$name" apply "$p"
+    elif ! git -C "$SRC/$name" apply --reverse --check "$p" 2>/dev/null; then
+      echo "patch doesn't apply: $p" >&2; exit 1
+    fi
+  done
+}
+
 meson_stage() {
   local name=$1; shift
   echo "==> $name"
+  apply_patches "$name"
   if [[ ! -f "$BUILD/$name/build.ninja" ]]; then
     meson subprojects download --sourcedir "$SRC/$name" >/dev/null 2>&1 || true
     meson setup "$BUILD/$name" "$SRC/$name" --prefix="$PREFIX" --libdir=lib \
@@ -32,10 +49,12 @@ meson_stage() {
   meson install -C "$BUILD/$name" --quiet
 }
 
+# Our ART changes are commits on dine-art's `dine` branch, not patches.
 art_stage() {
-  echo "==> art_standalone"
-  make -C "$SRC/art_standalone" -j "$JOBS" ____PREFIX="$PREFIX" ____LIBDIR=lib
-  make -C "$SRC/art_standalone" ____PREFIX="$PREFIX" ____LIBDIR=lib ____INSTALL_ETC="$PREFIX/etc" install
+  echo "==> dine-art"
+  [[ -f "$ROOT/dine-art/Makefile" ]] || git -C "$ROOT" submodule update --init dine-art
+  make -C "$ROOT/dine-art" -j "$JOBS" ____PREFIX="$PREFIX" ____LIBDIR=lib
+  make -C "$ROOT/dine-art" ____PREFIX="$PREFIX" ____LIBDIR=lib ____INSTALL_ETC="$PREFIX/etc" install
 }
 
 stages=("$@")

@@ -1,0 +1,2 @@
+Hello from dine runtime tests
+map size 2

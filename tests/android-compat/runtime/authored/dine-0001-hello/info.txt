@@ -1,0 +1,1 @@
+Harness smoke test: prints a fixed line through libcore (String, StringBuilder, HashMap).
