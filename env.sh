@@ -4,15 +4,14 @@
 DINE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-${(%):-%x}}")" && pwd)"
 export DINE_ROOT
 
-# --- Tools (docs/first-run.md) ------------------------------------------------
 # Python tooling (pymobiledevice3, meson) lives in the in-repo .venv (`uv sync`); downloads no
 # package manager ships (the xtool AppImage) live in out/tools/bin. Nothing goes to ~/.local.
+# Setup: docs/first-run.md.
 case ":$PATH:" in *":$DINE_ROOT/.venv/bin:"*) ;; *) PATH="$DINE_ROOT/.venv/bin:$DINE_ROOT/out/tools/bin:$PATH" ;; esac
 # tools/bin: tracked wrappers (d8 on its own JDK).
 case ":$PATH:" in *":$DINE_ROOT/tools/bin:"*) ;; *) PATH="$DINE_ROOT/tools/bin:$PATH" ;; esac
 export PATH
 
-# --- iOS -------------------------------------------------------------------
 # iPhoneOS.sdk inside the darwin Swift SDK that `xtool sdk install` built from Xcode.xip.
 if [[ -z "${DINE_IOS_SDK:-}" ]]; then
   for _d in "$HOME/.swiftpm/swift-sdks" "$HOME/.local/share/swiftpm/swift-sdks" "$HOME/.config/swiftpm/swift-sdks"; do
@@ -35,7 +34,7 @@ export DINE_LLDB="$DINE_ROOT/tools/lldb"
 # Windows AMDS on 127.0.0.1:27015). If the unit is down, uncomment:
 # export USBMUXD_SOCKET_ADDRESS=127.0.0.1:27015
 
-# --- Linux ATL/ART stack (scripts/build-linux-stack.sh) ----------------------
+# Linux ATL/ART prefix, built by scripts/build-linux-stack.sh.
 export DINE_LINUX_PREFIX="${DINE_LINUX_PREFIX:-$DINE_ROOT/out/linux/prefix}"
 export JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-8-openjdk}"
 case ":$PATH:" in *":$DINE_LINUX_PREFIX/bin:"*) ;; *) PATH="$DINE_LINUX_PREFIX/bin:$PATH" ;; esac

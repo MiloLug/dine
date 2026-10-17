@@ -33,8 +33,7 @@ ios_launch() {
 # lldb_setup=(-o … ...): lldb commands every ios-lldb*.sh session runs right after `target create`.
 # - target.sdk-path: lldb can't map the DWARF SDK name to a path on Linux (HostInfoError), and
 #   without it the Swift expression context can't import Darwin.
-# - DINE_LLDB_LOG=<dir>: opt-in file logs (Swift type system + expressions, Swift health,
-#   gdb-remote packets with timestamps) that survive a killed or hung session.
+# - DINE_LLDB_LOG=<dir>: opt-in file logs that survive a killed or hung session.
 ios_lldb_setup() {
   lldb_setup=(-o "settings set target.sdk-path \"$DINE_IOS_SDK\"")
   if [[ -n ${DINE_LLDB_LOG:-} ]]; then

@@ -2,8 +2,8 @@
 
 Builds go through upstream's own etc/default-build (and a test's custom `build` script, which
 wraps it), with the environment upstream run-test exports and our shims standing in for the AOSP
-tree. bundle.json is all the run stage reads. A test is rebuilt only when its sources, the corpus
-config, the shims, default-build, the harness build logic or libcore change.
+tree. bundle.json is all the run stage reads; it is reused while its key (the test's sources plus
+`_shared_key`) matches.
 """
 
 import hashlib
@@ -15,7 +15,7 @@ import zipfile
 from pathlib import Path
 
 from classify import classify
-from common import BUILD, CORE_JAR, D8, HARNESS, RUNTIME, SHIMS, TOP, UPSTREAM, parallel
+from common import BUILD, CORE_JAR, D8, HARNESS, RUNTIME, SHIMS, TOP, UPSTREAM, load_corpus, parallel
 from grade import expected_file
 
 BUILD_TIMEOUT = 600
@@ -31,8 +31,9 @@ def _hash_tree(h, root: Path) -> None:
 def _shared_key() -> bytes:
     """Inputs common to every test."""
     h = hashlib.sha256()
-    for p in [RUNTIME / "corpus.toml", UPSTREAM / "test/etc/default-build",
-              HARNESS / "build.py", HARNESS / "classify.py", D8]:
+    # Only the corpus pin: [run] and [timeouts] don't change what gets built.
+    h.update(json.dumps(load_corpus()["upstream"], sort_keys=True).encode())
+    for p in [UPSTREAM / "test/etc/default-build", HARNESS / "build.py", HARNESS / "classify.py", D8]:
         h.update(p.read_bytes())
     _hash_tree(h, SHIMS)
     # Entry names + CRCs, not the jar bytes: a clean ART rebuild rewrites zip timestamps.
@@ -56,7 +57,7 @@ def _env() -> dict:
         "NEED_DEX": "true",
         "USE_D8": "true",
         "USE_DESUGAR": "true",
-        "USE_HIDDENAPI": "false",   # no hiddenapi tool; only matters for 4 tests
+        "USE_HIDDENAPI": "false",   # no hiddenapi tool; only matters for a few tests
         "ANDROID_BUILD_TOP": str(TOP),
         # For the shims.
         "DINE_CORE_JAR": str(CORE_JAR),

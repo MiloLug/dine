@@ -4,7 +4,7 @@
 name = "dine"
 version = "0"
 # 3.12 exactly: swift-bin's lldb links libpython3.12, and tools/lldb borrows it from this
-# interpreter (uv-managed CPython). One interpreter for everything.
+# interpreter (uv-managed CPython).
 requires-python = "==3.12.*"
 dependencies = []
 

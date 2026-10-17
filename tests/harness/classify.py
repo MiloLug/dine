@@ -1,9 +1,9 @@
-"""Decide how to run an upstream ART run-test, or why we skip it.
+"""Decide how to run an upstream ART run-test, or why to skip it.
 
 Upstream runs a test through its `run` script (bash on top of etc/run-test-jar), which assumes an
-AOSP host tree. We don't run those scripts. Instead we translate the common one-line form
-(`exec ${RUN} "$@" <flags>` / `./default-run "$@" <flags>`) into dalvikvm arguments, and skip
-everything else with a reason that the summary counts.
+AOSP host tree. Those scripts never run here: the common one-line form
+(`exec ${RUN} "$@" <flags>` / `./default-run "$@" <flags>`) is translated into dalvikvm arguments,
+and everything else is skipped with a reason that the summary counts.
 """
 
 import re
@@ -28,8 +28,8 @@ class RunSpec:
     timeout: int | None = None
 
 
-# Flags that only affect dex2oat, images or other AOT/JIT setup. We run dex directly under -Xint
-# with no boot image, so they are no-ops here.
+# Flags that only affect dex2oat, images or other AOT/JIT setup. Tests run dex directly under
+# -Xint with no boot image, so they are no-ops here.
 IGNORED = {"--no-app-image", "--profile", "--random-profile", "--vdex", "--dm", "--prebuild",
            "--no-prebuild", "--relocate", "--no-relocate", "--no-image", "--sync",
            "--external-log-tags", "--jit", "--interpreter", "--no-optimize", "--64", "--host",

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Build the Linux ATL stack into a local prefix (no sudo). ART and ATL come from our forks (the
 # dine-art and dine-atl submodules), bionic_translation and libopensles from third_party/ clones.
-# Order: bionic_translation -> dine-art -> libopensles-standalone -> dine-atl
 #
-# Usage: scripts/build-linux-stack.sh [stage...]   stages: bionic art opensles atl (default: all)
+# Usage: scripts/build-linux-stack.sh [stage...]   stages, in build order: bionic art opensles atl
+# (default: all)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -21,7 +21,7 @@ export LD_LIBRARY_PATH="$PREFIX/lib:$PREFIX/lib/art${LD_LIBRARY_PATH:+:$LD_LIBRA
 export LIBRARY_PATH="$PREFIX/lib${LIBRARY_PATH:+:$LIBRARY_PATH}"
 export CPATH="$PREFIX/include${CPATH:+:$CPATH}"
 
-# Our ART/ATL changes live on the forks' `dine` branches.
+# Only init an empty checkout: `submodule update` would detach a working one from its `dine` branch.
 submodule() {
   [[ -n "$(ls -A "$ROOT/$1" 2>/dev/null)" ]] || git -C "$ROOT" submodule update --init "$1"
 }

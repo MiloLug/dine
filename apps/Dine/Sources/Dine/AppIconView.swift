@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// One home-screen-style tile: rounded-square icon with the name underneath.
 struct AppIconView: View {
     let app: DineApp
 

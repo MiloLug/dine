@@ -4,7 +4,6 @@
 # frames get symbolicated. Pulls the dyld shared cache off the phone (~7 GB, ~5 min) and splits it
 # with ipsw into out/ios-symbols/<version> (<build>)/Symbols/<install path>; ios-lldb.sh passes
 # that dir to `platform select remote-ios --sysroot`. Rerun after an iOS update.
-# Needs ipsw (AUR ipsw-bin).
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/ios-common.sh"
 command -v ipsw >/dev/null || { echo "ipsw not found: paru -S ipsw-bin" >&2; exit 1; }

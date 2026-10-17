@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Main screen: the app grid, styled like the iOS home screen.
 struct LauncherView: View {
     @ObservedObject var library: AppLibrary
 

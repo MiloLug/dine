@@ -24,10 +24,9 @@ def expected_file(test_dir: Path) -> Path | None:
 def strip_shutdown_abort(output: str) -> tuple[str, bool]:
     """Drop a trailing crash dump from the "Shutdown thread". Returns (output, stripped).
 
-    art_standalone with libcore 8.1/9 aborted in libjavacore's JNI_OnUnload at VM shutdown
-    (ART 10 calls it with no thread attached). That is fixed in dine-art (libcore Register.cpp); this
-    keeps trees without the fix usable and makes any such abort visible as a count instead of
-    failing every test.
+    ART 10 calls libjavacore's JNI_OnUnload with no thread attached, and stock libcore 8.1/9 aborts
+    there at VM shutdown (dine-art's Register.cpp doesn't). Stripping keeps trees without that fix
+    usable and shows such aborts as a count instead of failing every test.
     """
     starts = list(DUMP_START.finditer(output))
     if not starts:

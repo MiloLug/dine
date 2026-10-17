@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # d8 from AUR android-sdk-build-tools, on its own JDK: it needs Java 11+, while JDK 8 stays the
-# default for the ATL build. On PATH via env.sh; used by the dine-art build (DX := d8), ATL's
-# meson build and the runtime tests. Overrides: DINE_D8 (d8 script), DINE_D8_JAVA_HOME.
+# default for the ATL build. Overrides: DINE_D8 (d8 script), DINE_D8_JAVA_HOME.
 set -euo pipefail
 d8=${DINE_D8:-$(ls -d /opt/android-sdk/build-tools/*/d8 2>/dev/null | sort -V | tail -n1)}
 [[ -n $d8 && -x $d8 ]] || { echo "d8: android-sdk-build-tools not installed (paru -S android-sdk-build-tools)" >&2; exit 1; }

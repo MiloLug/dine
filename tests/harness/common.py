@@ -1,5 +1,3 @@
-"""Paths, config and helpers shared by the harness stages."""
-
 import concurrent.futures
 import os
 import re
@@ -7,7 +5,7 @@ import sys
 import tomllib
 from pathlib import Path
 
-HARNESS = Path(__file__).resolve().parent  # tests/harness: the engine
+HARNESS = Path(__file__).resolve().parent
 SHIMS = HARNESS / "shims"
 ROOT = Path(os.environ.get("DINE_ROOT") or HARNESS.parents[1])
 RUNTIME = ROOT / "dine-art/tests/runtime"   # the suite: corpus.toml, expectations/, authored/
@@ -29,7 +27,7 @@ def load_corpus() -> dict:
 
 
 def discover(pattern: str | None = None) -> dict[str, Path]:
-    """Test name -> source dir, upstream first, then authored/."""
+    """Test name -> source dir, for upstream and authored/ tests."""
     dirs = [d for d in (UPSTREAM / "test").iterdir() if d.is_dir() and UPSTREAM_TEST.match(d.name)]
     dirs += [d for d in AUTHORED.iterdir() if d.is_dir()]
     tests = {d.name: d for d in sorted(dirs)}
@@ -40,7 +38,8 @@ def discover(pattern: str | None = None) -> dict[str, Path]:
 
 
 def parallel(fn, items: list, jobs: int, label: str) -> list:
-    """Map fn over items on a thread pool (the work is in subprocesses), with a progress line."""
+    """Map fn over items on a thread pool (the work is in subprocesses), with a progress line.
+    Results come in completion order, not item order."""
     tty = sys.stderr.isatty()
     results = []
     with concurrent.futures.ThreadPoolExecutor(jobs) as pool:

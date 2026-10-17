@@ -2,6 +2,8 @@
 
 Per test, runs/<id>/<test>/ is both DEX_LOCATION and ANDROID_DATA (as on upstream host runs):
 symlinks to the build dir's files plus a fresh dalvik-cache, so runs never write into build/.
+It is also XDG_CACHE_HOME, where art_standalone keeps its dalvik-cache (boot image, oat files),
+so nothing lands in ~/.cache/art.
 Files: vm-output.txt (raw, stdout+stderr merged), output.txt (graded), diff (on mismatch).
 """
 
@@ -61,7 +63,7 @@ def run_one(name: str, bundle: dict, corpus: dict, run_dir: Path, opts: RunOptio
     wd = run_dir / name
     _workdir(wd, BUILD / name)
     env = os.environ | {"ANDROID_LOG_TAGS": corpus["run"]["log_tags"], "ANDROID_PRINTF_LOG": "brief",
-                        "ANDROID_DATA": str(wd), "DEX_LOCATION": str(wd)}
+                        "ANDROID_DATA": str(wd), "DEX_LOCATION": str(wd), "XDG_CACHE_HOME": str(wd)}
     cp = str(wd / bundle["jar"])
     if bundle["secondary"] and bundle["ex_jar"]:
         cp += ":" + str(wd / bundle["ex_jar"])
