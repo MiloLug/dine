@@ -49,7 +49,7 @@ def check_tools() -> None:
         missing.append("d8 (android-sdk-build-tools + jdk21-openjdk)")
     if missing:
         raise SystemExit("missing: " + ", ".join(missing) +
-                         "\n(tools: docs/first-run.md; dalvikvm/libcore: scripts/build-linux-stack.sh art;"
+                         "\n(tools: docs/first-run.md; dalvikvm/libcore: tools/dine linux build art;"
                          " and source env.sh)")
 
 

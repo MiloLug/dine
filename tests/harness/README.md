@@ -1,6 +1,6 @@
 # Test harness
 
-The engine behind `scripts/test-runtime.sh`. It runs AOSP ART run-tests on the local
+The engine behind `tools/dine test runtime`. It runs AOSP ART run-tests on the local
 `dalvikvm -Xint`. The suite it runs (corpus pin, expectations, our own tests) lives with the code
 it tests, in `dine-art/tests/runtime/` (`RUNTIME` in `common.py`).
 

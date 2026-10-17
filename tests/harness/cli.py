@@ -1,4 +1,4 @@
-"""Command line: scripts/test-runtime.sh [fetch|build|run|all] [options]."""
+"""Command line: tools/dine test runtime [fetch|build|run|all] [options]."""
 
 import argparse
 import collections
@@ -26,7 +26,7 @@ def _positive(value: str) -> int:
 
 
 def _args(argv):
-    p = argparse.ArgumentParser(prog="scripts/test-runtime.sh",
+    p = argparse.ArgumentParser(prog="tools/dine test runtime",
                                 description="ART run-tests on the local dalvikvm (-Xint).")
     p.add_argument("stage", nargs="?", default="all", choices=["fetch", "build", "run", "all"],
                    help="fetch: upstream tests + tool check; build: fetch + build (incremental); "

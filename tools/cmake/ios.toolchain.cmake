@@ -1,5 +1,5 @@
 # Cross-compile for iOS (arm64) from Linux with system clang + the Darwin SDK built by xtool.
-# Usage: cmake -G Ninja -DCMAKE_TOOLCHAIN_FILE=tools/ios.toolchain.cmake ...
+# Usage: cmake -G Ninja -DCMAKE_TOOLCHAIN_FILE=tools/cmake/ios.toolchain.cmake ...
 # Needs DINE_IOS_SDK (from env.sh) or -DDINE_IOS_SDK=/path/to/iPhoneOS.sdk.
 
 if(NOT DINE_IOS_SDK)

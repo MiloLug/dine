@@ -2,7 +2,7 @@
 
 import PackageDescription
 
-// Static libs cross-compiled by scripts/build-ios-native.sh land here.
+// Static libs cross-compiled by `tools/dine ios build-native` land here.
 let nativeLibDir = Context.packageDirectory + "/../../out/ios/lib"
 
 // The link driver gets --sysroot, not -isysroot, so clang never reads SDKSettings.json and stamps

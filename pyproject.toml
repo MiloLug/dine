@@ -3,7 +3,7 @@
 [project]
 name = "dine"
 version = "0"
-# 3.12 exactly: swift-bin's lldb links libpython3.12, and tools/lldb borrows it from this
+# 3.12 exactly: swift-bin's lldb links libpython3.12, and tools/libexec/lldb borrows it from this
 # interpreter (uv-managed CPython).
 requires-python = "==3.12.*"
 dependencies = []
@@ -11,7 +11,7 @@ dependencies = []
 [dependency-groups]
 tools = [
   "pymobiledevice3>=11.31",   # device access: tunneld, DVT launch, debugserver, syslog, symbols
-  "meson==1.12.1",            # ATL stack build (scripts/build-linux-stack.sh)
+  "meson==1.12.1",            # ATL stack build (tools/dine linux build)
 ]
 
 [tool.uv]

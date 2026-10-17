@@ -11,6 +11,6 @@ Each suite lives in the repo that owns the code it tests; the engine stays here.
 | apps: real APKs end to end | `tests/android-compat/apps/` | placeholder |
 | launcher: Dine's UI and logic | `tests/launcher/` | placeholder |
 
-`tests/harness/` is the engine (`scripts/test-runtime.sh`). The corpus is mostly **harvested**
+`tests/harness/` is the engine (`tools/dine test runtime`). The corpus is mostly **harvested**
 (AOSP ART run-tests, CTS, F-Droid apps), not written by hand; our own tests cover edge cases the
 harvested ones miss.

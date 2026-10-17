@@ -8,8 +8,8 @@ export DINE_ROOT
 # package manager ships (the xtool AppImage) live in out/tools/bin. Nothing goes to ~/.local.
 # Setup: docs/first-run.md.
 case ":$PATH:" in *":$DINE_ROOT/.venv/bin:"*) ;; *) PATH="$DINE_ROOT/.venv/bin:$DINE_ROOT/out/tools/bin:$PATH" ;; esac
-# tools/bin: tracked wrappers (d8 on its own JDK).
-case ":$PATH:" in *":$DINE_ROOT/tools/bin:"*) ;; *) PATH="$DINE_ROOT/tools/bin:$PATH" ;; esac
+# tools: the `dine` CLI; tools/bin: tracked wrappers (d8 on its own JDK).
+case ":$PATH:" in *":$DINE_ROOT/tools/bin:"*) ;; *) PATH="$DINE_ROOT/tools:$DINE_ROOT/tools/bin:$PATH" ;; esac
 export PATH
 
 # iPhoneOS.sdk inside the darwin Swift SDK that `xtool sdk install` built from Xcode.xip.
@@ -23,18 +23,20 @@ if [[ -z "${DINE_IOS_SDK:-}" ]]; then
 fi
 export DINE_IOS_SDK
 export DINE_IOS_MIN="${DINE_IOS_MIN:-17.0}"
+# accord (actool for Linux), a sibling checkout: tools/libexec/build-ios-assets.sh builds and runs it.
+export DINE_ACCORD="${DINE_ACCORD:-$(cd "$DINE_ROOT/.." && pwd)/dine-accord}"
 # Swift resource dir of the Darwin toolchain in the same bundle (iphoneos/prebuilt-modules, clang
-# builtins). tools/lldb makes it lldb's Swift resource dir.
+# builtins). tools/libexec/lldb makes it lldb's Swift resource dir.
 export DINE_IOS_SWIFT_RESOURCES="${DINE_IOS_SWIFT_RESOURCES:-${DINE_IOS_SDK%/Developer/Platforms/*}/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift}"
 
 # Swift toolchain lldb wrapper (has the Swift plugin; /usr/bin/lldb does not).
-export DINE_LLDB="$DINE_ROOT/tools/lldb"
+export DINE_LLDB="$DINE_ROOT/tools/libexec/lldb"
 
 # Device access goes through the usbmuxd-bridge systemd unit (/var/run/usbmuxd ->
 # Windows AMDS on 127.0.0.1:27015). If the unit is down, uncomment:
 # export USBMUXD_SOCKET_ADDRESS=127.0.0.1:27015
 
-# Linux ATL/ART prefix, built by scripts/build-linux-stack.sh.
+# Linux ATL/ART prefix, built by `tools/dine linux build`.
 export DINE_LINUX_PREFIX="${DINE_LINUX_PREFIX:-$DINE_ROOT/out/linux/prefix}"
 export JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-8-openjdk}"
 case ":$PATH:" in *":$DINE_LINUX_PREFIX/bin:"*) ;; *) PATH="$DINE_LINUX_PREFIX/bin:$PATH" ;; esac

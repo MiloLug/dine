@@ -11,7 +11,7 @@
 # liblldb links libpython3.12, which Arch doesn't ship; borrow it from the .venv interpreter
 # (uv-managed CPython 3.12, pinned in pyproject.toml).
 set -euo pipefail
-root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 src=/usr/lib/swift/usr
 darwin=${DINE_IOS_SWIFT_RESOURCES:?source env.sh first}
 prefix=$root/out/lldb
@@ -19,7 +19,7 @@ prefix=$root/out/lldb
 liblldb=$(readlink -f "$src/lib/liblldb.so")
 stamp="$(stat -c '%s %Y' "$liblldb") $darwin"
 if [[ $(cat "$prefix/.stamp" 2>/dev/null) != "$stamp" ]]; then
-  echo "tools/lldb: building relocated lldb in $prefix" >&2
+  echo "tools/libexec/lldb: building relocated lldb in $prefix" >&2
   rm -rf "$prefix"
   mkdir -p "$prefix/bin" "$prefix/lib/swift"
   # Real copies: $ORIGIN/../lib must resolve into the prefix, and lldb realpaths its shlib dir.
@@ -53,9 +53,9 @@ if [[ $(cat "$prefix/.stamp" 2>/dev/null) != "$stamp" ]]; then
 fi
 
 py=$root/.venv/bin/python
-[[ -x $py ]] || { echo "tools/lldb: no $py: run \`uv sync\` in $root" >&2; exit 1; }
+[[ -x $py ]] || { echo "tools/libexec/lldb: no $py: run \`uv sync\` in $root" >&2; exit 1; }
 home=$("$py" -c 'import sys; print(sys.base_prefix)')
-[[ -e $home/lib/libpython3.12.so.1.0 ]] || { echo "tools/lldb: $home has no libpython3.12" >&2; exit 1; }
+[[ -e $home/lib/libpython3.12.so.1.0 ]] || { echo "tools/libexec/lldb: $home has no libpython3.12" >&2; exit 1; }
 export LD_LIBRARY_PATH="$home/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export PYTHONHOME="$home"
 exec "$prefix/bin/lldb" "$@"

@@ -6,5 +6,6 @@ third_party/
 xtool/
 notes/
 CLAUDE.md
+.claude/
 .venv/
 __pycache__/

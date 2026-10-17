@@ -2,11 +2,11 @@
 # Build the Linux ATL stack into a local prefix (no sudo). ART and ATL come from our forks (the
 # dine-art and dine-atl submodules), bionic_translation and libopensles from third_party/ clones.
 #
-# Usage: scripts/build-linux-stack.sh [stage...]   stages, in build order: bionic art opensles atl
+# Usage: tools/dine linux build [stage...]   stages, in build order: bionic art opensles atl
 # (default: all)
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$ROOT/env.sh"   # meson comes from the .venv
 SRC="$ROOT/third_party"
 PREFIX="${DINE_LINUX_PREFIX:-$ROOT/out/linux/prefix}"

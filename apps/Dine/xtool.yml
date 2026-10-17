@@ -1,2 +1,8 @@
 version: 1
 bundleID: dev.dine.Dine
+# Written by tools/libexec/build-ios-assets.sh; the icon file names follow its --app-icon AppIcon.
+infoPath: ../../out/ios/assets/Dine/Info.plist
+resources:
+  - ../../out/ios/assets/Dine/Assets.car
+  - ../../out/ios/assets/Dine/AppIcon60x60@2x.png
+  - ../../out/ios/assets/Dine/AppIcon76x76@2x~ipad.png

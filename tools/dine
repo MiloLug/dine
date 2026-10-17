@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Single entry point for dine's dev tooling: tools/dine --help.
+set -eo pipefail
+root=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)
+source "$root/env.sh"
+py=$root/.venv/bin/python
+[[ -x $py ]] || { echo "tools/dine: no $py: run \`uv sync\` in $root" >&2; exit 1; }
+PYTHONPATH="$root/tools/py${PYTHONPATH:+:$PYTHONPATH}" exec "$py" -m dine "$@"

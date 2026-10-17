@@ -27,8 +27,9 @@ struct LauncherView: View {
             }
             .navigationTitle("Apps")
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItemGroup(placement: .topBarLeading) {
                     NavigationLink("hello++") { HelloView() }
+                    NavigationLink("probe") { ProbeView() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
