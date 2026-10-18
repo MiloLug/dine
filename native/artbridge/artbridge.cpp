@@ -203,7 +203,7 @@ JNIEnv *CreateVm(const Run &run) {
   }
   std::vector<std::string> args = {
       boot, "-Xint", "-Xusejit:false", "-Xnorelocate", "-XX:DumpNativeStackOnSigQuit:false",
-      "-Xnoimage-dex2oat", "-Xcheck:jni", "-Djava.io.tmpdir=" + run.data_dir, "-cp", run.class_path,
+      "-Xcheck:jni", "-Djava.io.tmpdir=" + run.data_dir, "-cp", run.class_path,
   };
   std::vector<JavaVMOption> options;
   for (const std::string &arg : args) options.push_back({const_cast<char *>(arg.c_str()), nullptr});
