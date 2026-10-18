@@ -30,6 +30,7 @@ struct LauncherView: View {
                 ToolbarItemGroup(placement: .topBarLeading) {
                     NavigationLink("hello++") { HelloView() }
                     NavigationLink("probe") { ProbeView() }
+                    NavigationLink("art") { ArtView() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {

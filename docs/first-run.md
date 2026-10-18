@@ -196,6 +196,10 @@ tools/dine ios symbols      # phone's dyld shared cache → out/ios-symbols/<ver
 
 ## 7. First app install
 
+Dine links ART and bundles its jars, so sections 8 and 9 come first, plus the hello dex its `art`
+screen runs: `tools/dine test runtime fetch`, then `tools/dine test runtime build -f
+dine-0001-hello`.
+
 ```sh
 tools/dine ios run                     # from a real terminal (prompts!)
 ```
@@ -262,7 +266,10 @@ cd .. && tools/dine ios build-art     # ICU, lz4, liblzma, then dine-art → out
   used.
 - dine-art builds for iOS with its make build in cross mode (`____TARGET=ios`, the
   `build/core/combo/HOST_darwin-arm64.mk` combo): clang, static archives, intermediates in
-  `dine-art/out/host/darwin-x86`. The boot classpath jars come from the Linux build.
+  `dine-art/out/host/darwin-x86`. The boot classpath jars come from the Linux build
+  (`out/ios/share/art`, bundled as the app's `art/`).
+- ICU's data is built into `libicudata.a` (`--with-data-packaging=static`, ~33 MB), as in Linux's
+  system ICU; libcore never opens a data file.
 - iOS links use xtool's `ld64.lld` (`DINE_IOS_TOOLSET_BIN` in `env.sh`): the system one rejects
   the SDK's `.tbd` stubs.
 
@@ -275,6 +282,7 @@ pymobiledevice3 usbmux list                          # phone visible
 tools/dine ios run                                   # Dine shows the app grid
 tools/dine ios logs                                  # "loaded N apps"; tap hello++ → "Dine native: Hello from C++ …";
                                                      # tap probe → "probe done N ok 0 fail" (accord's Assets.car)
+                                                     # tap art → "art probe done"; run hello → ART's output
 tools/dine ios lldb -- -b -o "expr -l c -- (const char *)dine_hello()" -o "process detach"
 tools/dine ios lldb --suspended -- -b -o "b HelloView.swift:8" -o c -o "po self" -o "process detach"
 tools/dine test unit                                 # harness + tools unit tests (debug server on a fake target)

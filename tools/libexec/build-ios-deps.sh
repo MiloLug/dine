@@ -42,7 +42,7 @@ icu() {
   mkdir -p "$cross"
   (cd "$cross" && "$src/configure" --host=aarch64-apple-darwin --with-cross-build="$host" \
     --prefix="$PREFIX" --enable-static --disable-shared --disable-tools --disable-tests \
-    --disable-samples --disable-extras --with-data-packaging=archive \
+    --disable-samples --disable-extras --with-data-packaging=static \
     CC="clang -target arm64-apple-ios$DINE_IOS_MIN -isysroot $DINE_IOS_SDK" \
     CXX="clang++ -target arm64-apple-ios$DINE_IOS_MIN -isysroot $DINE_IOS_SDK" \
     AR=llvm-ar RANLIB=llvm-ranlib LDFLAGS="-fuse-ld=lld -B$DINE_IOS_TOOLSET_BIN")

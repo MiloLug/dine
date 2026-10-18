@@ -1,0 +1,31 @@
+// native/artbridge plus the ART archives from `tools/dine ios build-art`. libjavacore and
+// libopenjdk are force-loaded in Package.swift instead: ART looks their symbols up with dlsym.
+module CArtBridge [system] {
+    header "../../../../native/artbridge/include/dineart.h"
+    link "artbridge"
+    link "art"
+    link "artbase"
+    link "dexfile"
+    link "profile"
+    link "artpalette"
+    link "sigchain"
+    link "openjdkjvm"
+    link "nativebridge"
+    link "nativehelper"
+    link "ziparchive"
+    link "base"
+    link "log"
+    link "backtrace"
+    link "elffile"
+    link "fdlibm"
+    link "icui18n"
+    link "icuuc"
+    link "icudata"
+    link "lz4"
+    link "lzma"
+    link "z"
+    link "expat"
+    link "c++"
+    link framework "CoreFoundation"
+    export *
+}

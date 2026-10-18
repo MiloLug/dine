@@ -28,13 +28,16 @@ let package = Package(
     ],
     targets: [
         .systemLibrary(name: "CDineHello"),
+        .systemLibrary(name: "CArtBridge"),
         .target(
             name: "Dine",
-            dependencies: ["CDineHello"],
+            dependencies: ["CDineHello", "CArtBridge"],
             linkerSettings: [.unsafeFlags([
                 "-L", nativeLibDir,
                 "-Xlinker", "-platform_version", "-Xlinker", "ios",
                 "-Xlinker", iosMin, "-Xlinker", iosSDK,
+                "-Xlinker", "-force_load", "-Xlinker", nativeLibDir + "/libjavacore.a",
+                "-Xlinker", "-force_load", "-Xlinker", nativeLibDir + "/libopenjdk.a",
             ])]
         ),
     ]
