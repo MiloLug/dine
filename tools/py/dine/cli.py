@@ -28,6 +28,10 @@ def _ios(sub):
     t.add_argument("libs", nargs="*")
     t.set_defaults(func=lambda a: ios.run_libexec("build-ios-native.sh", *a.libs))
 
+    t = s.add_parser("build-art", help="dine-art runtime + libcore natives (and ICU, lz4, liblzma) → "
+                                       "static archives in out/ios/lib")
+    t.set_defaults(func=lambda a: ios.run_libexec("build-ios-art.sh"))
+
     t = s.add_parser("run", help="build-native + build-assets + xtool dev (build/sign/install) + launch; kills a running instance first")
     t.add_argument("app", nargs="?", default="Dine")
     t.set_defaults(func=_ios_run)
