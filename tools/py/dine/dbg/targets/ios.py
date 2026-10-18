@@ -6,12 +6,17 @@ import re
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 
 from ... import ios, paths
 from ...paths import DineError
 from .. import match
 from .base import CmdError, Target
+
+ACTIONS = paths.ROOT / "tools/dbg-actions.mm"
+PROTOTYPE = re.compile(r'^(extern "C" [^;{]+?)\s*\{', re.M)
+NUMBER = re.compile(r"[-+]?(0[xX][0-9a-fA-F]+|\d+(\.\d+)?)")
 
 
 class IosTarget(Target):
@@ -48,13 +53,14 @@ class IosTarget(Target):
         return {"PYTHONPATH": str(pkg.parent.parent),
                 "LD_LIBRARY_PATH": ":".join([*map(str, libs), *filter(None, [os.environ.get("LD_LIBRARY_PATH")])])}
 
-    def __init__(self, store, app):
-        super().__init__(store, app)
+    def __init__(self, store, app, actions=None):
+        super().__init__(store, app, actions or ACTIONS)
         self.host = None
         self._syslog: subprocess.Popen | None = None
         self._ui: list[str] = []
         self._ui_skip: list[str] = []
-        self._expr_n = 0
+        self._actions_target = 0
+        self._prototypes = ""
 
     def setup(self) -> None:
         from ..lldbhost import LldbHost
@@ -63,10 +69,13 @@ class IosTarget(Target):
         out = h.run(ios.lldb_platform_cmd())
         for c in ios.lldb_memory_cmds():
             h.run(c)
-        h.create_target(paths.app_binary(self.app))
-        for c in ios.lldb_setup_cmds():
-            h.run(c)
+        self._new_target()
         self.store.append("lldb", "setup", out.strip())
+
+    def _new_target(self) -> None:
+        self.host.create_target(paths.app_binary(self.app))
+        for c in ios.lldb_setup_cmds():
+            self.host.run(c)
 
     def state(self) -> dict:
         h = self.host
@@ -106,6 +115,8 @@ class IosTarget(Target):
             if len(procs) > 1:
                 raise CmdError(f"several {self.app} processes ({', '.join(str(p['pid']) for p in procs)}): --pid")
             pid = procs[0]["pid"]
+        if self.host.process is not None and self.host.process.GetProcessID() != pid:
+            self._new_target()
         return self.host.connect_attach(ios.debugserver_url(), pid, timeout)
 
     def do_detach(self):
@@ -217,9 +228,17 @@ class IosTarget(Target):
             return None
 
     def _in_app(self, fn, timeout: float):
+        """`fn(left)` runs paused on the main thread, actions defined; `left()` is the time remaining."""
         h = self.host
         if h.state not in ("running", "stopped"):
-            raise CmdError("UI actions run through the debugger: tools/dine dbg attach")
+            raise CmdError("UI actions and calls run through the debugger: tools/dine dbg attach")
+        deadline = time.monotonic() + timeout
+
+        def left() -> float:
+            s = deadline - time.monotonic()
+            if s < 1:
+                raise CmdError(f"ran out of its {timeout:g}s")
+            return s
         resume = h.state == "running"
         if resume:
             h.interrupt(quiet=True)
@@ -229,32 +248,43 @@ class IosTarget(Target):
                     h.process.GetThreadAtIndex(0))
         h.process.SetSelectedThread(main)
         try:
-            text = fn()
+            self._define_actions(left())
+            text = fn(left)
         finally:
             h.process.SetSelectedThread(th)
             if resume and h.state == "stopped":
                 h.resume()
         return text + ("; resumed" if resume else "; still stopped (tools/dine dbg continue to let it act)")
 
-    def _collect(self, timeout: float) -> tuple[str, list[tuple[bool, str]]]:
+    def _define_actions(self, timeout: float) -> None:
+        if self._actions_target == self.host.targets:
+            return
+        try:
+            code = self.actions.read_text()
+        except OSError as e:
+            raise CmdError(f"actions file: {e}") from None
+        try:
+            self.host.define(code, timeout)
+        except CmdError as e:
+            raise CmdError(f"{self.actions}:\n{e}") from None
+        self._prototypes = "\n".join(p + ";" for p in PROTOTYPE.findall(code))
+        self._actions_target = self.host.targets
+        self.store.append("lldb", "actions", f"defined {self.actions}")
+
+    def _call(self, expr: str, po: bool, left) -> str:
+        return self.host.evaluate(expr, "objc", po, left(), prefix=self._prototypes)
+
+    def _collect(self, left) -> list[tuple[bool, str]]:
         skip = self._ui_skip
         for _ in range(5):
-            self._expr_n += 1
-            n = self._expr_n
-            cond = " && ".join(f'dine_strcmp(dine_cname(dine_e), "{c}") != 0' for c in skip) or "1"
-            code = UI_COLLECT.replace("$DINE_UI", f"$dine_ui{n}").replace("$DINE_SEEN", f"$dine_seen{n}") \
-                .replace("DINE_SKIP", cond)
             try:
-                out = self.host.evaluate(code, "objc", True, timeout)
-                return f"$dine_ui{n}", [(x[0] == "1", x[1:]) for x in out.split("\x1e") if x]
+                out = self._call(f"dine_ui_collect({c_literal(','.join(skip))})", True, left)
+                return [(x[0] == "1", x[1:]) for x in out.split("\x1e") if x]
             except CmdError as e:
-                # An AX getter threw, aborting the walk (lldb compiles without ObjC exceptions, so
-                # no @try): skip that element's class and walk again.
+                # An AX getter threw, aborting the walk (no @try in lldb's ObjC): skip its class.
                 if "exception" not in str(e):
                     raise
-                last = self.host.evaluate(f"(const char *)object_getClassName((id)[$dine_seen{n} lastObject])",
-                                          "objc", False, timeout)
-                m = re.search(r'"(.*)"\s*$', last)
+                m = re.search(r'"(.*)"\s*$', self._call("dine_ui_last_class()", False, left))
                 if not m or m.group(1) in skip:
                     raise
                 skip.append(m.group(1))
@@ -262,8 +292,8 @@ class IosTarget(Target):
         raise CmdError(f"accessibility walk keeps throwing (skipped {', '.join(skip)})")
 
     def do_ui_tap(self, arg=None, timeout=60):
-        """Host-side AX `perform_press` is ignored by our apps, so lldb calls `accessibilityActivate`
-        on the matching element inside the app."""
+        """Host-side AX `perform_press` is ignored by our apps, so the app calls `accessibilityActivate`
+        on the matching element itself."""
         if not arg:
             raise CmdError("usage: tools/dine dbg ui tap <label|#N>")
         if arg.startswith("#") and arg[1:].isdigit():
@@ -271,8 +301,8 @@ class IosTarget(Target):
                 raise CmdError(f"no {arg} in the last `ui ls` ({len(self._ui)} elements)")
             arg = self._ui[int(arg[1:])].split(", ")[0]
 
-        def tap():
-            var, items = self._collect(timeout)
+        def tap(left):
+            items = self._collect(left)
             m = match.loose(arg)
             hits = [i for i, (_, label) in enumerate(items) if m(label)]
             if not hits:
@@ -282,8 +312,7 @@ class IosTarget(Target):
             if len(labels) > 1 and not exact:
                 raise CmdError(f"{arg!r} is ambiguous: " + ", ".join(labels))
             pick = next((i for i in exact or hits if items[i][0]), (exact or hits)[0])
-            ok = self.host.evaluate(f"(BOOL)[(id)[{var} objectAtIndex:{pick}] accessibilityActivate]",
-                                    "objc", False, timeout)
+            ok = self._call(f"dine_ui_activate({pick})", False, left)
             label = items[pick][1]
             if not re.search(r"\b(YES|true)\b", ok):
                 raise CmdError(f"{label!r} declined the activation (back navigation: tools/dine dbg ui back)")
@@ -291,18 +320,20 @@ class IosTarget(Target):
         return self._in_app(tap, timeout)
 
     def do_ui_back(self, timeout=60):
-        """Accessibility escape (VoiceOver's back gesture) from on-screen elements up their containers
-        and responders; a navigation controller handles it by popping."""
-        def back():
-            var, items = self._collect(timeout)
-            if not items:
+        def back(left):
+            if not self._collect(left):
                 raise CmdError("no accessibility elements on screen")
-            out = self.host.evaluate(UI_ESCAPE.replace("$DINE_UI", var), "objc", False, timeout)
-            m = re.search(r'"(.*)"\s*$', out)
-            if not m or m.group(1) == "NO":
+            m = re.search(r'"(.*)"\s*$', self._call("dine_ui_escape()", False, left))
+            if not m:
                 raise CmdError("nothing on screen handled the escape (no back navigation here?)")
             return f"went back (escape handled by {m.group(1)})"
         return self._in_app(back, timeout)
+
+    def do_call(self, fn, args=(), po=False, timeout=60):
+        if not re.fullmatch(r"[A-Za-z_]\w*", fn):
+            raise CmdError(f"{fn!r} isn't a function name")
+        expr = f"{fn}({', '.join(map(c_literal, args))})"
+        return self._in_app(lambda left: self._call(expr, po, left), timeout)
 
     def do_ui_screenshot(self, arg=None):
         d = self.store.dir / "screenshots"
@@ -312,63 +343,9 @@ class IosTarget(Target):
         return f"screenshot: {path}"
 
 
-# Locals carry a `dine_` prefix: a bare name like `str` clashes with system symbols. Classes come
-# from objc_getClass, not class names, which make lldb read every class name (~35 s per process).
-UI_COLLECT = r"""
-id (*dine_cls)(const char *) = (id (*)(const char *))objc_getClass;
-id (*dine_cstr)(id, SEL, const char *) = (id (*)(id, SEL, const char *))objc_msgSend;
-const char *(*dine_cname)(id) = (const char *(*)(id))object_getClassName;
-int (*dine_strcmp)(const char *, const char *) = (int (*)(const char *, const char *))strcmp;
-id dine_str = dine_cls("NSString");
-id dine_app = (id)[dine_cls("UIApplication") sharedApplication];
-id dine_win = nil;
-for (id dine_s in (id)[dine_app connectedScenes])
-  for (id dine_w in (id)[dine_s windows]) if ((BOOL)[dine_w isKeyWindow]) dine_win = dine_w;
-id dine_stack = (id)[dine_cls("NSMutableArray") array];
-if (dine_win) (void)[dine_stack addObject:dine_win];
-id $DINE_UI = (id)[dine_cls("NSMutableArray") array];
-id $DINE_SEEN = (id)[dine_cls("NSMutableArray") array];
-id dine_out = (id)[dine_cls("NSMutableArray") array];
-id dine_view = dine_cls("UIView"); id dine_arr = dine_cls("NSArray"); int dine_n = 0;
-while ((unsigned long)[dine_stack count] > 0 && dine_n++ < 5000) {
-  id dine_e = (id)[dine_stack lastObject]; (void)[dine_stack removeLastObject];
-  (void)[$DINE_SEEN addObject:dine_e];
-  if ((DINE_SKIP) && (BOOL)[dine_e respondsToSelector:@selector(accessibilityLabel)]) {
-    id dine_l = (id)[dine_e accessibilityLabel];
-    if (dine_l != nil && (BOOL)[dine_l isKindOfClass:dine_str] && (unsigned long)[dine_l length] > 0) {
-      (void)[$DINE_UI addObject:dine_e];
-      id dine_flag = dine_cstr(dine_str, @selector(stringWithUTF8String:), (BOOL)[dine_e isAccessibilityElement] ? "1" : "0");
-      (void)[dine_out addObject:(id)[dine_flag stringByAppendingString:dine_l]];
-    }
-  }
-  if ((DINE_SKIP) && (BOOL)[dine_e respondsToSelector:@selector(accessibilityElements)]) {
-    id dine_a = (id)[dine_e accessibilityElements];
-    if (dine_a != nil && (BOOL)[dine_a isKindOfClass:dine_arr]) (void)[dine_stack addObjectsFromArray:dine_a];
-  }
-  if ((BOOL)[dine_e isKindOfClass:dine_view]) (void)[dine_stack addObjectsFromArray:(id)[dine_e subviews]];
-}
-(id)[dine_out componentsJoinedByString:dine_cstr(dine_str, @selector(stringWithUTF8String:), "\x1e")]
-"""
-
-# Content elements come last in the walk (the nav bar is a sibling above them), so start there.
-UI_ESCAPE = r"""
-const char *(*dine_cname)(id) = (const char *(*)(id))object_getClassName;
-id dine_done = nil;
-for (long dine_i = (long)[$DINE_UI count] - 1; dine_i >= 0 && dine_done == nil; dine_i--) {
-  id dine_c = (id)[$DINE_UI objectAtIndex:(unsigned long)dine_i];
-  for (int dine_k = 0; dine_c != nil && dine_k < 40 && dine_done == nil; dine_k++) {
-    if ((BOOL)[dine_c respondsToSelector:@selector(accessibilityPerformEscape)] && (BOOL)[dine_c accessibilityPerformEscape])
-      dine_done = dine_c;
-    else if ((BOOL)[dine_c respondsToSelector:@selector(accessibilityContainer)] && (id)[dine_c accessibilityContainer] != nil)
-      dine_c = (id)[dine_c accessibilityContainer];
-    else if ((BOOL)[dine_c respondsToSelector:@selector(nextResponder)])
-      dine_c = (id)[dine_c nextResponder];
-    else
-      dine_c = nil;
-  }
-}
-dine_done ? dine_cname(dine_done) : "NO"
-"""
+def c_literal(arg: str) -> str:
+    """A `dbg call` argument as C: numbers as written, anything else a string literal."""
+    return arg if NUMBER.fullmatch(arg) else json.dumps(arg, ensure_ascii=False)
 
 
 def syslog_text(line: str) -> str | None:

@@ -11,8 +11,8 @@ from .base import CmdError, Target
 class FakeTarget(Target):
     name = "fake"
 
-    def __init__(self, store, app):
-        super().__init__(store, app)
+    def __init__(self, store, app, actions=None):
+        super().__init__(store, app, actions)
         self._state = "none"
         self._location: dict | None = None
         self._syslog = False

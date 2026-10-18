@@ -7,6 +7,7 @@ import shlex
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 from . import ios, paths
 from .dbg import client, session
@@ -160,6 +161,8 @@ def _dbg(sub):
     t.add_argument("--target", default="ios", choices=["ios", "fake"])
     t.add_argument("--app", default="Dine")
     t.add_argument("--timeout", type=float, default=90)
+    t.add_argument("--actions-src", type=Path, help="ObjC++ functions for `ui` and `call` (ios default: "
+                                                     "tools/dbg-actions.mm)")
     t.set_defaults(func=_start_server)
 
     t = s.add_parser("stop-server", help="detach, stop streams, exit; logs are kept")
@@ -266,6 +269,13 @@ def _dbg(sub):
     req("ui", None, "app UI: ls | tap <label|#N> | back | screenshot [path]", timeout=60, setup=ui_setup).set_defaults(
         func=lambda a: _request(a, f"ui_{a.op}", {"arg": a.arg} if a.arg else {}))
 
+    def call_setup(t):
+        t.add_argument("--po", action="store_true", help="object description (like po)")
+        t.add_argument("fn")
+        t.add_argument("args", nargs="*", help="numbers as-is, anything else a C string")
+    req("call", "call", "call a function from the actions file on the app's main thread (pauses, then resumes it)",
+        timeout=60, setup=call_setup, args=lambda a: {"fn": a.fn, "args": a.args, "po": a.po})
+
     t = s.add_parser("fake", help="test hook: make the fake target (--target fake) emit an event")
     t.add_argument("fake_action")
     t.add_argument("text", nargs="?", default="")
@@ -296,7 +306,7 @@ def _request(a, cmd, args) -> int:
 
 
 def _start_server(a) -> int:
-    code, text = client.start_server(a.target, a.app, a.timeout)
+    code, text = client.start_server(a.target, a.app, a.timeout, a.actions_src)
     print(text)
     return code
 

@@ -113,7 +113,7 @@ tools/dine dbg start-server                       # fails if one already runs
 tools/dine dbg syslog start                       # before launch, to catch startup logs
 tools/dine ios launch
 tools/dine dbg wait --log "loaded apps" --timeout 30
-tools/dine dbg attach                             # ~20 s; the app is stopped afterwards
+tools/dine dbg attach                             # ~15 s; the app is stopped afterwards
 tools/dine dbg bp add HelloView.swift:23
 tools/dine dbg continue
 tools/dine dbg ui tap hello                       # in-process accessibilityActivate (needs attach)
@@ -134,13 +134,18 @@ tools/dine dbg stop-server                        # detaches; never kills the ap
   elsewhere (exit 1) or exits/crashes (exit 3). Timeout: exit 2 with the recent events.
 - Exit codes: 0 ok, 1 error or bad state (the message names the command to run), 2 timeout,
   3 exited/crashed during a wait, 4 no server.
-- `ui tap` / `ui back`: host-side accessibility presses (pymobiledevice3 `perform_press`) are
-  ignored by our apps, so the server pauses the app and calls `accessibilityActivate` /
-  `accessibilityPerformEscape` in-process through lldb. lldb compiles expressions without ObjC
-  exceptions, so an element whose AX getter throws (the nav bar's `_UIButtonBarButton`) aborts the
-  walk; its class is skipped and the walk reruns.
-  ObjC expressions there use `objc_getClass` instead of class names: each class name makes lldb
-  scan the ObjC runtime (~35 s once per process, most of it debugserver serving the reads).
+- `ui tap` / `ui back` / `call`: host-side accessibility presses (pymobiledevice3 `perform_press`)
+  are ignored by our apps, so the server pauses the app and runs functions from
+  `tools/dbg-actions.mm` on its main thread (`accessibilityActivate`, `accessibilityPerformEscape`).
+  `dbg call <fn> [args]` calls any of them (numbers as-is, other args as C strings).
+  - lldb compiles the file into the app (`expression --top-level`) on the first UI action per
+    process: that action takes ~10 s, later ones ~0.45 s. Its lldb rules are in its header.
+    `start-server --actions-src FILE` uses another file; edits apply from the next attach to a new
+    process.
+  - lldb compiles without ObjC exceptions, so an element whose AX getter throws (the nav bar's
+    `_UIButtonBarButton`) aborts the walk; its class is skipped and the walk reruns.
+  - lldb keeps top-level definitions per target, bound to the first process, so attaching to
+    another process creates a new target. Breakpoints carry over (`bp ls`: ids may change).
 - `HelloView.swift:8` (`HelloView.init`) runs at launch (SwiftUI builds the `NavigationLink`
   destination eagerly); `HelloView.swift:23` (`body`/`onAppear`) fires when the screen opens.
 - Claude Code: the `dine-debugger` subagent (`.claude/agents/`, gitignored) knows this contract.
@@ -184,7 +189,7 @@ apps/<App>/xtool/<App>.app/<App>` (local Mach-O + debug info) → `target.sdk-pa
   Memory is read in 16 KiB lines (`target.process.memory-cache-line-size`). A small gdb-remote
   round trip takes ~1.6 ms with `quickack` on the route to Windows (`../wsl-quickack`), ~44 ms
   without: AMDS's small writes wait for Linux's 40 ms delayed ACK. The first Swift expression
-  takes ~1 s.
+  takes ~1–3 s.
 - System frames are symbolicated from the local symbols (`SwiftUI\`View.toolbar(content:)`).
 - `ios lldb` always (re)launches the app via DVT, then attaches (`dbg attach` attaches to the
   running instance instead). Without `--suspended`, startup code has already run by then.

@@ -1,6 +1,7 @@
 """The debug server: one process per session, driven over a Unix socket by `dine dbg …`.
 
-Run by `tools/dine dbg start-server` only: `python -m dine.dbg.server --target T --app A --session DIR`.
+Run by `tools/dine dbg start-server` only: `python -m dine.dbg.server --target T --app A --session DIR
+[--actions-src FILE]`.
 """
 
 import argparse
@@ -25,17 +26,17 @@ from .targets.base import CmdError, Unsupported
 UNLOCKED = {"interrupt", "syslog_start", "syslog_stop", "fake", "ui_ls", "ui_screenshot"}
 # Start something that later shows up as events; `wait --since mark` starts before them.
 ACTIONS = {"attach", "continue", "interrupt", "step", "next", "finish", "stepi", "cmd", "ui_tap", "ui_back",
-           "syslog_start", "fake"}
+           "call", "syslog_start", "fake"}
 # Output of these isn't worth a copy in the cmd log.
 QUIET = {"status", "log", "wait", "note"}
 DEFAULT_SRCS = ("syslog", "event", "lldb")
 
 
 class Server:
-    def __init__(self, target_name: str, app: str, directory: Path):
+    def __init__(self, target_name: str, app: str, directory: Path, actions: Path | None = None):
         self.dir = directory
         self.store = LogStore(directory)
-        self.target = TARGETS[target_name](self.store, app)
+        self.target = TARGETS[target_name](self.store, app, actions)
         self.target_name, self.app = target_name, app
         self.started = time.time()
         self.lock = threading.Lock()
@@ -287,8 +288,9 @@ def main() -> None:
     p.add_argument("--target", required=True, choices=sorted(TARGETS))
     p.add_argument("--app", required=True)
     p.add_argument("--session", required=True, type=Path)
+    p.add_argument("--actions-src", type=Path)
     a = p.parse_args()
-    server = Server(a.target, a.app, a.session)
+    server = Server(a.target, a.app, a.session, a.actions_src)
     signal.signal(signal.SIGTERM, lambda *_: server.stopping.set())
     try:
         server.target.setup()

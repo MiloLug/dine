@@ -49,11 +49,13 @@ def call(cmd: str, args: dict | None = None, timeout: float = 30, max_lines: int
     return json.loads(buf)
 
 
-def start_server(target: str, app: str, timeout: float) -> tuple[int, str]:
+def start_server(target: str, app: str, timeout: float, actions: Path | None = None) -> tuple[int, str]:
     pid = session.server_pid()
     if pid:
         return 1, f"already running (pid {pid}, session {session.CURRENT.resolve()}); " \
                   "one server at a time: tools/dine dbg stop-server first"
+    if actions and not actions.is_file():
+        return 1, f"no actions file {actions}"
     session.clear_stale()
     cls = TARGETS[target]
     cls.preflight(app)
@@ -63,7 +65,7 @@ def start_server(target: str, app: str, timeout: float) -> tuple[int, str]:
     log = open(directory / "server.log", "w")
     proc = subprocess.Popen(
         [sys.executable, "-m", "dine.dbg.server", "--target", target, "--app", app,
-         "--session", str(directory)],
+         "--session", str(directory), *(["--actions-src", str(actions.resolve())] if actions else [])],
         stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, env=env,
         cwd=paths.ROOT, start_new_session=True)
     deadline = time.monotonic() + timeout
