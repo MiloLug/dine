@@ -15,6 +15,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -103,7 +104,8 @@ void ProbeMprotect() {
 
 void ProbeSymbols() {
   void *self = dlopen(nullptr, RTLD_NOW);
-  for (const char *name : {"JNI_CreateJavaVM", "JNI_OnLoad_javacore", "JNI_OnLoad_openjdk"}) {
+  for (const char *name : {"JNI_CreateJavaVM", "JNI_OnLoad_javacore", "JNI_OnLoad_openjdk",
+                           "JNI_OnLoad_dinejniargs"}) {
     Report((std::string("dlsym-") + name).c_str(), self && dlsym(self, name) ? "found" : "missing");
   }
 }
@@ -203,7 +205,7 @@ JNIEnv *CreateVm(const Run &run) {
   }
   std::vector<std::string> args = {
       boot, "-Xint", "-Xusejit:false", "-Xnorelocate", "-XX:DumpNativeStackOnSigQuit:false",
-      "-Xcheck:jni", "-Djava.io.tmpdir=" + run.data_dir, "-cp", run.class_path,
+      "-Xcheck:jni", "-Djava.io.tmpdir=" + run.data_dir,
   };
   std::vector<JavaVMOption> options;
   for (const std::string &arg : args) options.push_back({const_cast<char *>(arg.c_str()), nullptr});
@@ -219,8 +221,31 @@ JNIEnv *CreateVm(const Run &run) {
   return env;
 }
 
-void RunMain(JNIEnv *env, const std::string &main_class) {
-  jclass cls = env->FindClass(main_class.c_str());
+// One loader per jar for the VM's lifetime: ART won't open a native library again from a second
+// loader, so a rerun must reuse the loader that loaded it.
+std::map<std::string, jobject> gLoaders;
+
+jobject LoaderFor(JNIEnv *env, const std::string &class_path) {
+  auto it = gLoaders.find(class_path);
+  if (it != gLoaders.end()) return it->second;
+  jclass loader_class = env->FindClass("java/lang/ClassLoader");
+  jobject system = env->CallStaticObjectMethod(
+      loader_class, env->GetStaticMethodID(loader_class, "getSystemClassLoader", "()Ljava/lang/ClassLoader;"));
+  jclass path_class = env->FindClass("dalvik/system/PathClassLoader");
+  jmethodID init = env->GetMethodID(path_class, "<init>", "(Ljava/lang/String;Ljava/lang/ClassLoader;)V");
+  jobject loader = env->NewObject(path_class, init, env->NewStringUTF(class_path.c_str()), system);
+  if (env->ExceptionCheck()) return nullptr;
+  return gLoaders[class_path] = env->NewGlobalRef(loader);
+}
+
+void RunMain(JNIEnv *env, const std::string &class_path, const std::string &main_class) {
+  jobject loader = LoaderFor(env, class_path);
+  jclass cls = nullptr;
+  if (loader) {
+    jmethodID load = env->GetMethodID(env->FindClass("java/lang/ClassLoader"), "loadClass",
+                                      "(Ljava/lang/String;)Ljava/lang/Class;");
+    cls = static_cast<jclass>(env->CallObjectMethod(loader, load, env->NewStringUTF(main_class.c_str())));
+  }
   jmethodID main = cls ? env->GetStaticMethodID(cls, "main", "([Ljava/lang/String;)V") : nullptr;
   if (main) {
     jobjectArray argv = env->NewObjectArray(0, env->FindClass("java/lang/String"), nullptr);
@@ -243,7 +268,7 @@ void *VmThread(void *arg) {
     env = CreateVm(*run);
   }
   if (env) {
-    RunMain(env, run->main_class);
+    RunMain(env, run->class_path, run->main_class);
     gVm->DetachCurrentThread();
   }
   std::lock_guard<std::mutex> lock(gLock);

@@ -38,6 +38,7 @@ let package = Package(
                 "-Xlinker", iosMin, "-Xlinker", iosSDK,
                 "-Xlinker", "-force_load", "-Xlinker", nativeLibDir + "/libjavacore.a",
                 "-Xlinker", "-force_load", "-Xlinker", nativeLibDir + "/libopenjdk.a",
+                "-Xlinker", "-force_load", "-Xlinker", nativeLibDir + "/libruntimetests.a",
             ])]
         ),
     ]

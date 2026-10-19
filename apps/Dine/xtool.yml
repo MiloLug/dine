@@ -8,3 +8,4 @@ resources:
   - ../../out/ios/assets/Dine/AppIcon76x76@2x~ipad.png
   - ../../out/ios/share/art
   - ../../out/tests/runtime/build/dine-0001-hello/dine-0001-hello.jar
+  - ../../out/tests/runtime/build/dine-0002-jni-args/dine-0002-jni-args.jar

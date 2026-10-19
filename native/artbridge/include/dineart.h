@@ -10,10 +10,11 @@ extern "C" {
 /// the next call.
 const char *dine_art_probe(void);
 
-/// Runs `main_class`'s `main(String[])` from the dex jar `class_path` on a new thread. The first
-/// call creates the process's only VM, with the boot jars and ANDROID_ROOT in `resource_dir` and
-/// a writable `data_dir`; from then on the VM's stdout and stderr go to os_log. Returns 0, or -1
-/// while a previous run is still active.
+/// Runs `main(String[])` of `main_class` (a binary name, `a.b.Main`) from the dex jar `class_path`
+/// on a new thread, through one class loader per jar. The first call creates the process's only
+/// VM, with the boot jars and ANDROID_ROOT in `resource_dir` and a writable `data_dir`; from then
+/// on the VM's stdout and stderr go to os_log. Returns 0, or -1 while a previous run is still
+/// active.
 int dine_art_run(const char *resource_dir, const char *data_dir, const char *class_path,
                  const char *main_class);
 
