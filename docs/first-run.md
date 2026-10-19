@@ -196,9 +196,9 @@ tools/dine ios symbols      # phone's dyld shared cache → out/ios-symbols/<ver
 
 ## 7. First app install
 
-Dine links ART and ATL and bundles their jars, so sections 8 and 9 come first, plus the hello dex
-its `art` screen runs: `tools/dine test runtime fetch`, then `tools/dine test runtime build -f
-dine-0001-hello`.
+Dine links ART and ATL and bundles their jars, so sections 8 and 9 come first, plus the authored
+test jars its `art` screen runs: `tools/dine test runtime fetch`, then `tools/dine test runtime
+build -f '^dine-'`.
 
 ```sh
 tools/dine ios run                     # from a real terminal (prompts!)
@@ -271,9 +271,9 @@ tools/dine ios build-atl              # dine-atl headless → out/ios/lib, its j
   `dine-art/out/host/darwin-x86`. The boot classpath jars come from the Linux build
   (`out/ios/share/art`, bundled as the app's `art/`).
 - wolfSSL builds with autotools (`./autogen.sh` runs once in the clone; it needs autoconf,
-  automake and libtool) and `--enable-jni`, as on Linux. The app has no trust store yet: wolfJSSE
-  looks for Java keystores (`javax.net.ssl.trustStore`, `$ANDROID_ROOT/etc/security/cacerts`), so
-  TLS that verifies certificates fails on iOS.
+  automake and libtool) and `--enable-jni`, as on Linux, plus system CA support. The app has no
+  Java trust store, so wolfJSSE's default trust manager hands certificate checks to iOS (SecTrust:
+  system roots and installed profiles). An app's own keystore never gets those roots.
 - dine-art's iOS build includes androidfw, libutils and libcutils for ATL's resource natives,
   without aapt2's PNG code (the SDK has no libpng) and libutils' epoll `Looper`.
 - dine-atl builds for iOS as a meson cross build (`-Dhost=embedded -Dloop=cfrunloop

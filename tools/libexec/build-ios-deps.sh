@@ -51,7 +51,8 @@ icu() {
 }
 
 # libwolfssljni's library, as on Linux (--enable-jni). Autotools: CMake's JNI bundle forces the CRL
-# monitor and allows it only for Linux, macOS and FreeBSD by system name.
+# monitor and allows it only for Linux, macOS and FreeBSD by system name. With system CAs, a context
+# that loads them validates with SecTrust (wolfJSSE does when it finds no Java trust store).
 wolfssl() {
   [[ -f $PREFIX/lib/libwolfssl.a ]] && return
   local src="$SRC/wolfssl" cross="$BUILD/wolfssl"
@@ -59,7 +60,7 @@ wolfssl() {
   [[ -x $src/configure && -f $src/Makefile.in ]] || (cd "$src" && ./autogen.sh)
   mkdir -p "$cross"
   (cd "$cross" && "$src/configure" --host=aarch64-apple-darwin --prefix="$PREFIX" \
-    --enable-static --disable-shared --enable-jni --disable-sys-ca-certs --disable-examples \
+    --enable-static --disable-shared --enable-jni --enable-sys-ca-certs --disable-examples \
     --disable-crypttests --disable-benchmark \
     CC="clang -target arm64-apple-ios$DINE_IOS_MIN -isysroot $DINE_IOS_SDK" \
     AR=llvm-ar RANLIB=llvm-ranlib LDFLAGS="-fuse-ld=lld -B$DINE_IOS_TOOLSET_BIN")

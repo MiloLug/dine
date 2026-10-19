@@ -33,5 +33,6 @@ module CArtBridge [system] {
     link "wolfssl"
     link "c++"
     link framework "CoreFoundation"
+    link framework "Security"
     export *
 }
