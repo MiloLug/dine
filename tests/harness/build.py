@@ -111,6 +111,7 @@ def build_one(name: str, src: Path, env: dict, shared: bytes) -> dict:
                 "vm_args": spec.vm_args,
                 "secondary": spec.secondary,
                 "timeout": spec.timeout,
+                "network": spec.network,
             }
     bundle_path.write_text(json.dumps(bundle, indent=2) + "\n")
     return bundle

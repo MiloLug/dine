@@ -38,6 +38,8 @@ def _args(argv):
                    help="fail tests that abort in the runtime's shutdown thread")
     p.add_argument("--vm-arg", action="append", default=[], metavar="ARG",
                    help="extra dalvikvm argument (repeatable)")
+    p.add_argument("--network", action="store_true",
+                   help="also run tests that need the internet (skipped otherwise)")
     p.add_argument("--expectations", default=str(RUNTIME / f"expectations/linux-{platform.machine()}.json"))
     p.add_argument("--update-expectations", action="store_true",
                    help="rewrite the expectations file from this run's results")
@@ -123,7 +125,8 @@ def main(argv=None) -> int:
         return 0
 
     run_id, run_dir = _new_run_dir()
-    opts = RunOptions(jobs=args.jobs, timeout=args.timeout, strict=args.strict, vm_args=args.vm_arg)
+    opts = RunOptions(jobs=args.jobs, timeout=args.timeout, strict=args.strict, vm_args=args.vm_arg,
+                      network=args.network)
     results = run_all(bundles, corpus, run_dir, opts)
     (run_dir / "results.json").write_text(json.dumps({
         "id": run_id,

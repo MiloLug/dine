@@ -46,6 +46,8 @@ Skip reasons:
   which we don't build yet.
 - **custom run script:** the test's `run` script does more than pass flags to the VM.
 - **run flag X:** the `run` script uses a flag we don't translate.
+- **needs network:** the test dir has a `needs-network` file; `--network` runs it. Its jar is
+  still built.
 
 Upstream `run` scripts are bash on top of `etc/run-test-jar`, which needs a full AOSP host tree,
 so we don't execute them. `classify.py` translates the common one-line form instead:

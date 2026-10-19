@@ -26,6 +26,7 @@ class RunOptions:
     timeout: int | None = None      # overrides the corpus default (not per-test overrides)
     strict: bool = False            # don't tolerate the shutdown abort
     vm_args: list[str] = field(default_factory=list)
+    network: bool = False           # also run tests that need the internet
 
 
 def _timeout(name: str, bundle: dict, corpus: dict, opts: RunOptions) -> int:
@@ -59,6 +60,8 @@ def run_one(name: str, bundle: dict, corpus: dict, run_dir: Path, opts: RunOptio
         return _build_fail(name, bundle)
     if bundle["status"] != "ok":
         return {"name": name, "status": bundle["status"], "reason": bundle["reason"]}
+    if bundle.get("network") and not opts.network:
+        return {"name": name, "status": "skip", "reason": "needs network"}
 
     wd = run_dir / name
     _workdir(wd, BUILD / name)

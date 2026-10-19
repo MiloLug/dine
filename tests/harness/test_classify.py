@@ -91,6 +91,10 @@ class Classify(unittest.TestCase):
         d = self.make({"src/Main.java": "class Main {}", "expected.txt": ""})
         self.assertEqual(classify(d), (RunSpec(main_args=["arttestd"]), None))
 
+    def test_needs_network(self):
+        d = self.make({"src/Main.java": "class Main {}", "expected.txt": "", "needs-network": ""})
+        self.assertEqual(classify(d), (RunSpec(main_args=["arttestd"], network=True), None))
+
     def test_needs_libarttest(self):
         d = self.make({"src/Main.java": "System.loadLibrary( args[0] );", "expected.txt": ""})
         self.assertEqual(classify(d), (None, "needs libarttest"))

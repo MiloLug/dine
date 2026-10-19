@@ -26,6 +26,7 @@ class RunSpec:
     main: str = "Main"
     secondary: bool = False
     timeout: int | None = None
+    network: bool = False  # needs the internet: a `needs-network` file in the test dir
 
 
 # Flags that only affect dex2oat, images or other AOT/JIT setup. Tests run dex directly under
@@ -110,8 +111,11 @@ def classify(test_dir: Path) -> tuple[RunSpec | None, str | None]:
         if LOAD_ARTTEST.search(src.read_text(errors="replace")):
             return None, "needs libarttest"
     if not run.exists():
-        return RunSpec(main_args=[TESTLIB]), None
-    try:
-        return parse_run_script(run.read_text(errors="replace")), None
-    except Unsupported as e:
-        return None, str(e)
+        spec = RunSpec(main_args=[TESTLIB])
+    else:
+        try:
+            spec = parse_run_script(run.read_text(errors="replace"))
+        except Unsupported as e:
+            return None, str(e)
+    spec.network = (test_dir / "needs-network").exists()
+    return spec, None
