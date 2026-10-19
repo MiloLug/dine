@@ -42,6 +42,8 @@ symbols, ATL build, and a verification checklist.
 |---|---|
 | `tools/dine ios tunnel start\|status` | iOS 17+ developer services: `dine-tunneld` runs from boot; `start` starts it if stopped (sudo), waits for the tunnel and mounts the DDI (after a phone reboot) |
 | `tools/dine ios build-native [lib…]` | `native/*` → `out/ios/{lib,include}` (`DINE_IOS_BUILD_TYPE`, default `RelWithDebInfo`) |
+| `tools/dine ios build-art` | dine-art (ART, libcore natives, androidfw) plus ICU, lz4, liblzma, wolfSSL → static archives in `out/ios/lib`, boot jars → `out/ios/share/art` |
+| `tools/dine ios build-atl` | dine-atl's headless build (meson cross) → `out/ios/lib/libtranslation_layer_main.a`; its jars and `demo_app.apk` → `out/ios/share/atl`; needs `linux build atl` first |
 | `tools/dine ios run [App]` | kill a running instance → native libs → asset catalog (accord → `out/ios/assets/<App>`) → `xtool dev` (build/sign/install) → launch via DVT |
 | `tools/dine ios launch [--suspended] [App]` | (re)launch via DVT, print the pid |
 | `tools/dine ios ps [App] [--all]`, `tools/dine ios kill <App\|pid>` | device processes |
@@ -50,7 +52,7 @@ symbols, ATL build, and a verification checklist.
 | `tools/dine ios lldb [--suspended] [App] [-- lldb args]` | interactive: launch + attach Swift lldb through the tunnel |
 | `tools/dine ios lldb-offline [App] <bp> [-- lldb args]` | same lldb setup on a synthetic core, no phone |
 | `tools/dine dbg …` | the debug server: see [Debug server](#debug-server) |
-| `tools/dine linux build [stage…]` | bionic_translation → dine-art → libopensles → dine-atl → `out/linux/prefix` |
+| `tools/dine linux build [stage…]` | bionic_translation → dine-art → libopensles → dine-atl → `out/linux/prefix`, then headless dine-atl in `out/linux/build/dine-atl-headless` |
 | `tools/dine test runtime [-- harness args]` | ART run-tests on the local `dalvikvm -Xint` (suite `dine-art/tests/runtime`, engine `tests/harness`) |
 | `tools/dine test unit` | unit tests of `tests/harness` and `tools/py` |
 
@@ -211,7 +213,7 @@ apps/<App>/xtool/<App>.app/<App>` (local Mach-O + debug info) → `target.sdk-pa
 ## Linux ATL / ART
 
 ```sh
-tools/dine linux build                  # all stages; or: bionic art opensles atl
+tools/dine linux build                  # all stages; or: bionic art opensles atl atl-headless
 source env.sh                           # PATH + LD_LIBRARY_PATH for out/linux/prefix
 ANDROID_APP_DATA_DIR=$PWD/out/linux/appdata \
   android-translation-layer third_party/atl_test_apks/org.happysanta.gd_29.apk \

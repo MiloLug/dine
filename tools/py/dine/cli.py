@@ -33,6 +33,10 @@ def _ios(sub):
                                        "static archives in out/ios/lib")
     t.set_defaults(func=lambda a: ios.run_libexec("build-ios-art.sh"))
 
+    t = s.add_parser("build-atl", help="dine-atl headless build → out/ios/lib/libtranslation_layer_main.a, "
+                                       "jars + demo_app.apk → out/ios/share/atl (after linux build atl)")
+    t.set_defaults(func=lambda a: ios.run_libexec("build-ios-atl.sh"))
+
     t = s.add_parser("run", help="build-native + build-assets + xtool dev (build/sign/install) + launch; kills a running instance first")
     t.add_argument("app", nargs="?", default="Dine")
     t.set_defaults(func=_ios_run)
@@ -125,8 +129,10 @@ def _ios_lldb_offline(a):
 def _linux(sub):
     p = sub.add_parser("linux", help="Linux ATL/ART stack")
     s = p.add_subparsers(dest="action", required=True)
-    t = s.add_parser("build", help="bionic → art → opensles → atl into out/linux/prefix (default: all)")
-    t.add_argument("stages", nargs="*", choices=[[], "bionic", "art", "opensles", "atl"], metavar="stage")
+    t = s.add_parser("build", help="bionic → art → opensles → atl into out/linux/prefix, then the "
+                                   "headless atl-headless in its build dir (default: all)")
+    t.add_argument("stages", nargs="*", choices=[[], "bionic", "art", "opensles", "atl", "atl-headless"],
+                   metavar="stage")
     t.set_defaults(func=lambda a: ios.run_libexec("build-linux-stack.sh", *a.stages))
 
 

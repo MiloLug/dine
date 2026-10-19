@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Cross-compile ART's third-party libraries (ICU, liblzma, lz4) for arm64-apple-ios into out/ios.
+# Cross-compile ART's third-party libraries (ICU, liblzma, lz4, wolfSSL) for arm64-apple-ios into out/ios.
 # zlib and expat come from the SDK; sources are third_party/ clones. Installed ones are skipped.
 # Usage: tools/libexec/build-ios-deps.sh   (run by tools/dine ios build-art)
 set -euo pipefail
@@ -50,11 +50,30 @@ icu() {
   make -C "$cross" install
 }
 
+# libwolfssljni's library, as on Linux (--enable-jni). Autotools: CMake's JNI bundle forces the CRL
+# monitor and allows it only for Linux, macOS and FreeBSD by system name.
+wolfssl() {
+  [[ -f $PREFIX/lib/libwolfssl.a ]] && return
+  local src="$SRC/wolfssl" cross="$BUILD/wolfssl"
+  echo "==> wolfssl"
+  [[ -x $src/configure && -f $src/Makefile.in ]] || (cd "$src" && ./autogen.sh)
+  mkdir -p "$cross"
+  (cd "$cross" && "$src/configure" --host=aarch64-apple-darwin --prefix="$PREFIX" \
+    --enable-static --disable-shared --enable-jni --disable-sys-ca-certs --disable-examples \
+    --disable-crypttests --disable-benchmark \
+    CC="clang -target arm64-apple-ios$DINE_IOS_MIN -isysroot $DINE_IOS_SDK" \
+    AR=llvm-ar RANLIB=llvm-ranlib LDFLAGS="-fuse-ld=lld -B$DINE_IOS_TOOLSET_BIN")
+  make -C "$cross" -j "$JOBS"
+  make -C "$cross" install
+}
+
 need lz4 "git clone --depth 1 --branch v1.10.0 https://github.com/lz4/lz4.git third_party/lz4"
 need xz "git clone --depth 1 --branch v5.8.4 https://github.com/tukaani-project/xz.git third_party/xz"
+need wolfssl "git clone --depth 1 --branch v5.9.4-stable https://github.com/wolfSSL/wolfssl.git third_party/wolfssl"
 need icu "git clone --depth 1 --branch release-78.3 --filter=blob:none --sparse https://github.com/unicode-org/icu.git third_party/icu && git -C third_party/icu sparse-checkout set icu4c"
 
 cmake_dep lz4 "$SRC/lz4/build/cmake" liblz4.a -DLZ4_BUILD_CLI=OFF
 cmake_dep xz "$SRC/xz" liblzma.a -DXZ_NLS=OFF -DXZ_DOC=OFF -DXZ_TOOL_XZ=OFF -DXZ_TOOL_XZDEC=OFF \
   -DXZ_TOOL_LZMADEC=OFF -DXZ_TOOL_LZMAINFO=OFF
+wolfssl
 icu

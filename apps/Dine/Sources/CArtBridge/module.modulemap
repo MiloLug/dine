@@ -1,5 +1,6 @@
-// native/artbridge plus the ART archives from `tools/dine ios build-art`. libjavacore and
-// libopenjdk are force-loaded in Package.swift instead: ART looks their symbols up with dlsym.
+// native/artbridge plus the ART archives from `tools/dine ios build-art` and ATL's dependencies.
+// libjavacore, libopenjdk, libwolfssljni and ATL (`tools/dine ios build-atl`) are force-loaded in
+// Package.swift instead: ART looks their symbols up with dlsym.
 module CArtBridge [system] {
     header "../../../../native/artbridge/include/dineart.h"
     link "artbridge"
@@ -25,6 +26,11 @@ module CArtBridge [system] {
     link "lzma"
     link "z"
     link "expat"
+    link "androidfw"
+    link "utils"
+    link "cutils"
+    link "sqlite3"
+    link "wolfssl"
     link "c++"
     link framework "CoreFoundation"
     export *

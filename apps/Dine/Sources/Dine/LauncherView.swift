@@ -31,6 +31,7 @@ struct LauncherView: View {
                     NavigationLink("hello++") { HelloView() }
                     NavigationLink("probe") { ProbeView() }
                     NavigationLink("art") { ArtView() }
+                    NavigationLink("atl") { AtlView() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {

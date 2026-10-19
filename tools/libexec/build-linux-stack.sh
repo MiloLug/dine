@@ -3,7 +3,7 @@
 # dine-art and dine-atl submodules), bionic_translation and libopensles from third_party/ clones.
 #
 # Usage: tools/dine linux build [stage...]   stages, in build order: bionic art opensles atl
-# (default: all)
+# atl-headless (default: all)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -38,6 +38,18 @@ meson_stage() {
   meson install -C "$BUILD/$name" --quiet
 }
 
+# Not installed: it runs from its build dir with RUN_FROM_BUILDDIR. Runs after `atl`, never beside
+# it: both builds write dine-atl/src/api-impl-jni/generated_headers.
+atl_headless_stage() {
+  local dir="$BUILD/dine-atl-headless"
+  echo "==> dine-atl-headless"
+  if [[ ! -f "$dir/build.ninja" ]]; then
+    meson setup "$dir" "$ROOT/dine-atl" --prefix="$PREFIX" --libdir=lib --buildtype=debugoptimized \
+      -Dhost=cli -Dloop=poll -Dui=headless -Dgfx=record
+  fi
+  meson compile -C "$dir" -j "$JOBS"
+}
+
 art_stage() {
   echo "==> dine-art"
   submodule dine-art
@@ -46,7 +58,7 @@ art_stage() {
 }
 
 stages=("$@")
-[[ ${#stages[@]} -eq 0 ]] && stages=(bionic art opensles atl)
+[[ ${#stages[@]} -eq 0 ]] && stages=(bionic art opensles atl atl-headless)
 
 for s in "${stages[@]}"; do
   case $s in
@@ -54,6 +66,7 @@ for s in "${stages[@]}"; do
     art)      art_stage ;;
     opensles) meson_stage "$SRC/libopensles-standalone" ;;
     atl)      submodule dine-atl; meson_stage "$ROOT/dine-atl" ;;
+    atl-headless) submodule dine-atl; atl_headless_stage ;;
     *) echo "unknown stage: $s" >&2; exit 1 ;;
   esac
 done

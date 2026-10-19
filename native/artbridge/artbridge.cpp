@@ -1,8 +1,10 @@
 #include "dineart.h"
 
+#include <atl/atl_embedded.h>
 #include <dlfcn.h>
 #include <errno.h>
 #include <jni.h>
+#include <mach/mach.h>
 #include <os/log.h>
 #include <pthread.h>
 #include <pwd.h>
@@ -12,6 +14,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -185,38 +188,51 @@ constexpr const char *kBootJars[] = {
 
 struct Run {
   std::string resource_dir, data_dir, class_path, main_class;
+  bool create_vm;
 };
+
+// The process has one VM. Runs attach to it once it's ready; ATL needs its own class path from
+// creation on, so it only starts on a process with no VM yet.
+enum class VmState { kNone, kCreating, kReady };
 
 std::mutex gLock;
 JavaVM *gVm = nullptr;
+VmState gVmState = VmState::kNone;
 bool gRunning = false;
 
-JNIEnv *CreateVm(const Run &run) {
-  setenv("ANDROID_ROOT", run.resource_dir.c_str(), 1);
-  setenv("ANDROID_DATA", run.data_dir.c_str(), 1);
-  setenv("XDG_CACHE_HOME", run.data_dir.c_str(), 1);
-  setenv("ANDROID_LOG_TAGS", "*:w", 1);
+JNIEnv *CreateVm(const std::string &resource_dir, const std::string &data_dir, const char *log_tags,
+                 const JavaVMOption *extra, int n_extra) {
+  setenv("ANDROID_ROOT", resource_dir.c_str(), 1);
+  setenv("ANDROID_DATA", data_dir.c_str(), 1);
+  setenv("XDG_CACHE_HOME", data_dir.c_str(), 1);
+  setenv("ANDROID_LOG_TAGS", log_tags, 1);
   setenv("ANDROID_PRINTF_LOG", "brief", 1);
 
   std::string boot = "-Xbootclasspath:";
   for (const char *jar : kBootJars) {
     if (jar != kBootJars[0]) boot += ':';
-    boot += run.resource_dir + "/" + jar + "-hostdex.jar";
+    boot += resource_dir + "/" + jar + "-hostdex.jar";
   }
   std::vector<std::string> args = {
       boot, "-Xint", "-Xusejit:false", "-Xnorelocate", "-XX:DumpNativeStackOnSigQuit:false",
-      "-Xcheck:jni", "-Djava.io.tmpdir=" + run.data_dir,
+      "-Xcheck:jni", "-Djava.io.tmpdir=" + data_dir,
   };
   std::vector<JavaVMOption> options;
   for (const std::string &arg : args) options.push_back({const_cast<char *>(arg.c_str()), nullptr});
+  options.insert(options.end(), extra, extra + n_extra);
   JavaVMInitArgs init = {JNI_VERSION_1_6, static_cast<jint>(options.size()), options.data(), JNI_FALSE};
 
+  JavaVM *vm = nullptr;
   JNIEnv *env = nullptr;
-  if (JNI_CreateJavaVM(&gVm, &env, &init) != JNI_OK) {
+  bool ok = JNI_CreateJavaVM(&vm, &env, &init) == JNI_OK;
+  std::lock_guard<std::mutex> lock(gLock);
+  if (!ok) {
+    // ART keeps the failed runtime: no second try in this process
     os_log_error(Log(), "art JNI_CreateJavaVM failed");
-    gVm = nullptr;
     return nullptr;
   }
+  gVm = vm;
+  gVmState = VmState::kReady;
   os_log(Log(), "art vm created");
   return env;
 }
@@ -262,10 +278,10 @@ void RunMain(JNIEnv *env, const std::string &class_path, const std::string &main
 void *VmThread(void *arg) {
   std::unique_ptr<Run> run(static_cast<Run *>(arg));
   JNIEnv *env = nullptr;
-  if (gVm) {
-    gVm->AttachCurrentThread(&env, nullptr);
+  if (run->create_vm) {
+    env = CreateVm(run->resource_dir, run->data_dir, "*:w", nullptr, 0);
   } else {
-    env = CreateVm(*run);
+    gVm->AttachCurrentThread(&env, nullptr);
   }
   if (env) {
     RunMain(env, run->class_path, run->main_class);
@@ -273,6 +289,84 @@ void *VmThread(void *arg) {
   }
   std::lock_guard<std::mutex> lock(gLock);
   gRunning = false;
+  return nullptr;
+}
+
+constexpr size_t kVmThreadStack = 8 << 20;
+
+// a detached thread with kVmThreadStack; false after logging the error
+bool StartVmThread(void *(*body)(void *), void *arg) {
+  pthread_attr_t attr;
+  pthread_attr_init(&attr);
+  pthread_attr_setstacksize(&attr, kVmThreadStack);
+  pthread_t thread;
+  int rc = pthread_create(&thread, &attr, body, arg);
+  pthread_attr_destroy(&attr);
+  if (rc != 0) {
+    os_log_error(Log(), "art pthread_create: %{public}s", strerror(rc));
+    return false;
+  }
+  pthread_detach(thread);
+  return true;
+}
+
+struct AtlRun {
+  std::string resource_dir, atl_dir, data_dir, apk, activity;
+};
+
+bool gAtlStarted = false;
+// the ATL main thread's stack, for dine_atl_probe
+char *gAtlStackLow = nullptr;
+char *gAtlStackTop = nullptr;
+
+// ART pre-faults the main thread's whole stack, so residency says nothing about depth: paint the
+// unused part once the VM exists and find the deepest overwritten byte later. The margin keeps clear
+// of ART's protected bottom pages.
+constexpr size_t kPaintMargin = 256 << 10;
+constexpr unsigned char kPaint = 0xa5;
+
+__attribute__((noinline)) void PaintStack() {
+  char *low = gAtlStackLow + kPaintMargin;
+  char *high = static_cast<char *>(__builtin_frame_address(0)) - (16 << 10);
+  if (high > low) memset(low, kPaint, high - low);
+}
+
+void *AtlThread(void *arg) {
+  std::unique_ptr<AtlRun> run(static_cast<AtlRun *>(arg));
+  gAtlStackTop = static_cast<char *>(pthread_get_stackaddr_np(pthread_self()));
+  gAtlStackLow = gAtlStackTop - pthread_get_stacksize_np(pthread_self());
+  os_log(Log(), "atl start");
+
+  std::string app_data = run->data_dir + "/atl";
+  mkdir(app_data.c_str(), 0755);
+  // C and ATL's Java (ATLPaths) both read the app data dir from here
+  setenv("ANDROID_APP_DATA_DIR", app_data.c_str(), 1);
+  setenv("ATL_DUMP_VIEWTREE", "1", 1);
+
+  std::string api_impl = run->atl_dir + "/api-impl.jar";
+  std::string framework_res = run->atl_dir + "/framework-res.apk";
+  atl_embedded_config config = {
+      .api_impl_jar = api_impl.c_str(),
+      .framework_res_apk = framework_res.c_str(),
+      .apk = run->apk.c_str(),
+      .activity = run->activity.empty() ? nullptr : run->activity.c_str(),
+  };
+  int n_options;
+  JavaVMOption *options = atl_embedded_vm_options(&config, &n_options);
+  if (!options) {
+    os_log_error(Log(), "atl options failed");
+    std::lock_guard<std::mutex> lock(gLock);
+    gVmState = VmState::kNone;
+    return nullptr;
+  }
+  // *:i: ATL logs its lifecycle (onResume) at info
+  JNIEnv *env = CreateVm(run->resource_dir, run->data_dir, "*:i", options, n_options);
+  atl_embedded_vm_options_free(options, n_options);
+  if (!env) return nullptr;
+  PaintStack();
+
+  int rc = atl_embedded_main(env, &config);
+  os_log(Log(), "atl main returned %d", rc);
   return nullptr;
 }
 
@@ -296,21 +390,45 @@ const char *dine_art_probe(void) {
 int dine_art_run(const char *resource_dir, const char *data_dir, const char *class_path,
                  const char *main_class) {
   std::lock_guard<std::mutex> lock(gLock);
-  if (gRunning) return -1;
+  if (gRunning || gVmState == VmState::kCreating) return -1;
   if (gOutput < 0) RedirectOutput();
-  pthread_attr_t attr;
-  pthread_attr_init(&attr);
-  pthread_attr_setstacksize(&attr, 8 << 20);
-  pthread_t thread;
-  auto *run = new Run{resource_dir, data_dir, class_path, main_class};
-  int rc = pthread_create(&thread, &attr, VmThread, run);
-  pthread_attr_destroy(&attr);
-  if (rc != 0) {
+  bool create = gVmState == VmState::kNone;
+  auto *run = new Run{resource_dir, data_dir, class_path, main_class, create};
+  if (!StartVmThread(VmThread, run)) {
     delete run;
-    os_log_error(Log(), "art pthread_create: %{public}s", strerror(rc));
     return -1;
   }
-  pthread_detach(thread);
+  if (create) gVmState = VmState::kCreating;
   gRunning = true;
   return 0;
+}
+
+int dine_atl_run(const char *resource_dir, const char *atl_dir, const char *data_dir,
+                 const char *apk, const char *activity) {
+  std::lock_guard<std::mutex> lock(gLock);
+  if (gAtlStarted || gVmState != VmState::kNone) {
+    os_log_error(Log(), "atl needs a process without a VM: relaunch Dine");
+    return -1;
+  }
+  if (gOutput < 0) RedirectOutput();
+  auto *run = new AtlRun{resource_dir, atl_dir, data_dir, apk, activity ? activity : ""};
+  if (!StartVmThread(AtlThread, run)) {
+    delete run;
+    return -1;
+  }
+  gAtlStarted = true;
+  gVmState = VmState::kCreating;
+  return 0;
+}
+
+void dine_atl_probe(void) {
+  if (!gAtlStackLow) return os_log_error(Log(), "atl probe: atl not started");
+  char *p = gAtlStackLow + kPaintMargin;
+  while (p < gAtlStackTop && *reinterpret_cast<volatile unsigned char *>(p) == kPaint) p++;
+  task_vm_info_data_t info;
+  mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
+  task_info(mach_task_self(), TASK_VM_INFO, reinterpret_cast<task_info_t>(&info), &count);
+  os_log(Log(), "atl probe stack used %zu KiB of %zu KiB, phys_footprint %llu MiB",
+         static_cast<size_t>(gAtlStackTop - p) >> 10, static_cast<size_t>(gAtlStackTop - gAtlStackLow) >> 10,
+         info.phys_footprint >> 20);
 }
