@@ -1,4 +1,4 @@
-# dine — iPhone dev environment (Arch on WSL2)
+# dine - android compat layer for iPhone
 
 Goal: run Android apps on iPhone via ATL + ART. Most work happens on Linux (ATL/ART,
 `-Xint` reproduces the no-JIT iPhone situation); only iOS-specific parts need the device.
