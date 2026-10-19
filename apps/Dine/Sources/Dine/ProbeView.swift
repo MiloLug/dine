@@ -37,6 +37,7 @@ struct ProbeView: View {
         image("ProbeGlyph", size: CGSize(width: 32, height: 32), at: CGPoint(x: 16, y: 16), rgb: [61, 220, 132])
         image("ProbeVector", size: CGSize(width: 24, height: 24), at: CGPoint(x: 12, y: 16), rgb: [140, 26, 64])
         image("ProbeBadge", size: CGSize(width: 30, height: 30), at: CGPoint(x: 15, y: 15), rgb: [61, 219, 133])
+        wide("ProbeWide")
         // An AppIcon.icon layer (gray + alpha): the star's centre, right arm and lower arm.
         for (i, at) in [CGPoint(x: 770, y: 230), CGPoint(x: 810, y: 230), CGPoint(x: 770, y: 270)].enumerated() {
             image("AppIcon_Assets/sparkles", size: CGSize(width: 1024, height: 1024), at: at, rgb: [255, 255, 255], tag: "\(i)")
@@ -62,6 +63,23 @@ struct ProbeView: View {
         let px = pixel(img, at: point)
         let ok = img.size == size && zip(px, rgb).allSatisfy { abs($0 - $1) <= 8 } && px[3] == 255
         report(ok, what, "\(Int(img.size.width))x\(Int(img.size.height))@\(Int(img.scale)) px=\(px)")
+    }
+
+    /// A Display P3 red outside sRGB: a P3 screen gets the 16-bit extended-sRGB copy, an sRGB one
+    /// the 8-bit image; both draw as sRGB red.
+    private func wide(_ name: String) {
+        for (gamut, bpc) in [(UIDisplayGamut.P3, 16), (.SRGB, 8)] {
+            let what = "image \(name)#\(gamut == .P3 ? "P3" : "sRGB")"
+            let traits = UITraitCollection(displayGamut: gamut)
+            guard let img = UIImage(named: name, in: nil, compatibleWith: traits), let cg = img.cgImage else {
+                report(false, what, "nil")
+                continue
+            }
+            let px = pixel(img, at: CGPoint(x: 16, y: 16))
+            let ok = cg.bitsPerComponent == bpc && zip(px, [255, 0, 0, 255]).allSatisfy { abs($0 - $1) <= 8 }
+            let space = cg.colorSpace?.name.map { $0 as String } ?? "nil"
+            report(ok, what, "bpc=\(cg.bitsPerComponent) space=\(space) px=\(px)")
+        }
     }
 
     /// nil expectations: only check that light and dark resolve to different colours.
