@@ -1,7 +1,5 @@
 """Backend seam: what a debug target provides to the server. A target is fixed per server."""
 
-from pathlib import Path
-
 from ..logstore import LogStore
 
 
@@ -26,10 +24,9 @@ class Target:
         return {}
 
     # Server side. Every method returns text for the client or raises CmdError.
-    def __init__(self, store: LogStore, app: str, actions: Path | None = None):
+    def __init__(self, store: LogStore, app: str):
         self.store = store
         self.app = app
-        self.actions = actions
 
     def setup(self) -> None:
         pass

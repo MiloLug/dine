@@ -1,0 +1,7 @@
+// Prebuilt ObjC++ static lib from native/dbgagent (build with `tools/dine ios build-native`).
+module CDbgAgent [system] {
+    header "../../../../native/dbgagent/include/dbgagent.h"
+    link "dbgagent"
+    link framework "UIKit"
+    export *
+}

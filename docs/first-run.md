@@ -293,10 +293,7 @@ source env.sh
 command -v pymobiledevice3 meson xtool               # all inside the repo (.venv, out/tools)
 pymobiledevice3 usbmux list                          # phone visible
 tools/dine ios run                                   # Dine shows the app grid
-tools/dine ios logs                                  # "loaded N apps"; tap hello++ → "Dine native: Hello from C++ …";
-                                                     # tap probe → "probe done N ok 0 fail" (accord's Assets.car)
-                                                     # tap art → "art probe done"; run hello → ART's output
-                                                     # fresh launch, tap atl → run demo → "- onResume - yay!"
+tools/dine dbg start-server && tools/dine dbg smoke  # every step "ok", then "smoke passed: …"
 tools/dine ios lldb -- -b -o "expr -l c -- (const char *)dine_hello()" -o "process detach"
 tools/dine ios lldb --suspended -- -b -o "b HelloView.swift:8" -o c -o "po self" -o "process detach"
 tools/dine test unit                                 # harness + tools unit tests (debug server on a fake target)

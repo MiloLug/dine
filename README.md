@@ -112,17 +112,16 @@ async mode), the app's syslog capture and UI access, and logs everything with se
 ```sh
 tools/dine ios tunnel status
 tools/dine dbg start-server                       # fails if one already runs
-tools/dine dbg syslog start                       # before launch, to catch startup logs
-tools/dine ios launch
-tools/dine dbg wait --log "loaded apps" --timeout 30
-tools/dine dbg attach                             # ~15 s; the app is stopped afterwards
+tools/dine dbg smoke                              # the smoke checks, one line per step; --list, --network
+tools/dine dbg fresh                              # syslog on, relaunch, wait until the UI answers
+tools/dine dbg ui tap hello                       # prints the screen it led to; ui back, ui ls
+tools/dine dbg attach                             # ~15 s for the first one per server, ~3.5 s later; the app is stopped
 tools/dine dbg bp add HelloView.swift:23
 tools/dine dbg continue
-tools/dine dbg ui tap hello                       # in-process accessibilityActivate (needs attach)
-tools/dine dbg wait --at HelloView.swift --timeout 30
+tools/dine dbg ui tap hello                       # tapped 'hello++'; stopped at HelloView.body.getter …
 tools/dine dbg exec --po self                     # Swift; C: exec --lang c '(const char *)dine_hello()'
 tools/dine dbg bt; tools/dine dbg up; tools/dine dbg source
-tools/dine dbg log tail -n 20; tools/dine dbg log grep 'dev.dine'
+tools/dine dbg log tail -n 20 --app; tools/dine dbg log grep 'art main'
 tools/dine dbg ui screenshot                      # PNG in the session dir
 tools/dine dbg detach
 tools/dine dbg stop-server                        # detaches; never kills the app without --kill-app
@@ -136,21 +135,24 @@ tools/dine dbg stop-server                        # detaches; never kills the ap
   elsewhere (exit 1) or exits/crashes (exit 3). Timeout: exit 2 with the recent events.
 - Exit codes: 0 ok, 1 error or bad state (the message names the command to run), 2 timeout,
   3 exited/crashed during a wait, 4 no server.
-- `ui tap` / `ui back` / `call`: host-side accessibility presses (pymobiledevice3 `perform_press`)
-  are ignored by our apps, so the server pauses the app and runs functions from
-  `tools/dbg-actions.mm` on its main thread (`accessibilityActivate`, `accessibilityPerformEscape`).
-  `dbg call <fn> [args]` calls any of them (numbers as-is, other args as C strings).
-  - lldb compiles the file into the app (`expression --top-level`) on the first UI action per
-    process: that action takes ~10 s, later ones ~0.45 s. Its lldb rules are in its header.
-    `start-server --actions-src FILE` uses another file; edits apply from the next attach to a new
-    process.
-  - lldb compiles without ObjC exceptions, so an element whose AX getter throws (the nav bar's
-    `_UIButtonBarButton`) aborts the walk; its class is skipped and the walk reruns.
-  - lldb keeps top-level definitions per target, bound to the first process, so attaching to
-    another process creates a new target. Breakpoints carry over (`bp ls`: ids may change).
+- `ui ls|tap|back` go to the debug agent linked into Dine (`native/dbgagent`), so they need no
+  attach and don't pause the app: `ls` takes ~0.15 s, `tap`/`back` ~0.6–1 s including the wait
+  for the screen to settle. The agent runs only in a process started by `tools/dine ios launch`
+  (or `dbg fresh`, `ios run`). While lldb has the app stopped they refuse; a tap that hits a
+  breakpoint returns the stop.
+- `dbg call <fn> [args]` calls a function in the app through lldb on its main thread (numbers
+  as-is, other args as C strings): needs `attach`.
+- `log` listings start at the last `ios launch` (`--from 0`: the whole session); `--app` keeps
+  only the app's own subsystem, `--text` only the message text.
+- `exec` refuses a selected worker thread that waits in the kernel (an expression there can crash
+  the app once it resumes); `--force` runs it anyway.
+- A reply starting `warning: the server runs older dbg code` means `tools/py/dine` changed since
+  `start-server`: restart the server.
+- One lldb target per server: attaching to the next process reuses it, with its breakpoints.
 - `HelloView.swift:8` (`HelloView.init`) runs at launch (SwiftUI builds the `NavigationLink`
   destination eagerly); `HelloView.swift:23` (`body`/`onAppear`) fires when the screen opens.
-- Claude Code: the `dine-debugger` subagent (`.claude/agents/`, gitignored) knows this contract.
+- Claude Code: the `dine-peek` (narrow reads) and `dine-debugger` subagents (`.claude/agents/`,
+  gitignored) know this contract.
 - Tests: `tools/dine test unit` runs the server against a scripted fake target
   (`dbg start-server --target fake`).
 

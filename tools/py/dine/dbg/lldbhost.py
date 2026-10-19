@@ -52,13 +52,11 @@ class LldbHost:
         self.ci = self.dbg.GetCommandInterpreter()
         self.listener = lldb.SBListener("dine-events")
         self.target: lldb.SBTarget | None = None
-        self.targets = 0
-        self._retired: lldb.SBTarget | None = None
         self.process: lldb.SBProcess | None = None
         self.state = "none"
         self.location: dict | None = None
         self.stops = 0
-        # Set around stops the tool makes for itself (ui tap): logged as `paused`, which waits ignore.
+        # Set around stops the tool makes for itself (`dbg call`): logged as `paused`, which waits ignore.
         self.quiet_stop = False
         self.last_quiet = False
         self.wedged: str | None = None
@@ -75,24 +73,10 @@ class LldbHost:
         return out
 
     def create_target(self, binary: Path) -> None:
-        """Again before attaching another process: lldb's expression state (top-level definitions and
-        their globals) is per target, bound to its first process, and can't be redefined."""
-        old = self.target
+        """Once per server: later processes attach to the same target, which keeps breakpoints and the
+        parsed shared-cache modules (a later attach takes ~3.5 s instead of ~15 s)."""
         self.run(f'target create "{binary}"')
         self.target = self.dbg.GetSelectedTarget()
-        self.targets += 1
-        if old is None:
-            return
-        if old.GetNumBreakpoints():
-            f = lldb.SBFileSpec(str(self.store.dir / "breakpoints.json"))
-            err = old.BreakpointsWriteToFile(f)
-            if err.Success():
-                err = self.target.BreakpointsCreateFromFile(f, lldb.SBBreakpointList(self.target))
-            if not err.Success():
-                raise CmdError(f"carrying breakpoints to the new target: {err.GetCString()}")
-        # Deleted after the next attach: deleting drops modules no target holds, and the new target
-        # only holds the shared-cache dylibs again once attached (re-parsing them costs seconds).
-        self._retired = old
 
     def _set(self, state: str, kind: str | None, text: str = "", **data) -> None:
         if kind:
@@ -209,9 +193,6 @@ class LldbHost:
         if not e.Success():
             raise CmdError(f"attach to pid {pid}: {e.GetCString()}")
         self.process = result["process"]
-        if self._retired is not None:
-            self.dbg.DeleteTarget(self._retired)
-            self._retired = None
         if self.process.GetState() == lldb.eStateStopped:
             self.report_stop()
         return f"attached to pid {pid}; stopped at {where(self.location)} (attach stops the app: " \
@@ -338,8 +319,7 @@ class LldbHost:
                 out.append(str(v).strip())
         return "\n".join(out) or "(no variables)"
 
-    def _expression(self, code: str, lang: str | None, timeout: float, trap_exceptions: bool = True,
-                    top_level: bool = False, prefix: str = "") -> lldb.SBValue:
+    def _expression(self, code: str, lang: str | None, timeout: float, trap_exceptions: bool = True) -> lldb.SBValue:
         # Trapping unwinds an expression at its first throw, even one it would catch itself; that
         # can leave state half-done (a static's init guard taken, so the app aborts later).
         fr = self.frame()
@@ -352,28 +332,19 @@ class LldbHost:
         opts.SetUnwindOnError(True)
         opts.SetIgnoreBreakpoints(True)
         opts.SetFetchDynamicValue(lldb.eDynamicDontRunTarget)
-        opts.SetTopLevel(top_level)
-        if prefix:
-            opts.SetPrefix(prefix)
         v = fr.EvaluateExpression(code, opts)
         err = v.GetError()
         if err.Fail() and err.GetError() != NO_RESULT:
             raise CmdError(err.GetCString().strip())
         return v
 
-    def evaluate(self, expr: str, lang: str | None, po: bool, timeout: float, trap_exceptions: bool = True,
-                 prefix: str = "") -> str:
-        """`prefix`: file-scope code compiled before the expression, e.g. declarations."""
-        v = self._expression(expr, lang, timeout, trap_exceptions, prefix=prefix)
+    def evaluate(self, expr: str, lang: str | None, po: bool, timeout: float, trap_exceptions: bool = True) -> str:
+        v = self._expression(expr, lang, timeout, trap_exceptions)
         if v.GetError().GetError() == NO_RESULT:
             return "(no result)"
         if po:
             return (v.GetObjectDescription() or str(v)).strip()
         return str(v).strip() or "(no result)"
-
-    def define(self, code: str, timeout: float) -> None:
-        """ObjC++ top-level declarations into the process, bound to this target (see `create_target`)."""
-        self._expression(code, "objc", timeout, top_level=True)
 
     def breakpoint(self, op: str, spec: str | None, cond: str | None, once: bool) -> str:
         t = self.target

@@ -23,9 +23,14 @@ set(_target arm64-apple-ios${DINE_IOS_MIN})
 set(CMAKE_C_COMPILER clang)
 set(CMAKE_CXX_COMPILER clang++)
 set(CMAKE_ASM_COMPILER clang)
+# OBJCXX detection only resolves a bare compiler name into the cache, which this file's plain
+# variable shadows: give it the full path.
+find_program(_clangxx clang++ REQUIRED NO_CACHE)
+set(CMAKE_OBJCXX_COMPILER ${_clangxx})
 set(CMAKE_C_COMPILER_TARGET ${_target})
 set(CMAKE_CXX_COMPILER_TARGET ${_target})
 set(CMAKE_ASM_COMPILER_TARGET ${_target})
+set(CMAKE_OBJCXX_COMPILER_TARGET ${_target})
 
 set(CMAKE_AR llvm-ar CACHE FILEPATH "")
 set(CMAKE_RANLIB llvm-ranlib CACHE FILEPATH "")

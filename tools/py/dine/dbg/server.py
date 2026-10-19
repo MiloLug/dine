@@ -1,7 +1,6 @@
 """The debug server: one process per session, driven over a Unix socket by `dine dbg …`.
 
-Run by `tools/dine dbg start-server` only: `python -m dine.dbg.server --target T --app A --session DIR
-[--actions-src FILE]`.
+Run by `tools/dine dbg start-server` only: `python -m dine.dbg.server --target T --app A --session DIR`.
 """
 
 import argparse
@@ -17,13 +16,14 @@ import traceback
 from pathlib import Path
 
 from . import session, wait
+from .. import ios
 from ..paths import DineError
-from .logstore import LogStore, path_for, render
+from .logstore import LogStore, bare, path_for, render
 from .targets import TARGETS
 from .targets.base import CmdError, Unsupported
 
 # Never touch lldb, so they can't queue behind a stuck lldb command.
-UNLOCKED = {"interrupt", "syslog_start", "syslog_stop", "fake", "ui_ls", "ui_screenshot"}
+UNLOCKED = {"interrupt", "syslog_start", "syslog_stop", "fake", "ui_ls", "ui_tap", "ui_back", "ui_screenshot"}
 # Start something that later shows up as events; `wait --since mark` starts before them.
 ACTIONS = {"attach", "continue", "interrupt", "step", "next", "finish", "stepi", "cmd", "ui_tap", "ui_back",
            "call", "syslog_start", "fake"}
@@ -33,12 +33,15 @@ DEFAULT_SRCS = ("syslog", "event", "lldb")
 
 
 class Server:
-    def __init__(self, target_name: str, app: str, directory: Path, actions: Path | None = None):
+    def __init__(self, target_name: str, app: str, directory: Path):
         self.dir = directory
         self.store = LogStore(directory)
-        self.target = TARGETS[target_name](self.store, app, actions)
+        self.target = TARGETS[target_name](self.store, app)
         self.target_name, self.app = target_name, app
         self.started = time.time()
+        self.code = session.code_fingerprint()
+        # Seq before the latest `ios launch`: where `log` listings start by default.
+        self.run_start = 0
         self.lock = threading.Lock()
         self.busy: tuple[str, float] | None = None
         self.stopping = threading.Event()
@@ -78,9 +81,13 @@ class Server:
         seq = self.store.append("cmd", cmd, f"$ {line}  → exit {code}" if cmd in QUIET
                                 else f"$ {line}  → exit {code}\n{text}")
         hint = "narrow it: -n, --src, log grep" if cmd in QUIET else f"tools/dine dbg log show {seq}"
+        if req.get("code") and req["code"] != self.code:
+            text = ("warning: the server runs older dbg code: tools/dine dbg stop-server; "
+                    "tools/dine dbg start-server\n" + text)
         resp = {"code": code, "text": clip(text, max_lines, hint), "cursor": self.store.cursor, "seq": seq}
         if cmd == "status":
             resp["state"] = self.target.state()
+            resp["app"] = self.app
         return resp
 
     def _interrupt_busy(self) -> str:
@@ -147,6 +154,8 @@ class Server:
         action, so `wait --since mark` sees everything the action causes."""
         if mark:
             self.store.set_mark()
+        if kind == "launching":
+            self.run_start = self.store.cursor
         self.store.append("event", kind, text)
         return text, 0
 
@@ -198,10 +207,11 @@ class Server:
                 raise CmdError(f"process {st.get('state')}; nothing new can arrive for "
                                + " ".join(c.label for c in conds))
             return out.text, out.code
-        out = wait.run(self.store, conds, start, timeout, all, parked)
+        out = wait.run(self.store, conds, start, timeout, all, parked, poll_every=0.25)
         return out.text, out.code
 
-    def cmd_log(self, timeout, op="tail", n=40, src=(), since=0, pattern=None, context=0, seq=None):
+    def cmd_log(self, timeout, op="tail", n=40, src=(), since=None, pattern=None, context=0, seq=None,
+                app=False, text=False):
         srcs = tuple(src) or (None if op == "show" else DEFAULT_SRCS)
         if op == "path":
             return "\n".join([str(self.dir)] + [f"  {path_for(self.dir, s)}" for s in
@@ -210,25 +220,30 @@ class Server:
             ev = self.store.get(int(seq or 0))
             if not ev:
                 raise CmdError(f"no event #{seq}; cursor is {self.store.cursor}")
-            return "\n".join(render(ev)), 0
-        evs = self.store.select(int(since or 0), srcs)
+            return "\n".join(bare(ev) if text else render(ev)), 0
+        scoped = since is None and self.run_start > 0
+        evs = self.store.select(self.run_start if since is None else int(since), srcs)
+        if app:
+            own = f" {ios.bundle_base(self.app)}/"
+            evs = [e for e in evs if e["src"] != "syslog" or own in e["text"].split(":", 1)[0] + "/"]
+        heads = [f"since launch #{self.run_start + 1} (--from 0: whole session)"] if scoped else []
         if op == "grep":
             rx = re.compile(pattern or "", re.I)
             hits = [i for i, e in enumerate(evs) if rx.search(e["text"])]
             keep = sorted({j for i in hits for j in range(max(0, i - context), min(len(evs), i + context + 1))})
             picked = [evs[j] for j in keep][-n:]
-            head = f"{len(hits)} matches" + (f", last {n} shown" if len(keep) > n else "")
+            heads.append(f"{len(hits)} matches" + (f", last {n} shown" if len(keep) > n else ""))
         elif op in ("head", "since"):
-            picked, head = evs[:n], None
+            picked = evs[:n]
         else:
-            picked, head = evs[-n:], None
-        lines = [line for e in picked for line in render(e, 5)]
+            picked = evs[-n:]
+        lines = [line for e in picked for line in (bare(e) if text else render(e, 5))]
         more = len(evs) - len(picked) if op != "grep" else 0
         if more > 0:
             nxt = f"tools/dine dbg log since {picked[-1]['seq']}" if op in ("head", "since") else "raise -n"
             lines.append(f"… {more} more events: {nxt}")
         lines.append(f"cursor {self.store.cursor}")
-        return "\n".join(([head] if head else []) + lines), 0
+        return "\n".join(heads + lines), 0
 
     def serve(self) -> None:
         session.SOCKET.unlink(missing_ok=True)
@@ -288,9 +303,8 @@ def main() -> None:
     p.add_argument("--target", required=True, choices=sorted(TARGETS))
     p.add_argument("--app", required=True)
     p.add_argument("--session", required=True, type=Path)
-    p.add_argument("--actions-src", type=Path)
     a = p.parse_args()
-    server = Server(a.target, a.app, a.session, a.actions_src)
+    server = Server(a.target, a.app, a.session)
     signal.signal(signal.SIGTERM, lambda *_: server.stopping.set())
     try:
         server.target.setup()

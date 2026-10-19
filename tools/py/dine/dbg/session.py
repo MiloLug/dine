@@ -1,9 +1,14 @@
 """Where the one debug server lives: socket, pid file, and per-session log dirs."""
 
 import datetime
+import hashlib
 import os
 import shutil
 from pathlib import Path
+
+PACKAGE = Path(__file__).resolve().parents[1]
+# Never imported by the server.
+CLIENT_ONLY = {"__main__.py", "cli.py", "dbg/client.py", "dbg/smoke.py"}
 
 # Fixed, not $TMPDIR: a sandboxed shell may set its own TMPDIR and then miss the running server.
 BASE = Path(os.environ.get("DINE_DBG_DIR", "/tmp/dine-dbg"))
@@ -38,6 +43,16 @@ def new_session_dir() -> Path:
     for old in sorted(p for p in SESSIONS.iterdir() if p.is_dir())[:-KEEP]:
         shutil.rmtree(old, ignore_errors=True)
     return d
+
+
+def code_fingerprint() -> str:
+    """Changes when the server's Python changes: a server older than that runs stale code."""
+    h = hashlib.sha1()
+    for p in sorted(PACKAGE.rglob("*.py")):
+        if not p.name.startswith("test_") and p.relative_to(PACKAGE).as_posix() not in CLIENT_ONLY:
+            st = p.stat()
+            h.update(f"{p}:{st.st_size}:{st.st_mtime_ns}".encode())
+    return h.hexdigest()[:12]
 
 
 def clear_stale() -> None:

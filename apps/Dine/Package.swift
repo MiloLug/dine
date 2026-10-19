@@ -29,9 +29,10 @@ let package = Package(
     targets: [
         .systemLibrary(name: "CDineHello"),
         .systemLibrary(name: "CArtBridge"),
+        .systemLibrary(name: "CDbgAgent"),
         .target(
             name: "Dine",
-            dependencies: ["CDineHello", "CArtBridge"],
+            dependencies: ["CDineHello", "CArtBridge", "CDbgAgent"],
             linkerSettings: [.unsafeFlags([
                 "-L", nativeLibDir,
                 "-Xlinker", "-platform_version", "-Xlinker", "ios",

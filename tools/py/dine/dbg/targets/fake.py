@@ -5,14 +5,15 @@
 
 import threading
 
+from .. import agent
 from .base import CmdError, Target
 
 
 class FakeTarget(Target):
     name = "fake"
 
-    def __init__(self, store, app, actions=None):
-        super().__init__(store, app, actions)
+    def __init__(self, store, app):
+        super().__init__(store, app)
         self._state = "none"
         self._location: dict | None = None
         self._syslog = False
@@ -91,6 +92,20 @@ class FakeTarget(Target):
         m = match.loose(label)
         hits = [e for e in self._ui if m(e)]
         return hits[0] if hits else None
+
+    def _labels(self) -> agent.Labels:
+        return [(True, label) for label in self._ui]
+
+    def do_ui_ls(self):
+        return agent.listing(self._labels())
+
+    def do_ui_tap(self, arg=None, timeout=10):
+        labels = self._labels()
+        i = int(arg[1:]) if arg and arg[:1] == "#" and arg[1:].isdigit() else agent.pick(labels, arg or "")
+        return f"tapped {labels[i][1]!r}\nscreen: {agent.screen(labels)}"
+
+    def do_ui_back(self, timeout=10):
+        return f"went back\nscreen: {agent.screen(self._labels())}"
 
     def do_fake(self, action: str, text: str = "", delay: float = 0.0):
         def fire():

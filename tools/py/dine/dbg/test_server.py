@@ -77,6 +77,13 @@ class FakeServerTest(unittest.TestCase):
         self.assertEqual(slow.wait(10), 1)
         self.dbg("fake", "slow", "0", check=0)
 
+    def test_ui_tap_prints_the_new_screen(self):
+        self.dbg("fake", "ui", "hello++|probe", check=0)
+        r = self.dbg("ui", "tap", "hello", check=0)
+        self.assertEqual(r.stdout.splitlines(), ["tapped 'hello++'", "screen: hello++ | probe"])
+        self.assertIn("#1 probe", self.dbg("ui", "ls", check=0).stdout)
+        self.assertIn("no element matches", self.dbg("ui", "tap", "nope", check=1).stdout)
+
     def test_status_and_log(self):
         self.assertIn("target fake", self.dbg("status", check=0).stdout)
         self.assertIn("events.jsonl", self.dbg("log", "path", check=0).stdout)

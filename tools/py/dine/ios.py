@@ -15,6 +15,8 @@ from . import paths
 from .paths import DineError
 
 TUNNELD = "http://127.0.0.1:49151/"
+# native/dbgagent listens on this port on the phone when the app gets it in its environment.
+AGENT_ENV, AGENT_PORT = "DINE_DBG_AGENT_PORT", 47801
 
 
 def pmd(*args: str, timeout: float = 60) -> str:
@@ -98,11 +100,18 @@ def tunnel_start() -> str:
     return tunnel_status()
 
 
-def bundle_id(app: str) -> str:
-    """Installed bundle ID: free-account xtool installs are prefixed `XTL-<TeamID>.`."""
+def bundle_base(app: str) -> str:
+    """The bundle ID in the app's xtool.yml, which is also its os_log subsystem."""
     text = (paths.app_dir(app) / "xtool.yml").read_text()
-    base = re.search(r"^bundleID:\s*(\S+)", text, re.M).group(1)
-    installed = json.loads(pmd("apps", "list", "-t", "User"))
+    return re.search(r"^bundleID:\s*(\S+)", text, re.M).group(1)
+
+
+async def _bundle_id(rsd, app: str) -> str:
+    """Installed bundle ID: free-account xtool installs are prefixed `XTL-<TeamID>.`."""
+    from pymobiledevice3.services.installation_proxy import InstallationProxyService
+    base = bundle_base(app)
+    async with InstallationProxyService(rsd) as ip:
+        installed = list(await ip.get_apps(application_type="User"))
     for b in installed:
         if re.fullmatch(rf"XTL-[A-Z0-9]+\.{re.escape(base)}", b):
             return b
@@ -112,18 +121,23 @@ def bundle_id(app: str) -> str:
 
 
 def launch(app: str, suspended: bool = False) -> int:
-    """Launch through DVT (kills a running instance first); returns the pid."""
+    """Launch through DVT with the debug agent on (kills a running instance first); returns the pid."""
+    from pymobiledevice3.exceptions import PyMobileDevice3Exception
+    from pymobiledevice3.services.dvt.instruments.dvt_provider import DvtProvider
+    from pymobiledevice3.services.dvt.instruments.process_control import ProcessControl
     require_tunnel()
+
+    async def run(rsd):
+        bundle = await _bundle_id(rsd, app)
+        async with DvtProvider(rsd) as dvt, ProcessControl(dvt) as pc:
+            return await asyncio.wait_for(pc.launch(bundle, kill_existing=True, start_suspended=suspended,
+                                                    environment={AGENT_ENV: str(AGENT_PORT)}), 60)
     try:
-        out = pmd("developer", "dvt", "launch", "--tunnel", "", *(["--suspended"] if suspended else []),
-                  bundle_id(app))
-    except DineError as e:
-        raise DineError(f"{e}\n(screen off or phone locked? developer certificate trusted?)") from None
-    m = re.search(r"(\d+)\s*$", out)
-    if not m:
-        raise DineError(f"no pid in launch output: {out.strip()}\n(phone locked, developer certificate not "
-                        "trusted, or the DDI unmounted after a reboot: tools/dine ios tunnel start)")
-    return int(m.group(1))
+        return _with_rsd(run)
+    except (AssertionError, TimeoutError, PyMobileDevice3Exception) as e:
+        raise DineError(f"launching {app} failed: {str(e) or type(e).__name__}\n(screen off or phone "
+                        "locked, developer certificate not trusted, or the DDI unmounted after a reboot: "
+                        "tools/dine ios tunnel start)") from None
 
 
 def _with_rsd(fn):
@@ -156,8 +170,25 @@ def processes(app: str | None = None) -> list[dict]:
 
 
 def kill(pid: int) -> None:
+    from pymobiledevice3.services.dvt.instruments.dvt_provider import DvtProvider
+    from pymobiledevice3.services.dvt.instruments.process_control import ProcessControl
     require_tunnel()
-    pmd("developer", "dvt", "kill", "--tunnel", "", str(pid))
+
+    async def run(rsd):
+        async with DvtProvider(rsd) as dvt, ProcessControl(dvt) as pc:
+            await pc.kill(pid)
+    _with_rsd(run)
+
+
+def screenshot() -> bytes:
+    from pymobiledevice3.services.dvt.instruments.dvt_provider import DvtProvider
+    from pymobiledevice3.services.dvt.instruments.screenshot import Screenshot
+    require_tunnel()
+
+    async def run(rsd):
+        async with DvtProvider(rsd) as dvt, Screenshot(dvt) as shot:
+            return await shot.get_screenshot()
+    return _with_rsd(run)
 
 
 def debugserver_url() -> str:
@@ -170,8 +201,9 @@ def debugserver_url() -> str:
 
 
 def symbols_dir() -> Path:
-    d = json.loads(pmd("lockdown", "info"))
-    return paths.OUT / f"ios-symbols/{d['ProductVersion']} ({d['BuildVersion']})"
+    async def version(rsd):
+        return rsd.product_version, rsd.product_build_version
+    return paths.OUT / "ios-symbols/{} ({})".format(*_with_rsd(version))
 
 
 def lldb_platform_cmd() -> str:

@@ -1,4 +1,6 @@
-"""iOS device target: lldb (remote-ios through the tunnel), the app's syslog, UI via accessibility."""
+"""iOS device target: lldb (remote-ios through the tunnel), the app's syslog, UI through the app's debug agent."""
+
+from __future__ import annotations
 
 import json
 import os
@@ -11,11 +13,9 @@ from pathlib import Path
 
 from ... import ios, paths
 from ...paths import DineError
-from .. import match
+from .. import agent, match
 from .base import CmdError, Target
 
-ACTIONS = paths.ROOT / "tools/dbg-actions.mm"
-PROTOTYPE = re.compile(r'^(extern "C" [^;{]+?)\s*\{', re.M)
 NUMBER = re.compile(r"[-+]?(0[xX][0-9a-fA-F]+|\d+(\.\d+)?)")
 
 
@@ -53,14 +53,11 @@ class IosTarget(Target):
         return {"PYTHONPATH": str(pkg.parent.parent),
                 "LD_LIBRARY_PATH": ":".join([*map(str, libs), *filter(None, [os.environ.get("LD_LIBRARY_PATH")])])}
 
-    def __init__(self, store, app, actions=None):
-        super().__init__(store, app, actions or ACTIONS)
+    def __init__(self, store, app):
+        super().__init__(store, app)
         self.host = None
         self._syslog: subprocess.Popen | None = None
-        self._ui: list[str] = []
-        self._ui_skip: list[str] = []
-        self._actions_target = 0
-        self._prototypes = ""
+        self._ui: agent.Labels = []
 
     def setup(self) -> None:
         from ..lldbhost import LldbHost
@@ -69,13 +66,10 @@ class IosTarget(Target):
         out = h.run(ios.lldb_platform_cmd())
         for c in ios.lldb_memory_cmds():
             h.run(c)
-        self._new_target()
-        self.store.append("lldb", "setup", out.strip())
-
-    def _new_target(self) -> None:
-        self.host.create_target(paths.app_binary(self.app))
+        h.create_target(paths.app_binary(self.app))
         for c in ios.lldb_setup_cmds():
-            self.host.run(c)
+            h.run(c)
+        self.store.append("lldb", "setup", out.strip())
 
     def state(self) -> dict:
         h = self.host
@@ -115,8 +109,6 @@ class IosTarget(Target):
             if len(procs) > 1:
                 raise CmdError(f"several {self.app} processes ({', '.join(str(p['pid']) for p in procs)}): --pid")
             pid = procs[0]["pid"]
-        if self.host.process is not None and self.host.process.GetProcessID() != pid:
-            self._new_target()
         return self.host.connect_attach(ios.debugserver_url(), pid, timeout)
 
     def do_detach(self):
@@ -161,7 +153,13 @@ class IosTarget(Target):
     def do_vars(self, names=()):
         return self.host.variables(list(names))
 
-    def do_exec(self, expr, lang=None, po=False, allow_exceptions=False, timeout=60):
+    def do_exec(self, expr, lang=None, po=False, allow_exceptions=False, force=False, timeout=60):
+        th = self.host.thread()
+        top = th.GetFrameAtIndex(0)
+        if not force and parked_in_kernel(th.GetQueueName(), top.GetModule().GetFileSpec().GetFilename()):
+            raise CmdError(f"thread #{th.GetIndexID()} waits in the kernel ({top.GetFunctionName()}); an expression "
+                           "there can crash the app once it resumes. Use the main thread (bt --thread 1) or a "
+                           "breakpoint in this thread's code; --force runs it anyway")
         return self.host.evaluate(expr, lang, po, timeout, trap_exceptions=not allow_exceptions)
 
     def do_cmd(self, command, timeout=60):
@@ -202,36 +200,82 @@ class IosTarget(Target):
             self._syslog.kill()
         return "syslog capture stopped"
 
-    def _need_running(self) -> None:
+    def _stopped_at(self) -> str | None:
+        """Where lldb has the app stopped (the agent can't answer then), or None."""
         if self.host.state == "stopped":
             from ..lldbhost import where
-            raise CmdError(f"the app is stopped at {where(self.host.location)} and can't answer UI "
-                           "queries: tools/dine dbg continue")
+            return where(self.host.location)
+        return None
 
-    def _elements(self, timeout: float = 30) -> list[str]:
-        out = ios.pmd("developer", "accessibility", "list-items", "--tunnel", "", timeout=min(timeout, 30))
-        self._ui = [e.get("CaptionTextValue_v1") or e.get("caption") or str(e) for e in json.loads(out)]
+    def _agent(self, line: str, timeout: float = 10) -> dict:
+        if where := self._stopped_at():
+            raise CmdError(f"the app is stopped at {where} and can't answer UI requests: tools/dine dbg continue")
+        try:
+            return agent.request(line, timeout, self._stopped_at)
+        except agent.AgentDown:
+            raise CmdError(f"no debug agent in {self.app}: it isn't running, or wasn't started by "
+                           f"tools/dine ios launch (relaunch with it)") from None
+
+    def _ls(self) -> agent.Labels:
+        self._ui = agent.labels_of(self._agent("ls"))
         return self._ui
 
+    def _settle(self) -> tuple[str, dict]:
+        """Waits for the screen the last tap/back led to; text to append, and the reply. No stop check
+        first: a tap into a breakpoint stops the app right after the tap's reply."""
+        try:
+            r = agent.request("settle 3000", 8, self._stopped_at)
+        except agent.AgentDown:
+            raise CmdError(f"{self.app} went away after the action (crashed?): tools/dine dbg status") from None
+        if "stopped" in r:
+            return f"; stopped at {r['stopped']}", r
+        self._ui = agent.labels_of(r)
+        if not r["ran"]:
+            return "; the app's main thread hasn't run it yet after 3 s (busy?)", r
+        return "\nscreen: " + agent.screen(self._ui) + ("" if r["settled"] else " (still changing after 3 s)"), r
+
     def do_ui_ls(self):
-        self._need_running()
-        items = self._elements()
-        return "\n".join(f"#{i} {c}" for i, c in enumerate(items)) or "(no accessibility elements)"
+        return agent.listing(self._ls())
 
     def ui_find(self, label: str, timeout: float) -> str | None:
-        if self.host.state == "stopped":
+        """None also while the agent can't answer: the wait's own stop and exit checks report those."""
+        if self._stopped_at():
             return None
         m = match.loose(label)
         try:
-            return next((c for c in self._elements(timeout) if m(c)), None)
-        except DineError:
+            r = agent.request("ls", min(timeout, 2), self._stopped_at)
+        except (agent.AgentDown, CmdError, OSError):
             return None
+        return next((l for _, l in agent.labels_of(r) if m(l)), None)
+
+    def do_ui_tap(self, arg=None, timeout=60):
+        if not arg:
+            raise CmdError("usage: tools/dine dbg ui tap <label|#N>")
+        if arg.startswith("#") and arg[1:].isdigit():
+            i = int(arg[1:])
+            if i >= len(self._ui):
+                raise CmdError(f"no {arg} in the last `ui ls` ({len(self._ui)} elements)")
+        else:
+            i = agent.pick(self._ls(), arg)
+        label = self._ui[i][1]
+        self._agent(f"tap {i} {json.dumps(label)}")
+        tail, r = self._settle()
+        if r.get("ran") and r.get("result") is False:
+            raise CmdError(f"{label!r} declined the activation (back navigation: tools/dine dbg ui back)")
+        return f"tapped {label!r}" + tail
+
+    def do_ui_back(self, timeout=60):
+        self._agent("back")
+        tail, r = self._settle()
+        if r.get("ran") and not r.get("result"):
+            raise CmdError("nothing on screen handled the escape (no back navigation here?)")
+        return "went back" + (f" (escape handled by {r['result']})" if r.get("result") else "") + tail
 
     def _in_app(self, fn, timeout: float):
-        """`fn(left)` runs paused on the main thread, actions defined; `left()` is the time remaining."""
+        """`fn(left)` runs paused on the main thread; `left()` is the time remaining."""
         h = self.host
         if h.state not in ("running", "stopped"):
-            raise CmdError("UI actions and calls run through the debugger: tools/dine dbg attach")
+            raise CmdError("`call` runs through the debugger: tools/dine dbg attach")
         deadline = time.monotonic() + timeout
 
         def left() -> float:
@@ -248,7 +292,6 @@ class IosTarget(Target):
                     h.process.GetThreadAtIndex(0))
         h.process.SetSelectedThread(main)
         try:
-            self._define_actions(left())
             text = fn(left)
         finally:
             h.process.SetSelectedThread(th)
@@ -256,91 +299,23 @@ class IosTarget(Target):
                 h.resume()
         return text + ("; resumed" if resume else "; still stopped (tools/dine dbg continue to let it act)")
 
-    def _define_actions(self, timeout: float) -> None:
-        if self._actions_target == self.host.targets:
-            return
-        try:
-            code = self.actions.read_text()
-        except OSError as e:
-            raise CmdError(f"actions file: {e}") from None
-        try:
-            self.host.define(code, timeout)
-        except CmdError as e:
-            raise CmdError(f"{self.actions}:\n{e}") from None
-        self._prototypes = "\n".join(p + ";" for p in PROTOTYPE.findall(code))
-        self._actions_target = self.host.targets
-        self.store.append("lldb", "actions", f"defined {self.actions}")
-
-    def _call(self, expr: str, po: bool, left) -> str:
-        return self.host.evaluate(expr, "objc", po, left(), prefix=self._prototypes)
-
-    def _collect(self, left) -> list[tuple[bool, str]]:
-        skip = self._ui_skip
-        for _ in range(5):
-            try:
-                out = self._call(f"dine_ui_collect({c_literal(','.join(skip))})", True, left)
-                return [(x[0] == "1", x[1:]) for x in out.split("\x1e") if x]
-            except CmdError as e:
-                # An AX getter threw, aborting the walk (no @try in lldb's ObjC): skip its class.
-                if "exception" not in str(e):
-                    raise
-                m = re.search(r'"(.*)"\s*$', self._call("dine_ui_last_class()", False, left))
-                if not m or m.group(1) in skip:
-                    raise
-                skip.append(m.group(1))
-                self.store.append("lldb", "ui", f"{m.group(1)} throws from its accessibility getters; skipped")
-        raise CmdError(f"accessibility walk keeps throwing (skipped {', '.join(skip)})")
-
-    def do_ui_tap(self, arg=None, timeout=60):
-        """Host-side AX `perform_press` is ignored by our apps, so the app calls `accessibilityActivate`
-        on the matching element itself."""
-        if not arg:
-            raise CmdError("usage: tools/dine dbg ui tap <label|#N>")
-        if arg.startswith("#") and arg[1:].isdigit():
-            if int(arg[1:]) >= len(self._ui):
-                raise CmdError(f"no {arg} in the last `ui ls` ({len(self._ui)} elements)")
-            arg = self._ui[int(arg[1:])].split(", ")[0]
-
-        def tap(left):
-            items = self._collect(left)
-            m = match.loose(arg)
-            hits = [i for i, (_, label) in enumerate(items) if m(label)]
-            if not hits:
-                raise CmdError(f"no element matches {arg!r}; labels: " + ", ".join(sorted({l for _, l in items})))
-            exact = [i for i in hits if items[i][1].lower() == arg.lower()]
-            labels = sorted({items[i][1] for i in hits})
-            if len(labels) > 1 and not exact:
-                raise CmdError(f"{arg!r} is ambiguous: " + ", ".join(labels))
-            pick = next((i for i in exact or hits if items[i][0]), (exact or hits)[0])
-            ok = self._call(f"dine_ui_activate({pick})", False, left)
-            label = items[pick][1]
-            if not re.search(r"\b(YES|true)\b", ok):
-                raise CmdError(f"{label!r} declined the activation (back navigation: tools/dine dbg ui back)")
-            return f"tapped {label!r}"
-        return self._in_app(tap, timeout)
-
-    def do_ui_back(self, timeout=60):
-        def back(left):
-            if not self._collect(left):
-                raise CmdError("no accessibility elements on screen")
-            m = re.search(r'"(.*)"\s*$', self._call("dine_ui_escape()", False, left))
-            if not m:
-                raise CmdError("nothing on screen handled the escape (no back navigation here?)")
-            return f"went back (escape handled by {m.group(1)})"
-        return self._in_app(back, timeout)
-
     def do_call(self, fn, args=(), po=False, timeout=60):
         if not re.fullmatch(r"[A-Za-z_]\w*", fn):
             raise CmdError(f"{fn!r} isn't a function name")
         expr = f"{fn}({', '.join(map(c_literal, args))})"
-        return self._in_app(lambda left: self._call(expr, po, left), timeout)
+        return self._in_app(lambda left: self.host.evaluate(expr, "objc", po, left()), timeout)
 
     def do_ui_screenshot(self, arg=None):
         d = self.store.dir / "screenshots"
         d.mkdir(exist_ok=True)
         path = Path(arg) if arg else d / f"{self.store.cursor:06d}.png"
-        ios.pmd("developer", "dvt", "screenshot", "--tunnel", "", str(path), timeout=30)
+        path.write_bytes(ios.screenshot())
         return f"screenshot: {path}"
+
+
+def parked_in_kernel(queue: str | None, module: str | None) -> bool:
+    """A worker thread sitting in a syscall (semaphore, mach_msg, psynch wait)."""
+    return queue != "com.apple.main-thread" and module == "libsystem_kernel.dylib"
 
 
 def c_literal(arg: str) -> str:

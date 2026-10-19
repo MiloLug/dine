@@ -25,6 +25,12 @@ def render(ev: dict, max_lines: int | None = None) -> list[str]:
     return out
 
 
+def bare(ev: dict) -> list[str]:
+    """Message text only: a syslog line without its `LEVEL subsystem/category: ` prefix."""
+    text = ev["text"].split(": ", 1)[-1] if ev["src"] == "syslog" else ev["text"]
+    return text.splitlines() or [""]
+
+
 class LogStore:
     def __init__(self, directory: Path):
         self.dir = directory

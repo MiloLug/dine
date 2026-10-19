@@ -7,10 +7,9 @@ import shlex
 import subprocess
 import sys
 import time
-from pathlib import Path
 
 from . import ios, paths
-from .dbg import client, session
+from .dbg import client, session, smoke
 from .paths import DineError
 
 DBG_EXIT_HELP = "exit codes: 0 ok/matched, 1 error or bad state, 2 wait timeout, " \
@@ -82,16 +81,20 @@ def _notify_server(kind: str, text: str, mark: bool = False) -> None:
             pass
 
 
-def _ios_launch(a) -> int:
+def _launch(app: str, suspended: bool) -> int:
     if session.server_pid():
         st = client.call("status", timeout=10).get("state") or {}
         if st.get("attached"):
             raise DineError(f"the debug server is attached to pid {st.get('pid')}, which blocks a relaunch: "
                             "tools/dine dbg detach first")
-    _notify_server("launching", f"launching {a.app}", mark=True)
-    pid = ios.launch(a.app, a.suspended)
-    _notify_server("launched", f"launched {a.app} pid {pid}" + (" (suspended)" if a.suspended else ""))
-    print(f"launched {a.app} pid {pid}")
+    _notify_server("launching", f"launching {app}", mark=True)
+    pid = ios.launch(app, suspended)
+    _notify_server("launched", f"launched {app} pid {pid}" + (" (suspended)" if suspended else ""))
+    return pid
+
+
+def _ios_launch(a) -> int:
+    print(f"launched {a.app} pid {_launch(a.app, a.suspended)}")
     return 0
 
 
@@ -167,8 +170,6 @@ def _dbg(sub):
     t.add_argument("--target", default="ios", choices=["ios", "fake"])
     t.add_argument("--app", default="Dine")
     t.add_argument("--timeout", type=float, default=90)
-    t.add_argument("--actions-src", type=Path, help="ObjC++ functions for `ui` and `call` (ios default: "
-                                                     "tools/dbg-actions.mm)")
     t.set_defaults(func=_start_server)
 
     t = s.add_parser("stop-server", help="detach, stop streams, exit; logs are kept")
@@ -229,12 +230,15 @@ def _dbg(sub):
         t.add_argument("--lang", choices=["swift", "c++", "c", "objc"],
                        help="default: the selected frame's language")
         t.add_argument("--po", action="store_true", help="object description (like po)")
+        t.add_argument("--force", action="store_true",
+                       help="run it on a non-main thread blocked in the kernel (refused by default)")
         t.add_argument("--allow-exceptions", action="store_true",
                        help="let exceptions thrown and caught inside the expression run (an uncaught one "
                             "aborts the app); default: stop the expression at the first throw")
         t.add_argument("expr", nargs="+")
     req("exec", "exec", "evaluate an expression in the selected frame", timeout=60, setup=exec_setup,
-        args=lambda a: {"expr": " ".join(a.expr), "lang": a.lang, "po": a.po, "allow_exceptions": a.allow_exceptions})
+        args=lambda a: {"expr": " ".join(a.expr), "lang": a.lang, "po": a.po, "allow_exceptions": a.allow_exceptions,
+                        "force": a.force})
     req("cmd", "cmd", "raw lldb command (escape hatch); options go before it", timeout=60,
         setup=lambda t: t.add_argument("command", nargs=argparse.REMAINDER),
         args=lambda a: {"command": " ".join(a.command)})
@@ -265,7 +269,10 @@ def _dbg(sub):
         t.add_argument("--src", action="append", choices=["syslog", "event", "lldb", "cmd"],
                        help="default: syslog, event, lldb")
         t.add_argument("-C", type=int, default=0, help="grep: context events")
-        t.add_argument("--from", dest="since", type=int, default=0, help="only events after this seq")
+        t.add_argument("--from", dest="since", type=int,
+                       help="only events after this seq (default: since the last ios launch; 0: all)")
+        t.add_argument("--app", action="store_true", help="drop other subsystems' syslog lines")
+        t.add_argument("--text", action="store_true", help="message text only, no seq/time/source prefix")
     req("log", "log", "session log: tail|head|since <seq>|grep <re>|show <seq>|path", setup=log_setup,
         args=_log_args)
 
@@ -279,8 +286,19 @@ def _dbg(sub):
         t.add_argument("--po", action="store_true", help="object description (like po)")
         t.add_argument("fn")
         t.add_argument("args", nargs="*", help="numbers as-is, anything else a C string")
-    req("call", "call", "call a function from the actions file on the app's main thread (pauses, then resumes it)",
+    req("call", "call", "call a function in the app on its main thread through lldb (pauses, then resumes it)",
         timeout=60, setup=call_setup, args=lambda a: {"fn": a.fn, "args": a.args, "po": a.po})
+
+    t = s.add_parser("fresh", help="syslog on, relaunch the app (its debug agent on), wait until its UI "
+                                   "answers; --attach: then attach and continue")
+    t.add_argument("--attach", action="store_true")
+    t.set_defaults(func=_fresh)
+
+    t = s.add_parser("smoke", help="the app's smoke checks, one line per step; --list shows them")
+    t.add_argument("names", nargs="*", metavar="scenario", help="default: all, in table order")
+    t.add_argument("--list", action="store_true")
+    t.add_argument("--network", action="store_true", help="include steps that need the network")
+    t.set_defaults(func=_smoke)
 
     t = s.add_parser("fake", help="test hook: make the fake target (--target fake) emit an event")
     t.add_argument("fake_action")
@@ -291,8 +309,44 @@ def _dbg(sub):
                    else _request(a, "fake", {"action": a.fake_action, "text": a.text, "delay": a.delay}))
 
 
+def _relaunch(app: str) -> int:
+    """syslog on, `ios launch`, then wait for the debug agent to show the UI; the pid."""
+    resp = client.call("syslog_start", {"debug": False, "subsystem": None})
+    if resp["code"]:
+        raise DineError(resp["text"])
+    pid = _launch(app, False)
+    deadline = time.monotonic() + 30
+    while (resp := client.call("ui_ls", timeout=10))["code"] or resp["text"].endswith("(no accessibility elements)"):
+        if time.monotonic() > deadline:
+            raise DineError(f"{app} pid {pid} launched, but its debug agent didn't answer within 30 s:\n"
+                            f"{resp['text']}")
+        time.sleep(0.2)
+    return pid
+
+
+def _fresh(a) -> int:
+    st = client.call("status", timeout=10)
+    pid = _relaunch(st["app"])
+    print(f"launched {st['app']} pid {pid}\n" + client.call("ui_ls", timeout=10)["text"])
+    if a.attach:
+        for cmd, timeout in (("attach", 120), ("continue", 30)):
+            resp = client.call(cmd, {}, timeout=timeout)
+            print(resp["text"])
+            if resp["code"]:
+                return resp["code"]
+    return 0
+
+
+def _smoke(a) -> int:
+    app = client.call("status", timeout=10)["app"]
+    if a.list:
+        print(smoke.listing(app))
+        return 0
+    return smoke.run(app, a.names, a.network, lambda: _relaunch(app))
+
+
 def _log_args(a):
-    args = {"op": a.op, "n": a.n, "src": a.src or [], "since": a.since, "context": a.C}
+    args = {"op": a.op, "n": a.n, "src": a.src or [], "since": a.since, "context": a.C, "app": a.app, "text": a.text}
     if a.op == "since":
         args["since"] = int(a.arg or 0)
     elif a.op == "grep":
@@ -312,7 +366,7 @@ def _request(a, cmd, args) -> int:
 
 
 def _start_server(a) -> int:
-    code, text = client.start_server(a.target, a.app, a.timeout, a.actions_src)
+    code, text = client.start_server(a.target, a.app, a.timeout)
     print(text)
     return code
 
