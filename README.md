@@ -43,7 +43,7 @@ symbols, ATL build, and a verification checklist.
 | `tools/dine ios tunnel start\|status` | iOS 17+ developer services: `dine-tunneld` runs from boot; `start` starts it if stopped (sudo), waits for the tunnel and mounts the DDI (after a phone reboot) |
 | `tools/dine ios build-native [lib…]` | `native/*` → `out/ios/{lib,include}` (`DINE_IOS_BUILD_TYPE`, default `RelWithDebInfo`) |
 | `tools/dine ios build-art` | dine-art (ART, libcore natives, androidfw) plus ICU, lz4, liblzma, wolfSSL → static archives in `out/ios/lib`, boot jars → `out/ios/share/art` |
-| `tools/dine ios build-atl` | dine-atl's headless build (meson cross) → `out/ios/lib/libtranslation_layer_main.a`; its jars and `demo_app.apk` → `out/ios/share/atl`; needs `linux build atl` first |
+| `tools/dine ios build-atl` | dine-atl's headless build (meson cross) → `out/ios/lib/libtranslation_layer_main.a`; its jars, `demo_app.apk` and `looper.apk` → `out/ios/share/atl`; needs `linux build atl` first |
 | `tools/dine ios run [App]` | kill a running instance → native libs → asset catalog (accord → `out/ios/assets/<App>`) → `xtool dev` (build/sign/install) → launch via DVT |
 | `tools/dine ios launch [--suspended] [App]` | (re)launch via DVT, print the pid |
 | `tools/dine ios ps [App] [--all]`, `tools/dine ios kill <App\|pid>` | device processes |

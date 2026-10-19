@@ -17,6 +17,7 @@ REASONS = {lldb.eStopReasonBreakpoint: "breakpoint", lldb.eStopReasonWatchpoint:
            lldb.eStopReasonPlanComplete: "step", lldb.eStopReasonTrace: "trace",
            lldb.eStopReasonInterrupt: "interrupt", lldb.eStopReasonInstrumentation: "instrumentation"}
 QUIET_SIGNALS = {"SIGSTOP", "SIGINT", "SIGTRAP"}
+NO_RESULT = 0x1001  # lldb's UserExpression::kNoResult: the expression is void, not failed
 STATES = {lldb.eStateConnected: "connected", lldb.eStateRunning: "running", lldb.eStateStepping: "running",
           lldb.eStateStopped: "stopped", lldb.eStateSuspended: "stopped", lldb.eStateCrashed: "stopped",
           lldb.eStateExited: "exited", lldb.eStateDetached: "detached"}
@@ -355,14 +356,17 @@ class LldbHost:
         if prefix:
             opts.SetPrefix(prefix)
         v = fr.EvaluateExpression(code, opts)
-        if v.GetError().Fail() and not v.GetError().GetCString().startswith("unknown error"):
-            raise CmdError(v.GetError().GetCString().strip())
+        err = v.GetError()
+        if err.Fail() and err.GetError() != NO_RESULT:
+            raise CmdError(err.GetCString().strip())
         return v
 
     def evaluate(self, expr: str, lang: str | None, po: bool, timeout: float, trap_exceptions: bool = True,
                  prefix: str = "") -> str:
         """`prefix`: file-scope code compiled before the expression, e.g. declarations."""
         v = self._expression(expr, lang, timeout, trap_exceptions, prefix=prefix)
+        if v.GetError().GetError() == NO_RESULT:
+            return "(no result)"
         if po:
             return (v.GetObjectDescription() or str(v)).strip()
         return str(v).strip() or "(no result)"

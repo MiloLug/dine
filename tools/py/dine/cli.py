@@ -34,7 +34,7 @@ def _ios(sub):
     t.set_defaults(func=lambda a: ios.run_libexec("build-ios-art.sh"))
 
     t = s.add_parser("build-atl", help="dine-atl headless build → out/ios/lib/libtranslation_layer_main.a, "
-                                       "jars + demo_app.apk → out/ios/share/atl (after linux build atl)")
+                                       "jars + demo_app.apk, looper.apk → out/ios/share/atl (after linux build atl)")
     t.set_defaults(func=lambda a: ios.run_libexec("build-ios-atl.sh"))
 
     t = s.add_parser("run", help="build-native + build-assets + xtool dev (build/sign/install) + launch; kills a running instance first")

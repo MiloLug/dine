@@ -10,6 +10,7 @@ struct AtlView: View {
     var body: some View {
         List {
             Button("run demo") { run("demo_app", activity: "com/example/demo_application/MainActivity") }
+            Button("run looper") { run("looper", activity: "dev/dine/looper/MainActivity") }
         }
         .navigationTitle("atl")
         .navigationBarTitleDisplayMode(.inline)
@@ -23,8 +24,6 @@ struct AtlView: View {
         else {
             return log.error("atl: art/, atl/ or caches dir missing")
         }
-        if dine_atl_run(root, atl, caches.path, atl + "/" + apk + ".apk", activity) != 0 {
-            log.notice("atl: not started, relaunch Dine")
-        }
+        dine_atl_run(root, atl, caches.path, atl + "/" + apk + ".apk", activity)
     }
 }

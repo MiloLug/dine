@@ -38,8 +38,6 @@ struct ArtView: View {
         else {
             return log.error("art: boot jars, \(test, privacy: .public).jar or caches dir missing")
         }
-        if dine_art_run(root, caches.path, jar, "Main") != 0 {
-            log.notice("art: a run is still active")
-        }
+        dine_art_run(root, caches.path, jar, "Main")
     }
 }

@@ -193,13 +193,15 @@ struct Run {
 
 // The process has one VM. Runs attach to it once it's ready; ATL needs its own class path from
 // creation on, so it only starts on a process with no VM yet.
-enum class VmState { kNone, kCreating, kReady };
+enum class VmState { kNone, kCreating, kReady, kFailed };
 
 std::mutex gLock;
 JavaVM *gVm = nullptr;
 VmState gVmState = VmState::kNone;
 bool gRunning = false;
 
+// Doesn't return when creation fails: ART may have attached the thread before failing, and a
+// thread that exits attached aborts the process.
 JNIEnv *CreateVm(const std::string &resource_dir, const std::string &data_dir, const char *log_tags,
                  const JavaVMOption *extra, int n_extra) {
   setenv("ANDROID_ROOT", resource_dir.c_str(), 1);
@@ -224,13 +226,16 @@ JNIEnv *CreateVm(const std::string &resource_dir, const std::string &data_dir, c
 
   JavaVM *vm = nullptr;
   JNIEnv *env = nullptr;
-  bool ok = JNI_CreateJavaVM(&vm, &env, &init) == JNI_OK;
-  std::lock_guard<std::mutex> lock(gLock);
-  if (!ok) {
-    // ART keeps the failed runtime: no second try in this process
+  if (JNI_CreateJavaVM(&vm, &env, &init) != JNI_OK) {
+    {
+      // ART keeps the failed runtime: no second try in this process
+      std::lock_guard<std::mutex> lock(gLock);
+      gVmState = VmState::kFailed;
+    }
     os_log_error(Log(), "art JNI_CreateJavaVM failed");
-    return nullptr;
+    for (;;) pause();
   }
+  std::lock_guard<std::mutex> lock(gLock);
   gVm = vm;
   gVmState = VmState::kReady;
   os_log(Log(), "art vm created");
@@ -315,27 +320,53 @@ struct AtlRun {
 };
 
 bool gAtlStarted = false;
-// the ATL main thread's stack, for dine_atl_probe
+bool gAtlExited = false;
+// the ATL main thread's stack, for AtlProbe
 char *gAtlStackLow = nullptr;
 char *gAtlStackTop = nullptr;
 
-// ART pre-faults the main thread's whole stack, so residency says nothing about depth: paint the
-// unused part once the VM exists and find the deepest overwritten byte later. The margin keeps clear
-// of ART's protected bottom pages.
-constexpr size_t kPaintMargin = 256 << 10;
-constexpr unsigned char kPaint = 0xa5;
+// The stack's pages fault in on first use and nothing touches them ahead (ART's stack-overflow
+// checks are explicit), so the lowest resident page marks the deepest use so far.
+size_t AtlStackUsed() {
+  // mincore writes a byte for every page the range touches; the stack bounds needn't be aligned
+  uintptr_t page = getpagesize();
+  uintptr_t low = reinterpret_cast<uintptr_t>(gAtlStackLow) & ~(page - 1);
+  uintptr_t top = (reinterpret_cast<uintptr_t>(gAtlStackTop) + page - 1) & ~(page - 1);
+  std::vector<char> pages((top - low) / page);
+  if (mincore(reinterpret_cast<void *>(low), top - low, pages.data()) != 0) {
+    os_log_error(Log(), "atl probe: mincore: %{public}s", strerror(errno));
+    return 0;
+  }
+  size_t i = 0;
+  // MINCORE_ANONYMOUS alone also marks pages never touched; PAGED_OUT is compressed
+  while (i < pages.size() && !(pages[i] & (MINCORE_INCORE | MINCORE_PAGED_OUT))) i++;
+  return (pages.size() - i) * page;
+}
 
-__attribute__((noinline)) void PaintStack() {
-  char *low = gAtlStackLow + kPaintMargin;
-  char *high = static_cast<char *>(__builtin_frame_address(0)) - (16 << 10);
-  if (high > low) memset(low, kPaint, high - low);
+void AtlProbe(const char *phase) {
+  task_vm_info_data_t info;
+  mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
+  kern_return_t kr = task_info(mach_task_self(), TASK_VM_INFO, reinterpret_cast<task_info_t>(&info), &count);
+  if (kr != KERN_SUCCESS) return os_log_error(Log(), "atl probe %{public}s: task_info %d", phase, kr);
+  os_log(Log(), "atl probe %{public}s: stack used %zu KiB of %zu KiB, phys_footprint %llu MiB, peak %lld MiB",
+         phase, AtlStackUsed() >> 10, static_cast<size_t>(gAtlStackTop - gAtlStackLow) >> 10,
+         info.phys_footprint >> 20, info.ledger_phys_footprint_peak >> 20);
+}
+
+void AtlExited() {
+  std::lock_guard<std::mutex> lock(gLock);
+  gAtlExited = true;
 }
 
 void *AtlThread(void *arg) {
   std::unique_ptr<AtlRun> run(static_cast<AtlRun *>(arg));
-  gAtlStackTop = static_cast<char *>(pthread_get_stackaddr_np(pthread_self()));
-  gAtlStackLow = gAtlStackTop - pthread_get_stacksize_np(pthread_self());
+  {
+    std::lock_guard<std::mutex> lock(gLock);
+    gAtlStackTop = static_cast<char *>(pthread_get_stackaddr_np(pthread_self()));
+    gAtlStackLow = gAtlStackTop - pthread_get_stacksize_np(pthread_self());
+  }
   os_log(Log(), "atl start");
+  AtlProbe("before vm");
 
   std::string app_data = run->data_dir + "/atl";
   mkdir(app_data.c_str(), 0755);
@@ -355,18 +386,23 @@ void *AtlThread(void *arg) {
   JavaVMOption *options = atl_embedded_vm_options(&config, &n_options);
   if (!options) {
     os_log_error(Log(), "atl options failed");
-    std::lock_guard<std::mutex> lock(gLock);
-    gVmState = VmState::kNone;
+    {
+      std::lock_guard<std::mutex> lock(gLock);
+      gVmState = VmState::kNone;
+    }
+    AtlExited();
     return nullptr;
   }
   // *:i: ATL logs its lifecycle (onResume) at info
   JNIEnv *env = CreateVm(run->resource_dir, run->data_dir, "*:i", options, n_options);
   atl_embedded_vm_options_free(options, n_options);
-  if (!env) return nullptr;
-  PaintStack();
+  AtlProbe("vm created");
 
   int rc = atl_embedded_main(env, &config);
   os_log(Log(), "atl main returned %d", rc);
+  // ART aborts the process when a thread it knows exits attached
+  gVm->DetachCurrentThread();
+  AtlExited();
   return nullptr;
 }
 
@@ -390,7 +426,14 @@ const char *dine_art_probe(void) {
 int dine_art_run(const char *resource_dir, const char *data_dir, const char *class_path,
                  const char *main_class) {
   std::lock_guard<std::mutex> lock(gLock);
-  if (gRunning || gVmState == VmState::kCreating) return -1;
+  if (gVmState == VmState::kFailed) {
+    os_log_error(Log(), "art: VM creation failed earlier in this process: relaunch Dine");
+    return -1;
+  }
+  if (gRunning || gVmState == VmState::kCreating) {
+    os_log_error(Log(), "art: a run is still active");
+    return -1;
+  }
   if (gOutput < 0) RedirectOutput();
   bool create = gVmState == VmState::kNone;
   auto *run = new Run{resource_dir, data_dir, class_path, main_class, create};
@@ -406,7 +449,11 @@ int dine_art_run(const char *resource_dir, const char *data_dir, const char *cla
 int dine_atl_run(const char *resource_dir, const char *atl_dir, const char *data_dir,
                  const char *apk, const char *activity) {
   std::lock_guard<std::mutex> lock(gLock);
-  if (gAtlStarted || gVmState != VmState::kNone) {
+  if (gAtlStarted) {
+    os_log_error(Log(), "atl already ran in this process: relaunch Dine");
+    return -1;
+  }
+  if (gVmState != VmState::kNone) {
     os_log_error(Log(), "atl needs a process without a VM: relaunch Dine");
     return -1;
   }
@@ -422,13 +469,9 @@ int dine_atl_run(const char *resource_dir, const char *atl_dir, const char *data
 }
 
 void dine_atl_probe(void) {
+  std::lock_guard<std::mutex> lock(gLock);
   if (!gAtlStackLow) return os_log_error(Log(), "atl probe: atl not started");
-  char *p = gAtlStackLow + kPaintMargin;
-  while (p < gAtlStackTop && *reinterpret_cast<volatile unsigned char *>(p) == kPaint) p++;
-  task_vm_info_data_t info;
-  mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
-  task_info(mach_task_self(), TASK_VM_INFO, reinterpret_cast<task_info_t>(&info), &count);
-  os_log(Log(), "atl probe stack used %zu KiB of %zu KiB, phys_footprint %llu MiB",
-         static_cast<size_t>(gAtlStackTop - p) >> 10, static_cast<size_t>(gAtlStackTop - gAtlStackLow) >> 10,
-         info.phys_footprint >> 20);
+  // its stack is gone
+  if (gAtlExited) return os_log_error(Log(), "atl probe: the atl thread has exited");
+  AtlProbe("now");
 }

@@ -53,6 +53,9 @@ icu() {
 # libwolfssljni's library, as on Linux (--enable-jni). Autotools: CMake's JNI bundle forces the CRL
 # monitor and allows it only for Linux, macOS and FreeBSD by system name. With system CAs, a context
 # that loads them validates with SecTrust (wolfJSSE does when it finds no Java trust store).
+# armasm: ARMv8 crypto and NEON code, picked at run time from the CPU's features. -mcpu goes in CC
+# because configure skips its aarch64 setup when CPPFLAGS names a CPU; clang's default for iOS
+# (apple-a7) lacks the RDM instructions of ML-KEM's asm, and iOS 17 needs an A12 anyway.
 wolfssl() {
   [[ -f $PREFIX/lib/libwolfssl.a ]] && return
   local src="$SRC/wolfssl" cross="$BUILD/wolfssl"
@@ -60,9 +63,9 @@ wolfssl() {
   [[ -x $src/configure && -f $src/Makefile.in ]] || (cd "$src" && ./autogen.sh)
   mkdir -p "$cross"
   (cd "$cross" && "$src/configure" --host=aarch64-apple-darwin --prefix="$PREFIX" \
-    --enable-static --disable-shared --enable-jni --enable-sys-ca-certs --disable-examples \
-    --disable-crypttests --disable-benchmark \
-    CC="clang -target arm64-apple-ios$DINE_IOS_MIN -isysroot $DINE_IOS_SDK" \
+    --enable-static --disable-shared --enable-jni --enable-sys-ca-certs --enable-armasm \
+    --disable-examples --disable-crypttests --disable-benchmark \
+    CC="clang -target arm64-apple-ios$DINE_IOS_MIN -mcpu=apple-a12 -isysroot $DINE_IOS_SDK" \
     AR=llvm-ar RANLIB=llvm-ranlib LDFLAGS="-fuse-ld=lld -B$DINE_IOS_TOOLSET_BIN")
   make -C "$cross" -j "$JOBS"
   make -C "$cross" install

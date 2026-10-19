@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Cross-compile dine-atl's headless build for iOS (out/ios/lib/libtranslation_layer_main.a) and
-# stage the bundle's jars and APK in out/ios/share/atl. Needs `tools/dine linux build atl` first: the
+# stage the bundle's jars and APKs in out/ios/share/atl. Needs `tools/dine linux build atl` first: the
 # jars and the JNI headers come from that build.
 set -euo pipefail
 
@@ -11,6 +11,7 @@ OUT="$ROOT/out/ios"
 BUILD="$OUT/build/dine-atl"
 LINUX_JARS="$DINE_LINUX_PREFIX/lib/java/dex/android_translation_layer"
 DEMO_APK="$ROOT/third_party/atl_test_apks/demo_app.apk"
+LOOPER_APK="$ROOT/out/tests/apks/looper.apk"
 
 for f in "$LINUX_JARS/api-impl.jar" "$LINUX_JARS/framework-res.apk" "$OUT/include/jni.h" \
          "$OUT/include/androidfw/androidfw_c_api.h" "$DEMO_APK"; do
@@ -49,5 +50,7 @@ fi
 meson compile -C "$BUILD" -j "$JOBS"
 meson install -C "$BUILD" --quiet
 
+python3 "$ROOT/tests/harness/apk.py" "$ROOT/dine-atl/tests/headless/looper" "$LOOPER_APK"
 # ATLPaths expects gstub.jar and ghax.jar next to api-impl.jar
-install -m644 -Dt "$OUT/share/atl" "$LINUX_JARS"/{api-impl,gstub,ghax}.jar "$LINUX_JARS/framework-res.apk" "$DEMO_APK"
+install -m644 -Dt "$OUT/share/atl" "$LINUX_JARS"/{api-impl,gstub,ghax}.jar "$LINUX_JARS/framework-res.apk" \
+  "$DEMO_APK" "$LOOPER_APK"

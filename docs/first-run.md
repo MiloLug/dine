@@ -12,7 +12,7 @@ downloads are things no package manager ships, and they go to gitignored dirs **
 | Source | Tools |
 |---|---|
 | **pacman** | `base-devel` (gcc, make, binutils, pkgconf), `git`, `curl`, `clang`, `lld`, `llvm` (llvm-ar/ranlib/otool/nm, dsymutil), `cmake`, `ninja`, `socat`, `libimobiledevice`, `fuse2`, `uv`, `rustup` (cargo for accord), `jdk8-openjdk`, `jdk21-openjdk` (runs d8), `patchelf`, ATL build libraries (below); for runtime tests: `smali` |
-| **AUR (paru)** | `swift-bin` (Swift 6.4 + its lldb), `ipsw-bin` (splits the phone's dyld shared cache), `wolfssl-jni`, `bsd-compat-headers`, `android-sdk-build-tools` (d8 for the ART/ATL dex build, zipalign); for runtime tests: `jasmin` |
+| **AUR (paru)** | `swift-bin` (Swift 6.4 + its lldb), `ipsw-bin` (splits the phone's dyld shared cache), `wolfssl-jni`, `bsd-compat-headers`, `android-sdk-build-tools` (d8 for the ART/ATL dex build, zipalign; aapt2 for test APKs); for runtime tests: `jasmin` |
 | **uv → `.venv`** (`pyproject.toml`, `uv.lock`) | CPython 3.12, `pymobiledevice3`, `meson` |
 | **Manual, in repo** | xtool AppImage → `out/tools/bin/xtool`; `Xcode_27.xip` → `out/downloads/` (deleted after use) |
 | **Sibling repo** | [`wsl-quickack`](../../wsl-quickack) (`sudo make install`): keeps `quickack` on WSL's routes to Windows; [`dine-accord`](../../dine-accord) (`git clone git@github.com:MiloLug/dine-accord.git ../dine-accord`): accord, built by `ios run` (`DINE_ACCORD` overrides the path) |
@@ -260,7 +260,7 @@ git clone --depth 1 --branch release-78.3 --filter=blob:none --sparse https://gi
 git -C icu sparse-checkout set icu4c
 git clone --depth 1 --branch v5.9.4-stable https://github.com/wolfSSL/wolfssl.git
 cd .. && tools/dine ios build-art     # ICU, lz4, liblzma, wolfSSL, then dine-art → out/ios/lib/*.a
-tools/dine ios build-atl              # dine-atl headless → out/ios/lib, its jars and demo_app.apk → out/ios/share/atl
+tools/dine ios build-atl              # dine-atl headless → out/ios/lib, its jars, demo_app.apk and looper.apk → out/ios/share/atl
 ```
 
 - The versions match Arch's `icu`, `lz4` and `xz` and AUR's `wolfssl-jni`, so iOS and Linux use
@@ -271,7 +271,8 @@ tools/dine ios build-atl              # dine-atl headless → out/ios/lib, its j
   `dine-art/out/host/darwin-x86`. The boot classpath jars come from the Linux build
   (`out/ios/share/art`, bundled as the app's `art/`).
 - wolfSSL builds with autotools (`./autogen.sh` runs once in the clone; it needs autoconf,
-  automake and libtool) and `--enable-jni`, as on Linux, plus system CA support. The app has no
+  automake and libtool) and `--enable-jni`, as on Linux, plus system CA support and
+  `--enable-armasm` (ARMv8 AES, PMULL and SHA instructions, chosen at run time). The app has no
   Java trust store, so wolfJSSE's default trust manager hands certificate checks to iOS (SecTrust:
   system roots and installed profiles). An app's own keystore never gets those roots.
 - dine-art's iOS build includes androidfw, libutils and libcutils for ATL's resource natives,
