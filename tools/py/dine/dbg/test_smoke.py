@@ -14,7 +14,8 @@ class SmokeTableTest(unittest.TestCase):
         self.assertEqual(len(names), len(set(names)))
         for sc in scenarios:
             self.assertTrue(sc.steps, sc.name)
-            self.assertTrue(sc.steps[-1].back, f"{sc.name} must end back on the launcher")
+            last = sc.steps[-1]
+            self.assertTrue(last.back or last.action == "Home", f"{sc.name} must end back on the launcher")
             for st in sc.steps:
                 for rx in st.ok + st.fail:
                     re.compile(rx)

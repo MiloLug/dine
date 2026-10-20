@@ -4,14 +4,17 @@ import SwiftUI
 
 private let log = Logger(subsystem: "dev.dine.Dine", category: "art")
 
-/// Runs a bundled APK headless through ATL; it shows nothing, the app's output goes to the log
-/// (category `art`). ATL creates the process's only VM, so it runs before any art screen run.
+/// Runs a bundled APK through ATL in the app container; the app's output goes to the log (category
+/// `art`). ATL creates the process's only VM, so it runs before any art screen run.
 struct AtlView: View {
+    @EnvironmentObject private var navigator: Navigator
+
     var body: some View {
         List {
             Button("run demo") { run("demo_app", activity: "com/example/demo_application/MainActivity") }
             Button("run looper") { run("looper", activity: "dev/dine/looper/MainActivity") }
             Button("run dialog") { run("dialog", activity: "dev/dine/dialog/MainActivity") }
+            Button("run nav") { run("nav", activity: "dev/dine/nav/MainActivity") }
         }
         .navigationTitle("atl")
         .navigationBarTitleDisplayMode(.inline)
@@ -25,6 +28,8 @@ struct AtlView: View {
         else {
             return log.error("atl: art/, atl/ or caches dir missing")
         }
-        dine_atl_run(root, atl, caches.path, atl + "/" + apk + ".apk", activity, nil)
+        navigator.run(apk) { listener in
+            dine_atl_run(root, atl, caches.path, atl + "/" + apk + ".apk", activity, listener)
+        }
     }
 }

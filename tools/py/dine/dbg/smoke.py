@@ -15,6 +15,7 @@ class Step:
     title: str
     tap: str | None = None
     back: bool = False
+    action: str | None = None  # an accessibility custom action's name
     ok: tuple[str, ...] = ()    # regexes that must all show up in the app's syslog
     fail: tuple[str, ...] = ()  # any of these ends the step as failed
     network: bool = False
@@ -64,21 +65,35 @@ SCENARIOS = {
         ]),
         Scenario("atl-demo", [
             Step("atl", tap="atl"),
-            Step("run demo", tap="run demo", ok=("onResume", "viewtree: end"), fail=ATL_FAIL, timeout=120),
-            Step("back", back=True),
+            Step("run demo", tap="run demo", ok=("onResume", "viewtree: end", "nav: container shown demo_app"),
+                 fail=ATL_FAIL, timeout=120),
+            Step("Home", action="Home", ok=("nav: launcher root",)),
         ], uses_vm=True, needs_clean=True, check=_demo_viewtree),
         Scenario("atl-looper", [
             Step("atl", tap="atl"),
-            Step("run looper", tap="run looper", ok=("looper done", "atl main returned 0"), fail=ATL_FAIL,
-                 timeout=120),
+            Step("run looper", tap="run looper", ok=("looper done", "atl main returned 0", "nav: container dismissed exit"),
+                 fail=ATL_FAIL, timeout=120),
             Step("back", back=True),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-dialog", [
             Step("atl", tap="atl"),
             Step("run dialog", tap="run dialog", ok=("dialog: presented",), fail=ATL_FAIL, timeout=120),
             Step("Yes", tap="Yes", ok=("dialog onClick -1", "dialog: presented"), fail=ATL_FAIL),
-            Step("Green", tap="Green", ok=("dialog onClick 1", "dialog done", "atl main returned 0"), fail=ATL_FAIL),
+            Step("Green", tap="Green", ok=("dialog onClick 1", "dialog done", "nav: container dismissed exit"),
+                 fail=ATL_FAIL),
             Step("back", back=True),
+        ], uses_vm=True, needs_clean=True, alive=True),
+        Scenario("atl-nav", [
+            Step("atl", tap="atl"),
+            Step("run nav", tap="run nav", ok=("nav: B onResume", "nav: container shown nav"), fail=ATL_FAIL,
+                 timeout=120),
+            Step("Back", action="Back", ok=("nav: B onDestroy", "nav: A onResume"), fail=ATL_FAIL),
+            Step("back on the task root", back=True,
+                 ok=("nav: A onStop", "nav: container dismissed back", "nav: launcher root"), fail=ATL_FAIL),
+            Step("Recent apps", action="Recent apps", ok=("nav: apps list shown",)),
+            Step("back to app", tap="back to app", ok=("nav: A onRestart", "nav: A onResume", "nav: container shown nav"),
+                 fail=ATL_FAIL),
+            Step("Home", action="Home", ok=("nav: A onStop", "nav: launcher root"), fail=ATL_FAIL),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("art", [
             Step("art", tap="art", ok=("art probe done",)),
@@ -102,7 +117,8 @@ def listing(app: str) -> str:
         flags = [f for f, on in (("fresh process", sc.needs_clean), ("app stays up", sc.alive)) if on]
         lines.append(f"{sc.name}" + (f" ({', '.join(flags)})" if flags else ""))
         for st in sc.steps:
-            what = f"tap {st.tap!r}" if st.tap else "back" if st.back else st.title
+            what = f"tap {st.tap!r}" if st.tap else f"action {st.action!r}" if st.action else \
+                "back" if st.back else st.title
             lines.append(f"  {what}" + (f"; wait for {', '.join(st.ok)}" if st.ok else "")
                          + (" [--network]" if st.network else ""))
     return "\n".join(lines)
@@ -145,8 +161,9 @@ def run(app: str, names: list[str], network: bool, relaunch: Callable[[], int], 
                 out(f"{sc.name}: {st.title}: skipped (needs --network)")
                 continue
             t = time.monotonic()
-            if st.tap or st.back:
+            if st.tap or st.back or st.action:
                 resp = client.call("ui_tap", {"arg": st.tap}, timeout=30) if st.tap else \
+                    client.call("ui_action", {"arg": st.action}, timeout=30) if st.action else \
                     client.call("ui_back", {}, timeout=30)
                 if resp["code"]:
                     out(f"{sc.name}: {st.title}: FAILED\n{resp['text']}")

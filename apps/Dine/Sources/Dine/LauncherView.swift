@@ -2,6 +2,7 @@ import SwiftUI
 
 struct LauncherView: View {
     @ObservedObject var library: AppLibrary
+    @EnvironmentObject private var navigator: Navigator
 
     @State private var showAdd = false
     @State private var newName = ""
@@ -9,7 +10,7 @@ struct LauncherView: View {
     private let columns = Array(repeating: GridItem(.flexible()), count: 4)
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigator.path) {
             ScrollView {
                 LazyVGrid(columns: columns, spacing: 24) {
                     ForEach(library.apps) { app in
@@ -28,10 +29,10 @@ struct LauncherView: View {
             .navigationTitle("Apps")
             .toolbar {
                 ToolbarItemGroup(placement: .topBarLeading) {
-                    NavigationLink("hello++") { HelloView() }
-                    NavigationLink("probe") { ProbeView() }
-                    NavigationLink("art") { ArtView() }
-                    NavigationLink("atl") { AtlView() }
+                    NavigationLink("hello++", value: DevScreen.hello)
+                    NavigationLink("probe", value: DevScreen.probe)
+                    NavigationLink("art", value: DevScreen.art)
+                    NavigationLink("atl", value: DevScreen.atl)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -43,6 +44,15 @@ struct LauncherView: View {
                     .accessibilityLabel("Add App")
                 }
             }
+            .navigationDestination(for: DevScreen.self) { screen in
+                switch screen {
+                case .hello: HelloView()
+                case .probe: ProbeView()
+                case .art: ArtView()
+                case .atl: AtlView()
+                }
+            }
+            .onAppear { navigator.attachLauncher() }
             .alert("Add App", isPresented: $showAdd) {
                 TextField("Name", text: $newName)
                 Button("Cancel", role: .cancel) {}

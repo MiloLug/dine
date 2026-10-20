@@ -63,9 +63,9 @@ fi
 meson compile -C "$BUILD" -j "$JOBS"
 meson install -C "$BUILD" --quiet
 
-for apk in looper dialog; do
+for apk in looper dialog nav; do
   python3 "$ROOT/tests/harness/apk.py" "$ROOT/dine-atl/tests/headless/$apk" "$APKS/$apk.apk"
 done
 # ATLPaths expects gstub.jar and ghax.jar next to api-impl.jar
 install -m644 -Dt "$OUT/share/atl" "$LINUX_JARS"/{api-impl,gstub,ghax}.jar "$LINUX_JARS/framework-res.apk" \
-  "$DEMO_APK" "$APKS"/{looper,dialog}.apk
+  "$DEMO_APK" "$APKS"/{looper,dialog,nav}.apk
