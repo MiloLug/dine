@@ -4,6 +4,7 @@
 module CArtBridge [system] {
     header "../../../../native/artbridge/include/dineart.h"
     header "../../../../out/ios/include/atl/nav.h"
+    header "../../../../out/ios/include/atl/surface.h"
     link "artbridge"
     link "art"
     link "artbase"

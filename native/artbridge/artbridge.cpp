@@ -160,6 +160,7 @@ namespace {
 
 struct AtlRun {
   std::string resource_dir, atl_dir, data_dir, apk, activity;
+  dine_atl_window window;
   atl_embedded_listener listener;
 };
 
@@ -182,6 +183,11 @@ void *AtlThread(void *arg) {
       .framework_res_apk = framework_res.c_str(),
       .apk = run->apk.c_str(),
       .activity = run->activity.empty() ? nullptr : run->activity.c_str(),
+      .window_width = run->window.width,
+      .window_height = run->window.height,
+      .density_dpi = run->window.density_dpi,
+      .night = run->window.night,
+      .surface = run->window.view,
       .listener = &run->listener,
   };
   int n_options;
@@ -213,7 +219,8 @@ void *AtlThread(void *arg) {
 }  // namespace dine
 
 int dine_atl_run(const char *resource_dir, const char *atl_dir, const char *data_dir,
-                 const char *apk, const char *activity, const atl_embedded_listener *listener) {
+                 const char *apk, const char *activity, const dine_atl_window *window,
+                 const atl_embedded_listener *listener) {
   using namespace dine;
   std::lock_guard<std::mutex> lock(gLock);
   if (gAtlStarted) {
@@ -225,7 +232,7 @@ int dine_atl_run(const char *resource_dir, const char *atl_dir, const char *data
     return -1;
   }
   if (gOutput < 0) RedirectOutput();
-  auto *run = new AtlRun{resource_dir, atl_dir, data_dir, apk, activity ? activity : "",
+  auto *run = new AtlRun{resource_dir, atl_dir, data_dir, apk, activity ? activity : "", *window,
                          listener ? *listener : atl_embedded_listener{}};
   if (!StartVmThread(AtlThread, run)) {
     delete run;

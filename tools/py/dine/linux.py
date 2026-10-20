@@ -1,5 +1,5 @@
-"""Linux smoke: the gtk build runs Gravity Defied to onResume and the dialog APK; the headless build
-runs demo_app and the looper, dialog and nav APKs. Needs a prior `tools/dine linux build`."""
+"""Linux smoke: the gtk build runs Gravity Defied to onResume and the dialog and views APKs; the
+headless build runs demo_app and the looper, dialog, nav and views APKs. Needs a prior `tools/dine linux build`."""
 
 import os
 import shutil
@@ -22,6 +22,7 @@ APKS = paths.ROOT / "third_party/atl_test_apks"
 LOOPER_APK = paths.OUT / "tests/apks/looper.apk"
 DIALOG_APK = paths.OUT / "tests/apks/dialog.apk"
 NAV_APK = paths.OUT / "tests/apks/nav.apk"
+VIEWS_APK = paths.OUT / "tests/apks/views.apk"
 LOG_DIR = paths.OUT / "linux/smoke"
 GD_TIMEOUT = 120
 
@@ -37,7 +38,7 @@ class Check:
 def _need_display(check: str) -> None:
     if not (os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY")):
         raise DineError(f"{check} needs a display (WSLg sets WAYLAND_DISPLAY); headless only: "
-                        "tools/dine linux smoke demo looper dialog nav")
+                        "tools/dine linux smoke demo demo-480 looper dialog nav views")
 
 
 def _gd() -> str | None:
@@ -100,6 +101,12 @@ def _demo() -> str | None:
     return _script("run-demo.sh", HEADLESS_TESTS / "run-demo.sh", HEADLESS_BUILD, APKS / "demo_app.apk")
 
 
+def _demo_480() -> str | None:
+    _need_headless()
+    return _script("run-demo.sh", HEADLESS_TESTS / "run-demo.sh", HEADLESS_BUILD, APKS / "demo_app.apk",
+                   "--density", "480")
+
+
 def _looper() -> str | None:
     _need_headless()
     return (_script("apk.py", sys.executable, paths.ROOT / "tests/harness/apk.py", HEADLESS_TESTS / "looper", LOOPER_APK)
@@ -129,13 +136,33 @@ def _nav() -> str | None:
             or _script("run-nav.sh", HEADLESS_TESTS / "run-nav.sh", HEADLESS_BUILD, NAV_APK))
 
 
+def _views_apk() -> str | None:
+    return _script("apk.py", sys.executable, paths.ROOT / "tests/harness/apk.py", HEADLESS_TESTS / "views", VIEWS_APK)
+
+
+def _views() -> str | None:
+    _need_headless()
+    return _views_apk() or _script("run-views.sh", HEADLESS_TESTS / "run-views.sh", "--headless", HEADLESS_BUILD,
+                                   VIEWS_APK)
+
+
+def _views_gtk() -> str | None:
+    _need_display("views-gtk")
+    if not GTK_BUILD.is_dir():
+        raise DineError(f"no {GTK_BUILD}: run tools/dine linux build atl")
+    return _views_apk() or _script("run-views.sh", HEADLESS_TESTS / "run-views.sh", GTK_BUILD, VIEWS_APK)
+
+
 CHECKS = [
     Check("gd", "gtk: Gravity Defied reaches onResume under -Xint (opens a window)", _gd),
     Check("demo", "headless: demo_app reaches onResume, view tree matches the golden", _demo),
+    Check("demo-480", "headless: the same at density 480, where sp, dp and px differ", _demo_480),
     Check("looper", "headless: looper.apk goes through the loop paths and exits 0", _looper),
     Check("dialog", "headless: dialog.apk's alert and list take scripted answers, it exits 0", _dialog),
     Check("dialog-gtk", "gtk: the same through the GTK dialog's widgets (opens a window)", _dialog_gtk),
     Check("nav", "headless: nav.apk's lifecycle under Back, Home and front from cli -c", _nav),
+    Check("views", "headless: views.apk removes, re-adds and frees views, view tree matches the golden", _views),
+    Check("views-gtk", "gtk: the same removals and frees through GTK's widgets (opens a window)", _views_gtk),
 ]
 
 

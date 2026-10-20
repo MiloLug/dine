@@ -19,6 +19,7 @@ struct AtlView: View {
                 tile("looper", activity: "dev/dine/looper/MainActivity")
                 tile("dialog", activity: "dev/dine/dialog/MainActivity")
                 tile("nav", activity: "dev/dine/nav/MainActivity")
+                tile("views", activity: "dev/dine/views/MainActivity")
             }
             .padding()
         }
@@ -40,8 +41,8 @@ struct AtlView: View {
         else {
             return log.error("atl: art/, atl/, dev/\(apk, privacy: .public).apk or caches dir missing")
         }
-        navigator.run(apk) { listener in
-            dine_atl_run(root, atl, caches.path, path, activity, listener)
+        navigator.run(apk) { window, listener in
+            dine_atl_run(root, atl, caches.path, path, activity, window, listener)
         }
     }
 }

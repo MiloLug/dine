@@ -43,7 +43,7 @@ symbols, ATL build, and a verification checklist.
 | `tools/dine ios tunnel start\|status` | iOS 17+ developer services: `dine-tunneld` runs from boot; `start` starts it if stopped (sudo), waits for the tunnel and mounts the DDI (after a phone reboot) |
 | `tools/dine ios build-native [lib…]` | `native/*`, plus `native/dev/*` unless `DINE_RELEASE=1` → `out/ios/{lib,include}` (`DINE_IOS_BUILD_TYPE`, default `RelWithDebInfo`) |
 | `tools/dine ios build-art` | dine-art (ART, libcore natives, androidfw) plus ICU, lz4, liblzma, wolfSSL → static archives in `out/ios/lib`, boot jars → `out/ios/share/art` (ART's junit jars → `out/ios/share/art-junit`, bundled by dev builds only) |
-| `tools/dine ios build-atl` | dine-atl's uikit build (meson cross) → `out/ios/lib/libtranslation_layer_main.a`; its jars → `out/ios/share/atl`; the looper, dialog and nav test APKs → `out/tests/apks`; needs `linux build atl` first |
+| `tools/dine ios build-atl` | dine-atl's uikit build (meson cross) → `out/ios/lib/libtranslation_layer_main.a`; its jars → `out/ios/share/atl`; the looper, dialog, nav and views test APKs → `out/tests/apks`; needs `linux build atl` first |
 | `tools/dine ios run [App]` | kill a running instance → native libs → dev payload (test APKs and jars → `out/ios/dev`) → asset catalog (accord → `out/ios/assets/<App>`) → `xtool dev` (build/sign/install) → launch via DVT. `DINE_RELEASE=1` (after `DINE_RELEASE=1 tools/dine ios build-atl`): a release build without dev or test code (CLAUDE.md) |
 | `tools/dine ios icons` | `apps/Dine/Resources/Icons.xcassets` from its `sources.txt`: copies the listed icons from the pack's clone |
 | `tools/dine ios launch [--suspended] [App]` | (re)launch via DVT, print the pid |
@@ -54,7 +54,7 @@ symbols, ATL build, and a verification checklist.
 | `tools/dine ios lldb-offline [App] <bp> [-- lldb args]` | same lldb setup on a synthetic core, no phone |
 | `tools/dine dbg …` | the debug server: see [Debug server](#debug-server) |
 | `tools/dine linux build [stage…]` | bionic_translation → dine-art → libopensles → dine-atl → `out/linux/prefix`, then headless dine-atl in `out/linux/build/dine-atl-headless` |
-| `tools/dine linux smoke [check…] [--list]` | gtk ATL runs Gravity Defied to `onResume`; headless ATL runs demo_app and looper.apk (after `linux build`) |
+| `tools/dine linux smoke [check…] [--list]` | gtk ATL runs Gravity Defied to `onResume` and the dialog and views APKs; headless ATL runs demo_app (also at 480 dpi) and the looper, dialog, nav and views APKs (after `linux build`) |
 | `tools/dine test runtime [-- harness args]` | ART run-tests on the local `dalvikvm -Xint` (suite `dine-art/tests/runtime`, engine `tests/harness`) |
 | `tools/dine test unit` | unit tests of `tests/harness` and `tools/py` |
 
@@ -218,7 +218,7 @@ apps/<App>/xtool/<App>.app/<App>` (local Mach-O + debug info) → `target.sdk-pa
 
 ```sh
 tools/dine linux build                  # all stages; or: bionic art opensles atl atl-headless
-tools/dine linux smoke                  # gd, demo, looper: one line each, then "smoke passed: …"
+tools/dine linux smoke                  # gd, demo, demo-480, looper, dialog, dialog-gtk, nav, views, views-gtk: one line each
 source env.sh                           # PATH + LD_LIBRARY_PATH for out/linux/prefix
 ANDROID_APP_DATA_DIR=$PWD/out/linux/appdata \
   android-translation-layer third_party/atl_test_apks/org.happysanta.gd_29.apk \

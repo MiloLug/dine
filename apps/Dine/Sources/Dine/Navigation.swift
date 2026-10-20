@@ -12,6 +12,7 @@ final class Navigator: ObservableObject {
     @Published var path = NavigationPath()
 
     private var app: String?  // while ATL runs it
+    private var surface: (view: AppSurfaceView, size: CGSize)?  // ATL's window, while ATL runs
     private var container: AppContainerController?
     private var appsList: AppsListController?
     private var listReturnsToApp = false
@@ -31,10 +32,34 @@ final class Navigator: ObservableObject {
         }
     }
 
-    /// `start` runs ATL with the listener; on success the app's container comes up.
-    func run(_ app: String, start: (UnsafePointer<atl_embedded_listener>) -> Int32) {
-        guard withUnsafePointer(to: listener, start) == 0 else { return }
+    /// `start` runs ATL with the app's window and the listener; on success the app's container
+    /// comes up.
+    func run(_ app: String, start: (UnsafePointer<dine_atl_window>, UnsafePointer<atl_embedded_listener>) -> Int32) {
+        guard let keyWindow = rootController?.view.window else {
+            return log.error("atl: no key window to size the app's window from")
+        }
+        // below the status bar to the screen's bottom, under the home indicator: ATL doesn't
+        // dispatch insets yet, so content would sit under the clock and the notch
+        let safeArea = keyWindow.safeAreaLayoutGuide.layoutFrame
+        let size = CGSize(width: safeArea.width, height: keyWindow.bounds.maxY - safeArea.minY)
+        let traits = keyWindow.traitCollection
+        let scale = traits.displayScale
+        let view = AppSurfaceView()
+        let night: Int32 = switch traits.userInterfaceStyle {
+        case .dark: 0x20  // Configuration.UI_MODE_NIGHT_YES
+        case .light: 0x10
+        default: 0
+        }
+        let window = dine_atl_window(view: Unmanaged.passUnretained(view).toOpaque(),
+                                     width: Int32((size.width * scale).rounded(.down)),
+                                     height: Int32((size.height * scale).rounded(.down)),
+                                     density_dpi: Int32((160 * scale).rounded()), night: night)
+        let started = withUnsafePointer(to: window) { window in
+            withUnsafePointer(to: listener) { start(window, $0) }
+        }
+        guard started == 0 else { return }
         self.app = app
+        surface = (view, CGSize(width: CGFloat(window.width) / scale, height: CGFloat(window.height) / scale))
         showContainer()
     }
 
@@ -132,8 +157,8 @@ final class Navigator: ObservableObject {
     }
 
     private func showContainer() {
-        guard let app, container == nil else { return }
-        let controller = AppContainerController(app: app, navigator: self)
+        guard let app, let surface, container == nil else { return }
+        let controller = AppContainerController(surface: surface.view, size: surface.size, navigator: self)
         container = controller
         log.notice("nav: container shown \(app, privacy: .public)")
         afterTransitions { [self] in
@@ -173,19 +198,37 @@ final class Navigator: ObservableObject {
 
     private func exited() {
         app = nil
+        surface = nil
         dismissContainer("exit")
     }
 }
 
-/// The Android app's screen, presented over the launcher. The uikit window joins it in M3; until
-/// then it is a placeholder.
+/// ATL's window, with the frame its shown activity asks for: the status bar's color (nil: Dine's
+/// own) and whether it is light.
+final class AppSurfaceView: UIView, ATLSurface {
+    private(set) var frameColor: UIColor?
+    private(set) var lightFrame = false
+    var frameChanged: (@MainActor () -> Void)?
+
+    func atlFrameChanged(_ color: UIColor?, light: Bool) {
+        frameColor = color
+        lightFrame = light
+        frameChanged?()
+    }
+}
+
+/// The Android app's screen, presented over the launcher: ATL's window at the top left of the
+/// safe area, at the size ATL was given, and its frame color behind the status bar.
 final class AppContainerController: UIViewController {
-    private let app: String
+    private let surface: AppSurfaceView
+    private let statusBar = UIView()
+    private let size: CGSize
     private unowned let navigator: Navigator
     private var edges: EdgeGestureRecognizer?
 
-    init(app: String, navigator: Navigator) {
-        self.app = app
+    init(surface: AppSurfaceView, size: CGSize, navigator: Navigator) {
+        self.surface = surface
+        self.size = size
         self.navigator = navigator
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .fullScreen
@@ -203,16 +246,21 @@ final class AppContainerController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
-        let label = UILabel()
-        label.text = "\(app)\nrunning headless"
-        label.numberOfLines = 0
-        label.textAlignment = .center
-        label.textColor = .secondaryLabel
-        label.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(label)
+        surface.frameChanged = { [weak self] in self?.matchFrame() }
+        matchFrame()
+        surface.translatesAutoresizingMaskIntoConstraints = false
+        statusBar.translatesAutoresizingMaskIntoConstraints = false
+        view.insertSubview(surface, at: 0)
+        view.insertSubview(statusBar, at: 0)
         NSLayoutConstraint.activate([
-            label.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            label.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            statusBar.topAnchor.constraint(equalTo: view.topAnchor),
+            statusBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            statusBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            statusBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            surface.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            surface.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            surface.widthAnchor.constraint(equalToConstant: size.width),
+            surface.heightAnchor.constraint(equalToConstant: size.height),
         ])
         let navigator = navigator
         edges = EdgeGestureRecognizer(on: view, allows: { _ in true }, perform: { navigator.perform($0) })
@@ -225,6 +273,16 @@ final class AppContainerController: UIViewController {
                 return true
             },
         ]
+    }
+
+    override var preferredStatusBarStyle: UIStatusBarStyle {
+        guard surface.frameColor != nil else { return .default }
+        return surface.lightFrame ? .darkContent : .lightContent
+    }
+
+    private func matchFrame() {
+        statusBar.backgroundColor = surface.frameColor
+        setNeedsStatusBarAppearanceUpdate()
     }
 }
 

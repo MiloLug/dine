@@ -1,6 +1,7 @@
 """`dine dbg smoke`: an app's smoke checks as one deterministic run through the debug server. These
 tables are what "smoke" means; docs point here instead of listing the steps."""
 
+import re
 import time
 from dataclasses import dataclass
 from typing import Callable
@@ -17,6 +18,7 @@ class Step:
     back: bool = False
     action: str | None = None  # an accessibility custom action's name
     ok: tuple[str, ...] = ()    # regexes that must all show up in the app's syslog
+    ui: tuple[str, ...] = ()    # accessibility labels that must all show up, after ok
     fail: tuple[str, ...] = ()  # any of these ends the step as failed
     network: bool = False
     timeout: float = 60
@@ -32,14 +34,67 @@ class Scenario:
     alive: bool = False     # the app must still run afterwards
 
 
+_VIEWTREE_LINE = re.compile(r'viewtree: ( *)(\S+) (-?\d+),(-?\d+) (\d+)x(\d+)( ".*")?$')
+
+
+@dataclass
+class _Node:
+    depth: int
+    name: str
+    x: int
+    y: int
+    w: int
+    h: int
+    text: str | None
+    prev: "_Node | None" = None  # the previous sibling
+
+
+def _viewtree(lines: list[str]) -> list[_Node] | None:
+    nodes: list[_Node] = []
+    for line in lines[:-1]:
+        m = _VIEWTREE_LINE.match(line)
+        if not m:
+            return None
+        node = _Node(len(m[1]) // 2, m[2], int(m[3]), int(m[4]), int(m[5]), int(m[6]), m[7])
+        node.prev = next((n for n in reversed(nodes) if n.depth <= node.depth), None)
+        if node.prev and node.prev.depth != node.depth:
+            node.prev = None
+        nodes.append(node)
+    return nodes
+
+
+def _shape_problem(got: _Node, want: _Node, root: tuple[_Node, _Node]) -> str | None:
+    if (got.depth, got.name, got.text) != (want.depth, want.name, want.text):
+        return "another view"
+    if got.x != want.x:
+        return "another x"
+    if want.y == 0 and got.y != 0:
+        return "y not 0"
+    if want.prev and want.y == want.prev.y + want.prev.h and got.y != got.prev.y + got.prev.h:
+        return "not below its previous sibling"
+    if want.text is not None and (got.w <= 0 or got.h <= 0):
+        return "empty text"
+    if want.text is None and (want.w, want.h) == (root[1].w, root[1].h) and (got.w, got.h) != (root[0].w, root[0].h):
+        return "doesn't fill the window"
+    return None
+
+
 def viewtree_problem(log: str, golden: str) -> str | None:
-    """`viewtree:` lines of a `log grep --text` listing against the Linux golden file's."""
-    got = [line.rstrip() for line in log.splitlines() if line.startswith("viewtree:")]
-    want = [line.rstrip() for line in golden.splitlines()]
-    if got == want:
+    """`viewtree:` lines of a `log grep --text` listing against the Linux golden file's: their shape
+    (`_shape_problem`), since window and text sizes differ on the phone."""
+    got_lines = [line.rstrip() for line in log.splitlines() if line.startswith("viewtree:")]
+    want_lines = [line.rstrip() for line in golden.splitlines()]
+    got, want = _viewtree(got_lines), _viewtree(want_lines)
+    problem = None
+    if got is None or want is None or got_lines[-1:] != ["viewtree: end"] or len(got) != len(want) or not want:
+        problem = "another tree"
+    else:
+        problem = next((f"line {i + 1}: {p}" for i, (g, w) in enumerate(zip(got, want))
+                        if (p := _shape_problem(g, w, (got[0], want[0])))), None)
+    if not problem:
         return None
-    return "viewtree differs from the Linux golden:\n  got:  " + "\n        ".join(got) + \
-        "\n  want: " + "\n        ".join(want)
+    return f"viewtree differs from the Linux golden ({problem}):\n  got:  " + "\n        ".join(got_lines) + \
+        "\n  want: " + "\n        ".join(want_lines)
 
 
 def _demo_viewtree(since: int) -> str | None:
@@ -67,13 +122,21 @@ SCENARIOS = {
         Scenario("atl-demo", [
             Step("atl", tap="atl"),
             Step("run demo", tap="demo_app", ok=("onResume", "viewtree: end", "nav: container shown demo_app"),
-                 fail=ATL_FAIL, timeout=120),
+                 ui=("hello PoC world!", "second one (static)"), fail=ATL_FAIL, timeout=120),
             Step("Home", action="Home", ok=("nav: launcher root",)),
         ], uses_vm=True, needs_clean=True, check=_demo_viewtree),
         Scenario("atl-looper", [
             Step("atl", tap="atl"),
             Step("run looper", tap="looper", ok=("looper done", "atl main returned 0", "nav: container dismissed exit"),
                  fail=ATL_FAIL, timeout=120),
+            Step("back", back=True),
+        ], uses_vm=True, needs_clean=True, alive=True),
+        Scenario("atl-views", [
+            Step("atl", tap="atl"),
+            # c was laid out before its free; a layout pass after it walks the records without it
+            Step("run views", tap="views", ok=('viewfreed: android.widget.TextView "c"', "views done",
+                                               "atl main returned 0", "nav: container dismissed exit"),
+                 fail=ATL_FAIL + ("native_1destructor", "native_1removeView"), timeout=120),
             Step("back", back=True),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-dialog", [
@@ -133,6 +196,7 @@ def listing(app: str) -> str:
             what = f"tap {st.tap!r}" if st.tap else f"action {st.action!r}" if st.action else \
                 "back" if st.back else st.title
             lines.append(f"  {what}" + (f"; wait for {', '.join(st.ok)}" if st.ok else "")
+                         + (f"; shows {', '.join(map(repr, st.ui))}" if st.ui else "")
                          + (" [--network]" if st.network else ""))
     return "\n".join(lines)
 
@@ -187,6 +251,11 @@ def run(app: str, names: list[str], network: bool, relaunch: Callable[[], int], 
                 if resp["code"] or hit:
                     out(f"{sc.name}: {st.title}: FAILED" + (f" ({hit})" if hit else f" waiting for {ok!r}")
                         + f"\n{resp['text']}")
+                    return 1
+            for label in st.ui:
+                resp = client.call("wait", {"ui": [label]}, timeout=st.timeout)
+                if resp["code"]:
+                    out(f"{sc.name}: {st.title}: FAILED waiting for {label!r} on screen\n{resp['text']}")
                     return 1
             out(f"{sc.name}: {st.title}: ok ({time.monotonic() - t:.1f} s)")
         problem = sc.check(start) if sc.check else None

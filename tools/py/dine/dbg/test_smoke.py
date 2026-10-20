@@ -4,7 +4,20 @@ import unittest
 from dine.dbg import smoke
 from dine.dbg.targets.ios import parked_in_kernel
 
-GOLDEN = "viewtree: a\nviewtree:   b\nviewtree: end\n"
+GOLDEN = """viewtree: android.widget.FrameLayout 0,0 960x540
+viewtree:   android.widget.LinearLayout 0,0 960x540
+viewtree:     android.widget.TextView 0,0 135x17 "hello PoC world!"
+viewtree:     android.widget.TextView 0,17 160x17 "second one (static)"
+viewtree: end
+"""
+PHONE = """since launch #3
+5 matches
+viewtree: android.widget.FrameLayout 0,0 1170x2391
+viewtree:   android.widget.LinearLayout 0,0 1170x2391 
+viewtree:     android.widget.TextView 0,0 351x51 "hello PoC world!"
+viewtree:     android.widget.TextView 0,51 402x51 "second one (static)"
+viewtree: end
+cursor 40"""
 
 
 class SmokeTableTest(unittest.TestCase):
@@ -34,10 +47,21 @@ class SmokeTableTest(unittest.TestCase):
         self.assertIsNone(re.search(fail[1], "atl main returned 0"))
         self.assertIsNotNone(re.search(fail[1], "atl main returned -1"))
 
-    def test_viewtree_against_golden(self):
-        log = "since launch #3\n3 matches\nviewtree: a\nviewtree:   b \nviewtree: end\ncursor 40"
-        self.assertIsNone(smoke.viewtree_problem(log, GOLDEN))
-        self.assertIn("differs", smoke.viewtree_problem("viewtree: a\nviewtree: end", GOLDEN))
+    def test_viewtree_shape_against_golden(self):
+        self.assertIsNone(smoke.viewtree_problem(GOLDEN, GOLDEN))
+        self.assertIsNone(smoke.viewtree_problem(PHONE, GOLDEN))
+        cases = [
+            ("another tree", PHONE.replace('viewtree:     android.widget.TextView 0,51 402x51 "second one (static)"\n', "")),
+            ("line 3: another view", PHONE.replace("hello PoC", "hello")),
+            ("line 3: another x", PHONE.replace("0,0 351x51", "4,0 351x51")),
+            ("line 4: not below its previous sibling", PHONE.replace("0,51 402x51", "0,50 402x51")),
+            ("line 2: doesn't fill the window", PHONE.replace("0,0 1170x2391 ", "0,0 1170x2000")),
+            ("line 3: empty text", PHONE.replace("351x51", "0x51")),
+            ("another tree", PHONE.replace("viewtree: end", "")),
+        ]
+        for problem, log in cases:
+            with self.subTest(problem):
+                self.assertIn(f"({problem})", smoke.viewtree_problem(log, GOLDEN) or "")
 
 
 class ExecGuardTest(unittest.TestCase):

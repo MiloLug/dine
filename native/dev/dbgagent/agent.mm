@@ -93,11 +93,21 @@ bool Transitioning(UIViewController *vc) {
   return Transitioning(vc.presentedViewController);
 }
 
-// Up from the walked elements through containers and responders; a navigation controller pops. Content
-// comes last in the walk (the nav bar is a sibling above it), so start there.
+// Where back and action climb from: the walked elements, last first (content comes last in the walk,
+// the nav bar is a sibling above it), then the presented controllers' views, top first, for screens
+// without labels (an alert's chain skips the view it is presented over).
+NSArray *ClimbStarts() {
+  NSMutableArray *starts = [gItems.reverseObjectEnumerator.allObjects mutableCopy];
+  NSUInteger end = starts.count;
+  for (UIViewController *vc = KeyWindow().rootViewController; vc; vc = vc.presentedViewController)
+    if (vc.view) [starts insertObject:vc.view atIndex:end];
+  return starts;
+}
+
+// Up through containers and responders; a navigation controller pops.
 id Escape() {
-  for (NSInteger i = (NSInteger)gItems.count - 1; i >= 0; i--) {
-    id c = gItems[i];
+  for (id start in ClimbStarts()) {
+    id c = start;
     for (int k = 0; c && k < 40; k++) {
       id up = nil;
       @try {
@@ -112,8 +122,8 @@ id Escape() {
 }
 
 id RunAction(NSString *name) {
-  for (NSInteger i = (NSInteger)gItems.count - 1; i >= 0; i--) {
-    id c = gItems[i];
+  for (id start in ClimbStarts()) {
+    id c = start;
     for (int k = 0; c && k < 40; k++) {
       id up = nil;
       @try {

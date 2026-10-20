@@ -69,7 +69,7 @@ meson compile -C "$BUILD" -j "$JOBS"
 meson install -C "$BUILD" --quiet
 
 if [[ $hooks == true ]]; then
-  for apk in looper dialog nav; do
+  for apk in looper dialog nav views; do
     python3 "$ROOT/tests/harness/apk.py" "$ROOT/dine-atl/tests/headless/$apk" "$APKS/$apk.apk"
   done
 fi
