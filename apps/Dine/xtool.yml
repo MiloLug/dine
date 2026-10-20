@@ -6,6 +6,7 @@ resources:
   - ../../out/ios/assets/Dine/Assets.car
   - ../../out/ios/assets/Dine/AppIcon60x60@2x.png
   - ../../out/ios/assets/Dine/AppIcon76x76@2x~ipad.png
+  - ../../out/ios/assets/Dine/licenses
   - ../../out/ios/share/art
   - ../../out/ios/share/atl
   # tools/libexec/build-ios-dev.sh: test APKs and jars in dev builds, empty with DINE_RELEASE=1

@@ -38,6 +38,10 @@ def _ios(sub):
                                        "DINE_RELEASE=1: no test hooks or APKs")
     t.set_defaults(func=lambda a: ios.run_libexec("build-ios-atl.sh"))
 
+    t = s.add_parser("icons", help="apps/Dine/Resources/Icons.xcassets from its sources.txt and the icon pack's "
+                                   "clone in third_party")
+    t.set_defaults(func=lambda a: ios.run_libexec("sync-ios-icons.sh"))
+
     t = s.add_parser("run", help="build-native + dev payload + build-assets + xtool dev (build/sign/install) + launch; "
                                  "kills a running instance first. DINE_RELEASE=1: release build, no dev or test code")
     t.add_argument("app", nargs="?", default="Dine")

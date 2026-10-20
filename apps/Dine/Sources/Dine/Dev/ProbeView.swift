@@ -20,10 +20,6 @@ struct ProbeView: View {
                     Color("ProbeColor").frame(width: 32, height: 32)
                 }
             }
-            Section("Alternate icon") {
-                Button("Use classic icon") { setIcon("AppIconClassic") }
-                Button("Use default icon") { setIcon(nil) }
-            }
             Section("Checks") {
                 ForEach(lines, id: \.self) { Text($0).font(.caption.monospaced()) }
             }
@@ -38,6 +34,8 @@ struct ProbeView: View {
         image("ProbeGlyph", size: CGSize(width: 32, height: 32), at: CGPoint(x: 16, y: 16), rgb: [61, 220, 132])
         image("ProbeVector", size: CGSize(width: 24, height: 24), at: CGPoint(x: 12, y: 16), rgb: [140, 26, 64])
         image("ProbeBadge", size: CGSize(width: 30, height: 30), at: CGPoint(x: 15, y: 15), rgb: [61, 219, 133])
+        // Icons.xcassets; draw(at:) renders it black. (7, 24) is on the window frame's left edge.
+        image("DefaultApp", size: CGSize(width: 48, height: 48), at: CGPoint(x: 7, y: 24), rgb: [0, 0, 0])
         wide("ProbeWide")
         // An AppIcon.icon layer (gray + alpha): the star's centre, right arm and lower arm.
         for (i, at) in [CGPoint(x: 770, y: 230), CGPoint(x: 810, y: 230), CGPoint(x: 770, y: 270)].enumerated() {
@@ -51,9 +49,7 @@ struct ProbeView: View {
         let icons = Bundle.main.object(forInfoDictionaryKey: "CFBundleIcons") as? [String: Any]
         let primary = icons?["CFBundlePrimaryIcon"] as? [String: Any]
         report(primary?["CFBundleIconName"] as? String == "AppIcon", "plist CFBundleIcons",
-               "primary=\(primary?["CFBundleIconName"] ?? "nil") alternates=\((icons?["CFBundleAlternateIcons"] as? [String: Any])?.keys.sorted() ?? [])")
-        report(UIApplication.shared.supportsAlternateIcons, "app alternate-icons",
-               "current=\(UIApplication.shared.alternateIconName ?? "default")")
+               "primary=\(primary?["CFBundleIconName"] ?? "nil")")
         let fails = lines.filter { $0.contains(" FAIL") }.count
         log.notice("probe done \(lines.count - fails, privacy: .public) ok \(fails, privacy: .public) fail")
     }
@@ -91,17 +87,6 @@ struct ProbeView: View {
         let near = { (a: [Int], b: [Int]) in zip(a, b).allSatisfy { abs($0 - $1) <= 2 } }
         let ok = light.map { near(l, $0) && near(d, dark!) } ?? (l != d)
         report(ok, "color \(name)", "light=\(l) dark=\(d)")
-    }
-
-    private func setIcon(_ name: String?) {
-        Task {
-            do {
-                try await UIApplication.shared.setAlternateIconName(name)
-                report(true, "alt-icon \(name ?? "default")", "set")
-            } catch {
-                report(false, "alt-icon \(name ?? "default")", "\(error)")
-            }
-        }
     }
 
     private func report(_ ok: Bool, _ what: String, _ detail: String) {

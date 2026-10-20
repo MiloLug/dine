@@ -14,7 +14,7 @@ struct LauncherView: View {
             ScrollView {
                 LazyVGrid(columns: columns, spacing: 24) {
                     ForEach(library.apps) { app in
-                        AppIconView(app: app)
+                        AppIconView(name: app.name)
                     }
                 }
                 .padding()

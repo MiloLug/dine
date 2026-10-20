@@ -66,19 +66,19 @@ SCENARIOS = {
         ]),
         Scenario("atl-demo", [
             Step("atl", tap="atl"),
-            Step("run demo", tap="run demo", ok=("onResume", "viewtree: end", "nav: container shown demo_app"),
+            Step("run demo", tap="demo_app", ok=("onResume", "viewtree: end", "nav: container shown demo_app"),
                  fail=ATL_FAIL, timeout=120),
             Step("Home", action="Home", ok=("nav: launcher root",)),
         ], uses_vm=True, needs_clean=True, check=_demo_viewtree),
         Scenario("atl-looper", [
             Step("atl", tap="atl"),
-            Step("run looper", tap="run looper", ok=("looper done", "atl main returned 0", "nav: container dismissed exit"),
+            Step("run looper", tap="looper", ok=("looper done", "atl main returned 0", "nav: container dismissed exit"),
                  fail=ATL_FAIL, timeout=120),
             Step("back", back=True),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-dialog", [
             Step("atl", tap="atl"),
-            Step("run dialog", tap="run dialog", ok=("dialog: presented",), fail=ATL_FAIL, timeout=120),
+            Step("run dialog", tap="dialog", ok=("dialog: presented",), fail=ATL_FAIL, timeout=120),
             Step("Yes", tap="Yes", ok=("dialog onClick -1", "dialog: presented"), fail=ATL_FAIL),
             Step("Green", tap="Green", ok=("dialog onClick 1", "dialog done", "nav: container dismissed exit"),
                  fail=ATL_FAIL),
@@ -86,7 +86,7 @@ SCENARIOS = {
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-nav", [
             Step("atl", tap="atl"),
-            Step("run nav", tap="run nav", ok=("nav: B onResume", "nav: container shown nav"), fail=ATL_FAIL,
+            Step("run nav", tap="nav", ok=("nav: B onResume", "nav: container shown nav"), fail=ATL_FAIL,
                  timeout=120),
             Step("Back", action="Back", ok=("nav: B onDestroy", "nav: A onResume"), fail=ATL_FAIL),
             Step("back on the task root", back=True,

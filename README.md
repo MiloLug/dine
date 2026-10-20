@@ -28,9 +28,9 @@ symbols, ATL build, and a verification checklist.
 | `tools/systemd/dine-tunneld.service` | `pymobiledevice3 remote tunneld` (iOS 17+ developer services) |
 | `tools/cmake/ios.toolchain.cmake` | clang cross-compile → `arm64-apple-ios` with xtool's SDK |
 | `native/dev/` | libs only dev builds link: the debug agent, `hello` (C++ static lib smoke test), `runtimetests` |
-| `apps/Dine` | xtool SwiftUI app: launcher grid (SQLite); dev builds add `Sources/Dine/Dev/`: a hello++ screen linking `native/dev/hello`, a probe screen for the asset catalog (`Resources/`: `AppIcon.icon`, `Assets.xcassets`, dev-only `Dev.xcassets`), art and atl run screens |
+| `apps/Dine` | xtool SwiftUI app: launcher grid (SQLite); dev builds add `Sources/Dine/Dev/`: a hello++ screen linking `native/dev/hello`, a probe screen for the asset catalogs (`Resources/`: `AppIcon.icon`, `Assets.xcassets`, `Icons.xcassets` from the icon pack, dev-only `Dev.xcassets`), art and atl run screens |
 | `../dine-accord` | sibling repo: accord, an `actool` for Linux; compiles `apps/<App>/Resources` into `Assets.car` + icon plist keys |
-| `third_party/` | upstream clones: bionic_translation, libopensles, atl_test_apks (gitignored) |
+| `third_party/` | upstream clones (gitignored): bionic_translation, libopensles, atl_test_apks (Linux); lz4, xz, icu, wolfssl (iOS deps); fluentui-system-icons (the icon pack) |
 | `dine-art/` | submodule: our fork of art_standalone (ART + libcore), branch `dine` |
 | `dine-atl/` | submodule: our fork of android_translation_layer, branch `dine` |
 | `tools/bin/d8` | build-tools d8 on JDK 21 (on `PATH` via `env.sh`), used by the ART/ATL build and the tests |
@@ -45,6 +45,7 @@ symbols, ATL build, and a verification checklist.
 | `tools/dine ios build-art` | dine-art (ART, libcore natives, androidfw) plus ICU, lz4, liblzma, wolfSSL → static archives in `out/ios/lib`, boot jars → `out/ios/share/art` (ART's junit jars → `out/ios/share/art-junit`, bundled by dev builds only) |
 | `tools/dine ios build-atl` | dine-atl's uikit build (meson cross) → `out/ios/lib/libtranslation_layer_main.a`; its jars → `out/ios/share/atl`; the looper, dialog and nav test APKs → `out/tests/apks`; needs `linux build atl` first |
 | `tools/dine ios run [App]` | kill a running instance → native libs → dev payload (test APKs and jars → `out/ios/dev`) → asset catalog (accord → `out/ios/assets/<App>`) → `xtool dev` (build/sign/install) → launch via DVT. `DINE_RELEASE=1` (after `DINE_RELEASE=1 tools/dine ios build-atl`): a release build without dev or test code (CLAUDE.md) |
+| `tools/dine ios icons` | `apps/Dine/Resources/Icons.xcassets` from its `sources.txt`: copies the listed icons from the pack's clone |
 | `tools/dine ios launch [--suspended] [App]` | (re)launch via DVT, print the pid |
 | `tools/dine ios ps [App] [--all]`, `tools/dine ios kill <App\|pid>` | device processes |
 | `tools/dine ios logs [App]` | live syslog to the terminal |

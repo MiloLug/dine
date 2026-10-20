@@ -287,6 +287,16 @@ tools/dine ios build-atl              # dine-atl uikit → out/ios/lib, its jars
 - iOS links use xtool's `ld64.lld` (`DINE_IOS_TOOLSET_BIN` in `env.sh`): the system one rejects
   the SDK's `.tbd` stubs.
 
+### Icon pack
+
+`Icons.xcassets` copies its icons from Fluent UI System Icons. Clone it only to add or change an
+icon with `tools/dine ios icons`; builds use the committed copies.
+
+```sh
+git clone --depth 1 --branch 1.1.344 --filter=blob:none --sparse https://github.com/microsoft/fluentui-system-icons.git third_party/fluentui-system-icons
+git -C third_party/fluentui-system-icons sparse-checkout set --no-cone '/*' '!/*/' '/assets/*/SVG/'   # SVGs only, ~150 MB
+```
+
 ## 10. Verify
 
 ```sh

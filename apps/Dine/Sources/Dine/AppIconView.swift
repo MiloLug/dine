@@ -1,7 +1,8 @@
 import SwiftUI
 
+/// Apps have no icon of their own until APK import: the default glyph on a colour from the name.
 struct AppIconView: View {
-    let app: DineApp
+    let name: String
 
     private static let size: CGFloat = 60
 
@@ -13,12 +14,15 @@ struct AppIconView: View {
                     startPoint: .top, endPoint: .bottom))
                 .frame(width: Self.size, height: Self.size)
                 .overlay {
-                    Text(app.name.prefix(1).uppercased())
-                        .font(.system(size: 28, weight: .semibold))
+                    Image(decorative: "DefaultApp")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: Self.size * 0.55)
                         .foregroundStyle(.white)
                 }
                 .shadow(color: .black.opacity(0.15), radius: 3, y: 1)
-            Text(app.name)
+            Text(name)
                 .font(.system(size: 12))
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -33,7 +37,7 @@ struct AppIconView: View {
     /// Stable per name (FNV-1a); `hashValue` is reseeded every launch.
     private var hue: Double {
         var hash: UInt32 = 2_166_136_261
-        for byte in app.name.utf8 {
+        for byte in name.utf8 {
             hash = (hash ^ UInt32(byte)) &* 16_777_619
         }
         return Double(hash % 360) / 360

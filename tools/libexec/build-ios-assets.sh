@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # accord: apps/<App>/Resources/{*.icon,*.xcassets} -> out/ios/assets/<App>, which xtool.yml lists.
-# Dev.xcassets holds the dev screens' assets; DINE_RELEASE=1 leaves it out.
+# Dev.xcassets holds the dev screens' assets; DINE_RELEASE=1 leaves it out. A catalog's LICENSE
+# (third-party icons) goes to licenses/<catalog>.txt: Assets.car can't carry it.
 # Usage: tools/libexec/build-ios-assets.sh <App>
 set -euo pipefail
 
@@ -25,6 +26,13 @@ done
 # UIDeviceFamily is iPhone and iPad.
 "$DINE_ACCORD/target/release/accord" --compile "$out" --platform iphoneos \
   --minimum-deployment-target "$DINE_IOS_MIN" --app-icon AppIcon --accent-color AccentColor \
-  --include-all-app-icons --target-device iphone --target-device ipad \
+  --target-device iphone --target-device ipad \
   --output-partial-info-plist "$out/Info.plist" --output-format human-readable-text \
   "$res"/*.icon "${catalogs[@]}"
+mkdir "$out/licenses"
+for catalog in "${catalogs[@]}"; do
+  name=${catalog##*/}
+  if [[ -f $catalog/LICENSE ]]; then
+    install -m644 "$catalog/LICENSE" "$out/licenses/${name%.xcassets}.txt"
+  fi
+done

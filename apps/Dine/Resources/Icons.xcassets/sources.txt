@@ -1,0 +1,5 @@
+# The catalog's imagesets come from these lines: `tools/dine ios icons` regenerates them, so edit
+# here. `pack` names the icon pack's clone in third_party (docs/first-run.md); each other line is
+# an imageset name and the pack file it copies. Use an SF Symbol instead where iOS has one.
+pack fluentui-system-icons
+DefaultApp assets/App Generic/SVG/ic_fluent_app_generic_48_filled.svg

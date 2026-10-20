@@ -10,15 +10,25 @@ private let log = Logger(subsystem: "dev.dine.Dine", category: "art")
 struct AtlView: View {
     @EnvironmentObject private var navigator: Navigator
 
+    private let columns = Array(repeating: GridItem(.flexible()), count: 4)
+
     var body: some View {
-        List {
-            Button("run demo") { run("demo_app", activity: "com/example/demo_application/MainActivity") }
-            Button("run looper") { run("looper", activity: "dev/dine/looper/MainActivity") }
-            Button("run dialog") { run("dialog", activity: "dev/dine/dialog/MainActivity") }
-            Button("run nav") { run("nav", activity: "dev/dine/nav/MainActivity") }
+        ScrollView {
+            LazyVGrid(columns: columns, spacing: 24) {
+                tile("demo_app", activity: "com/example/demo_application/MainActivity")
+                tile("looper", activity: "dev/dine/looper/MainActivity")
+                tile("dialog", activity: "dev/dine/dialog/MainActivity")
+                tile("nav", activity: "dev/dine/nav/MainActivity")
+            }
+            .padding()
         }
         .navigationTitle("atl")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func tile(_ apk: String, activity: String) -> some View {
+        Button { run(apk, activity: activity) } label: { AppIconView(name: apk) }
+            .buttonStyle(.plain)
     }
 
     private func run(_ apk: String, activity: String) {
