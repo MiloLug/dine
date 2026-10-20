@@ -1,4 +1,7 @@
+import OSLog
 import UIKit
+
+private let log = Logger(subsystem: "dev.dine.Dine", category: "art")
 
 /// What an edge swipe does (notes/nav-gestures.md).
 enum NavAction: String {
@@ -20,7 +23,6 @@ enum EdgeGesture {
     enum Edge: String { case left, right }
     enum Axis: String { case inward, down }
 
-    static let decideDistance: CGFloat = 10
     static let commitVelocity: CGFloat = 600
 
     /// The edge whose strip `point` is in, between the safe area's top and bottom.
@@ -31,12 +33,12 @@ enum EdgeGesture {
         return nil
     }
 
-    /// The axis once the touch moved far enough: the dominant one, if it is inward or down.
-    static func axis(edge: Edge, translation: CGPoint) -> Axis? {
-        let inward = edge == .left ? translation.x : -translation.x
-        guard max(abs(translation.x), abs(translation.y)) >= decideDistance else { return nil }
-        if abs(translation.x) >= abs(translation.y) { return inward > 0 ? .inward : nil }
-        return translation.y > 0 ? .down : nil
+    /// The dominant direction once the pan begins, if it is inward or down. The pan's own start
+    /// threshold is the decision distance: a second one fails diagonal swipes.
+    static func axis(edge: Edge, translation: CGPoint, velocity: CGPoint) -> Axis? {
+        let move = translation == .zero ? velocity : translation
+        if abs(move.x) >= abs(move.y) { return (edge == .left ? move.x : -move.x) > 0 ? .inward : nil }
+        return move.y > 0 ? .down : nil
     }
 
     static func action(edge: Edge, axis: Axis, settings: NavigationSettings) -> NavAction {
@@ -99,13 +101,26 @@ final class EdgeGestureRecognizer: NSObject, UIGestureRecognizerDelegate {
     }
 
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        guard let edge, let view = pan.view,
-              let axis = EdgeGesture.axis(edge: edge, translation: pan.translation(in: view)) else { return false }
+        guard let edge, let view = pan.view else { return false }
+        guard let axis = EdgeGesture.axis(edge: edge, translation: pan.translation(in: view), velocity: pan.velocity(in: view)) else {
+            log.notice("nav: swipe \(edge.rawValue, privacy: .public) neither inward nor down")
+            return false
+        }
         let action = EdgeGesture.action(edge: edge, axis: axis, settings: .current)
-        guard action != .none, allows(action) else { return false }
+        guard action != .none, allows(action) else {
+            log.notice("nav: swipe \(edge.rawValue, privacy: .public) \(axis.rawValue, privacy: .public) has no action here")
+            return false
+        }
         self.axis = axis
         return true
     }
+
+    // other recognizers (a scroll view's pan) wait while a touch from a strip may still be a swipe
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldBeRequiredToFailBy otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        edge != nil
+    }
+
 
     @objc private func panned() {
         guard let edge, let axis, let view = pan.view else { return }
@@ -124,7 +139,9 @@ final class EdgeGestureRecognizer: NSObject, UIGestureRecognizerDelegate {
             indicator.alpha = commits ? 1 : 0.4
         case .ended:
             indicator.isHidden = true
-            if EdgeGesture.commits(axis: axis, travel: travel, speed: speed, settings: .current) {
+            let commits = EdgeGesture.commits(axis: axis, travel: travel, speed: speed, settings: .current)
+            log.notice("nav: swipe \(edge.rawValue, privacy: .public) \(axis.rawValue, privacy: .public) \(commits ? "commits" : "cancels", privacy: .public): \(Int(travel)) pt, \(Int(speed)) pt/s")
+            if commits {
                 perform(action)
             }
         default:
