@@ -1,5 +1,5 @@
-"""Linux smoke: the gtk build runs Gravity Defied to onResume; the headless build runs demo_app and
-the looper APK. Needs a prior `tools/dine linux build`."""
+"""Linux smoke: the gtk build runs Gravity Defied to onResume and the dialog APK; the headless build
+runs demo_app and the looper and dialog APKs. Needs a prior `tools/dine linux build`."""
 
 import os
 import shutil
@@ -15,10 +15,12 @@ from . import paths
 from .paths import DineError
 
 ON_RESUME = b"- onResume - yay!"
+GTK_BUILD = paths.OUT / "linux/build/dine-atl"
 HEADLESS_BUILD = paths.OUT / "linux/build/dine-atl-headless"
 HEADLESS_TESTS = paths.ROOT / "dine-atl/tests/headless"
 APKS = paths.ROOT / "third_party/atl_test_apks"
 LOOPER_APK = paths.OUT / "tests/apks/looper.apk"
+DIALOG_APK = paths.OUT / "tests/apks/dialog.apk"
 LOG_DIR = paths.OUT / "linux/smoke"
 GD_TIMEOUT = 120
 
@@ -31,10 +33,14 @@ class Check:
     run: Callable[[], str | None]
 
 
-def _gd() -> str | None:
+def _need_display(check: str) -> None:
     if not (os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY")):
-        raise DineError("gd needs a display (WSLg sets WAYLAND_DISPLAY); headless only: "
-                        "tools/dine linux smoke demo looper")
+        raise DineError(f"{check} needs a display (WSLg sets WAYLAND_DISPLAY); headless only: "
+                        "tools/dine linux smoke demo looper dialog")
+
+
+def _gd() -> str | None:
+    _need_display("gd")
     atl = shutil.which("android-translation-layer")
     if not atl:
         raise DineError("no android-translation-layer on PATH: run tools/dine linux build atl")
@@ -99,10 +105,29 @@ def _looper() -> str | None:
             or _script("run-looper.sh", HEADLESS_TESTS / "run-looper.sh", HEADLESS_BUILD, LOOPER_APK))
 
 
+def _dialog_apk() -> str | None:
+    return _script("apk.py", sys.executable, paths.ROOT / "tests/harness/apk.py", HEADLESS_TESTS / "dialog", DIALOG_APK)
+
+
+def _dialog() -> str | None:
+    _need_headless()
+    return _dialog_apk() or _script("run-dialog.sh", HEADLESS_TESTS / "run-dialog.sh", "--headless", HEADLESS_BUILD,
+                                    DIALOG_APK)
+
+
+def _dialog_gtk() -> str | None:
+    _need_display("dialog-gtk")
+    if not GTK_BUILD.is_dir():
+        raise DineError(f"no {GTK_BUILD}: run tools/dine linux build atl")
+    return _dialog_apk() or _script("run-dialog.sh", HEADLESS_TESTS / "run-dialog.sh", GTK_BUILD, DIALOG_APK)
+
+
 CHECKS = [
     Check("gd", "gtk: Gravity Defied reaches onResume under -Xint (opens a window)", _gd),
     Check("demo", "headless: demo_app reaches onResume, view tree matches the golden", _demo),
     Check("looper", "headless: looper.apk goes through the loop paths and exits 0", _looper),
+    Check("dialog", "headless: dialog.apk's alert and list take scripted answers, it exits 0", _dialog),
+    Check("dialog-gtk", "gtk: the same through the GTK dialog's widgets (opens a window)", _dialog_gtk),
 ]
 
 
