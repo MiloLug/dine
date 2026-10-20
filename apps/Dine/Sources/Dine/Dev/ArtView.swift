@@ -33,7 +33,7 @@ struct ArtView: View {
     }
 
     private func run(_ test: String) {
-        // `art/` holds the boot jars, `dev/` the test jars (xtool.yml); `art/` is also ANDROID_ROOT.
+        // `art/` holds the runtime boot jars, `dev/` the test jars (xtool.yml); `art/` is also ANDROID_ROOT.
         guard let root = Bundle.main.path(forResource: "art", ofType: nil),
               let jar = Bundle.main.path(forResource: test, ofType: "jar", inDirectory: "dev"),
               let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first

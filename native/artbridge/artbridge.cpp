@@ -90,10 +90,9 @@ void RedirectOutput() {
 namespace {
 
 // ART's default order (dine-art/art/runtime/parsed_options.cc), which a static link can't derive:
-// it looks next to libart.so.
+// it looks next to libart.so. Its junit jars come in dev builds only (DevVmArgs).
 constexpr const char *kBootJars[] = {
-    "core-oj", "apachehttp", "apache-xml", "bouncycastle", "core-junit",
-    "core-libart", "hamcrest", "junit-runner", "okhttp", "wolfssljni",
+    "core-oj", "apachehttp", "apache-xml", "bouncycastle", "core-libart", "okhttp", "wolfssljni",
 };
 
 constexpr size_t kVmThreadStack = 8 << 20;
@@ -114,9 +113,11 @@ JNIEnv *CreateVm(const std::string &resource_dir, const std::string &data_dir, c
     boot += resource_dir + "/" + jar + "-hostdex.jar";
   }
   std::vector<std::string> args = {
-      boot, "-Xint", "-Xusejit:false", "-Xnorelocate", "-XX:DumpNativeStackOnSigQuit:false",
-      "-Xcheck:jni", "-Djava.io.tmpdir=" + data_dir,
+      "-Xint", "-Xusejit:false", "-Xnorelocate", "-XX:DumpNativeStackOnSigQuit:false",
+      "-Djava.io.tmpdir=" + data_dir,
   };
+  DevVmArgs(resource_dir, boot, args);
+  args.insert(args.begin(), boot);
   std::vector<JavaVMOption> options;
   for (const std::string &arg : args) options.push_back({const_cast<char *>(arg.c_str()), nullptr});
   options.insert(options.end(), extra, extra + n_extra);

@@ -269,7 +269,8 @@ tools/dine ios build-atl              # dine-atl uikit → out/ios/lib, its jars
 - dine-art builds for iOS with its make build in cross mode (`____TARGET=ios`, the
   `build/core/combo/HOST_darwin-arm64.mk` combo): clang, static archives, intermediates in
   `dine-art/out/host/darwin-x86`. The boot classpath jars come from the Linux build
-  (`out/ios/share/art`, bundled as the app's `art/`).
+  (`out/ios/share/art`, bundled as the app's `art/`; ART's junit jars go to `out/ios/share/art-junit`,
+  which only dev builds bundle).
 - wolfSSL builds with autotools (`./autogen.sh` runs once in the clone; it needs autoconf,
   automake and libtool) and `--enable-jni`, as on Linux, plus system CA support and
   `--enable-armasm` (ARMv8 AES, PMULL and SHA instructions, chosen at run time). The app has no

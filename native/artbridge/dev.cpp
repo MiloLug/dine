@@ -211,6 +211,14 @@ void AtlProbe(const char *phase) {
 
 }  // namespace
 
+void DevVmArgs(const std::string &resource_dir, std::string &boot_class_path, std::vector<std::string> &args) {
+  // the bundle's dev/ sits next to art/ (xtool.yml)
+  for (const char *jar : {"core-junit", "hamcrest", "junit-runner"}) {
+    boot_class_path += ":" + resource_dir + "/../dev/" + jar + "-hostdex.jar";
+  }
+  args.push_back("-Xcheck:jni");
+}
+
 void DevAtlThreadStarted() {
   {
     std::lock_guard<std::mutex> lock(gLock);

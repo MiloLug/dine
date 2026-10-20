@@ -22,7 +22,7 @@ struct AtlView: View {
     }
 
     private func run(_ apk: String, activity: String) {
-        // `art/` holds the boot jars, `atl/` ATL's jars, `dev/` the test APKs (xtool.yml)
+        // `art/` holds the runtime boot jars, `atl/` ATL's jars, `dev/` the test APKs (xtool.yml)
         guard let root = Bundle.main.path(forResource: "art", ofType: nil),
               let atl = Bundle.main.path(forResource: "atl", ofType: nil),
               let path = Bundle.main.path(forResource: apk, ofType: "apk", inDirectory: "dev"),
