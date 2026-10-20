@@ -20,7 +20,7 @@ for lib in "${libs[@]}"; do
     rm -rf "$build"
   fi
   cmake -S "$ROOT/native/$lib" -B "$build" -G Ninja \
-    -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
+    -DCMAKE_TOOLCHAIN_FILE="$toolchain" -DDINE_IOS_MIN="$DINE_IOS_MIN" \
     -DCMAKE_BUILD_TYPE="${DINE_IOS_BUILD_TYPE:-RelWithDebInfo}" \
     -DCMAKE_INSTALL_PREFIX="$ROOT/out/ios"
   cmake --build "$build"

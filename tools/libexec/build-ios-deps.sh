@@ -21,7 +21,7 @@ cmake_dep() {
   local name=$1 src=$2 lib=$3; shift 3
   [[ -f $PREFIX/lib/$lib ]] && return
   echo "==> $name"
-  cmake -S "$src" -B "$BUILD/$name" -G Ninja -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
+  cmake -S "$src" -B "$BUILD/$name" -G Ninja -DCMAKE_TOOLCHAIN_FILE="$toolchain" -DDINE_IOS_MIN="$DINE_IOS_MIN" \
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PREFIX" -DBUILD_SHARED_LIBS=OFF \
     -DBUILD_TESTING=OFF "$@"
   cmake --build "$BUILD/$name"

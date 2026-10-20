@@ -15,6 +15,7 @@ struct ArtView: View {
                 Button("run hello") { run("dine-0001-hello") }
                 Button("run jni args") { run("dine-0002-jni-args") }
                 Button("run https") { run("dine-0003-https") }
+                Button("run park") { run("dine-0004-park") }
             }
             Section("Probe") {
                 ForEach(lines, id: \.self) { Text($0).font(.caption.monospaced()) }

@@ -22,7 +22,8 @@ if [[ -z "${DINE_IOS_SDK:-}" ]]; then
   unset _d
 fi
 export DINE_IOS_SDK
-export DINE_IOS_MIN="${DINE_IOS_MIN:-17.0}"
+# 17.4: ART's park uses os_sync_wait_on_address. Keep apps/Dine/Package.swift's iosMin in sync.
+export DINE_IOS_MIN="${DINE_IOS_MIN:-17.4}"
 # Linker for iOS links: clang -fuse-ld=lld -B"$DINE_IOS_TOOLSET_BIN". The system ld64.lld rejects
 # the SDK's arm64e .tbd stubs; xtool's toolset ships one that reads them.
 export DINE_IOS_TOOLSET_BIN="${DINE_IOS_TOOLSET_BIN:-${DINE_IOS_SDK%/Developer/Platforms/*}/toolset/bin}"

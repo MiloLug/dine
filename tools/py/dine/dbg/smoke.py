@@ -81,6 +81,8 @@ SCENARIOS = {
                  fail=("jni args failed", *ART_FAIL)),
             Step("run https", tap="run https", ok=("https ok", "art main returned"), fail=ART_FAIL,
                  network=True, timeout=120),
+            Step("run park", tap="run park", ok=("park ok", "art main returned"),
+                 fail=("park failed", *ART_FAIL)),
             Step("back", back=True),
         ], uses_vm=True),
     ],

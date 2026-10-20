@@ -8,14 +8,14 @@ let nativeLibDir = Context.packageDirectory + "/../../out/ios/lib"
 // The link driver gets --sysroot, not -isysroot, so clang never reads SDKSettings.json and stamps
 // LC_BUILD_VERSION with sdk = minos. iOS then runs the app in compatibility mode (no Liquid
 // Glass). Override it; lld keeps the last -platform_version. Keep iosSDK in sync with the Xcode
-// SDK and iosMin with `platforms` below.
-let iosMin = "17.0"
+// SDK and iosMin with env.sh's DINE_IOS_MIN.
+let iosMin = "17.4"
 let iosSDK = "27.0"
 
 let package = Package(
     name: "Dine",
     platforms: [
-        .iOS(.v17),
+        .iOS(iosMin),
         .macOS(.v14),
     ],
     products: [

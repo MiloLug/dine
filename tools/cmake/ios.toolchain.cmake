@@ -1,6 +1,7 @@
 # Cross-compile for iOS (arm64) from Linux with system clang + the Darwin SDK built by xtool.
 # Usage: cmake -G Ninja -DCMAKE_TOOLCHAIN_FILE=tools/cmake/ios.toolchain.cmake ...
-# Needs DINE_IOS_SDK (from env.sh) or -DDINE_IOS_SDK=/path/to/iPhoneOS.sdk.
+# Needs DINE_IOS_SDK and DINE_IOS_MIN (from env.sh) or -DDINE_IOS_SDK=/path/to/iPhoneOS.sdk
+# -DDINE_IOS_MIN=<version>. A cached DINE_IOS_MIN (from -D) wins over the environment.
 
 if(NOT DINE_IOS_SDK)
   set(DINE_IOS_SDK "$ENV{DINE_IOS_SDK}")
@@ -8,7 +9,12 @@ endif()
 if(NOT DINE_IOS_SDK OR NOT EXISTS "${DINE_IOS_SDK}")
   message(FATAL_ERROR "DINE_IOS_SDK not set or missing; source env.sh after `xtool sdk install`")
 endif()
-set(DINE_IOS_MIN "17.0" CACHE STRING "Minimum iOS deployment target")
+if(NOT DINE_IOS_MIN)
+  set(DINE_IOS_MIN "$ENV{DINE_IOS_MIN}")
+endif()
+if(NOT DINE_IOS_MIN)
+  message(FATAL_ERROR "DINE_IOS_MIN not set; source env.sh")
+endif()
 
 # Pass to try_compile projects too.
 list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES DINE_IOS_SDK DINE_IOS_MIN)
