@@ -1,5 +1,5 @@
 """Linux smoke: the gtk build runs Gravity Defied to onResume and the dialog APK; the headless build
-runs demo_app and the looper and dialog APKs. Needs a prior `tools/dine linux build`."""
+runs demo_app and the looper, dialog and nav APKs. Needs a prior `tools/dine linux build`."""
 
 import os
 import shutil
@@ -21,6 +21,7 @@ HEADLESS_TESTS = paths.ROOT / "dine-atl/tests/headless"
 APKS = paths.ROOT / "third_party/atl_test_apks"
 LOOPER_APK = paths.OUT / "tests/apks/looper.apk"
 DIALOG_APK = paths.OUT / "tests/apks/dialog.apk"
+NAV_APK = paths.OUT / "tests/apks/nav.apk"
 LOG_DIR = paths.OUT / "linux/smoke"
 GD_TIMEOUT = 120
 
@@ -36,7 +37,7 @@ class Check:
 def _need_display(check: str) -> None:
     if not (os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY")):
         raise DineError(f"{check} needs a display (WSLg sets WAYLAND_DISPLAY); headless only: "
-                        "tools/dine linux smoke demo looper dialog")
+                        "tools/dine linux smoke demo looper dialog nav")
 
 
 def _gd() -> str | None:
@@ -122,12 +123,19 @@ def _dialog_gtk() -> str | None:
     return _dialog_apk() or _script("run-dialog.sh", HEADLESS_TESTS / "run-dialog.sh", GTK_BUILD, DIALOG_APK)
 
 
+def _nav() -> str | None:
+    _need_headless()
+    return (_script("apk.py", sys.executable, paths.ROOT / "tests/harness/apk.py", HEADLESS_TESTS / "nav", NAV_APK)
+            or _script("run-nav.sh", HEADLESS_TESTS / "run-nav.sh", HEADLESS_BUILD, NAV_APK))
+
+
 CHECKS = [
     Check("gd", "gtk: Gravity Defied reaches onResume under -Xint (opens a window)", _gd),
     Check("demo", "headless: demo_app reaches onResume, view tree matches the golden", _demo),
     Check("looper", "headless: looper.apk goes through the loop paths and exits 0", _looper),
     Check("dialog", "headless: dialog.apk's alert and list take scripted answers, it exits 0", _dialog),
     Check("dialog-gtk", "gtk: the same through the GTK dialog's widgets (opens a window)", _dialog_gtk),
+    Check("nav", "headless: nav.apk's lifecycle under Back, Home and front from cli -c", _nav),
 ]
 
 
