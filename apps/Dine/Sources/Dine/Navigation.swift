@@ -5,16 +5,11 @@ import UIKit
 
 private let log = Logger(subsystem: "dev.dine.Dine", category: "art")
 
-/// Dine's dev screens on the launcher's stack.
-enum DevScreen: Hashable {
-    case hello, probe, art, atl
-}
-
 /// Back, Home, the app's container and the running apps list (notes/nav-gestures.md), for the one
 /// app ATL runs per process. Dine's UI changes first, then ATL hears: Home never waits for Java.
 @MainActor
 final class Navigator: ObservableObject {
-    @Published var path: [DevScreen] = []
+    @Published var path = NavigationPath()
 
     private var app: String?  // while ATL runs it
     private var container: AppContainerController?
@@ -82,7 +77,7 @@ final class Navigator: ObservableObject {
     }
 
     /// The running apps list from the launcher's hosting view, by edge swipe or "Recent apps", only
-    /// while nothing is pushed or presented: pushed dev screens keep iOS's own left-edge pop.
+    /// while nothing is pushed or presented: pushed screens keep iOS's own left-edge pop.
     func attachLauncher() {
         let navigator = self
         guard launcherEdges == nil, let view = rootController?.view else { return }
@@ -165,7 +160,7 @@ final class Navigator: ObservableObject {
     }
 
     private func popToRoot() {
-        path = []
+        path = NavigationPath()
         log.notice("nav: launcher root")
     }
 

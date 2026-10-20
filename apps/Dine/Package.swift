@@ -27,12 +27,14 @@ let package = Package(
         ),
     ],
     targets: [
-        .systemLibrary(name: "CDineHello"),
         .systemLibrary(name: "CArtBridge"),
+        // Dev builds only: imported from Sources/Dine/Dev (#if DEBUG), so `-c release` links none.
+        .systemLibrary(name: "CArtDev"),
         .systemLibrary(name: "CDbgAgent"),
+        .systemLibrary(name: "CDineHello"),
         .target(
             name: "Dine",
-            dependencies: ["CDineHello", "CArtBridge", "CDbgAgent"],
+            dependencies: ["CArtBridge", "CArtDev", "CDbgAgent", "CDineHello"],
             linkerSettings: [.unsafeFlags([
                 "-L", nativeLibDir,
                 "-Xlinker", "-platform_version", "-Xlinker", "ios",
@@ -40,9 +42,10 @@ let package = Package(
                 "-Xlinker", "-force_load", "-Xlinker", nativeLibDir + "/libjavacore.a",
                 "-Xlinker", "-force_load", "-Xlinker", nativeLibDir + "/libopenjdk.a",
                 "-Xlinker", "-force_load", "-Xlinker", nativeLibDir + "/libwolfssljni.a",
-                "-Xlinker", "-force_load", "-Xlinker", nativeLibDir + "/libruntimetests.a",
                 "-Xlinker", "-force_load", "-Xlinker", nativeLibDir + "/libtranslation_layer_main.a",
-            ])]
+            ]), .unsafeFlags([
+                "-Xlinker", "-force_load", "-Xlinker", nativeLibDir + "/libruntimetests.a",
+            ], .when(configuration: .debug))]
         ),
     ]
 )

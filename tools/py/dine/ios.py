@@ -15,7 +15,7 @@ from . import paths
 from .paths import DineError
 
 TUNNELD = "http://127.0.0.1:49151/"
-# native/dbgagent listens on this port on the phone when the app gets it in its environment.
+# native/dev/dbgagent listens on this port on the phone when the app gets it in its environment.
 AGENT_ENV, AGENT_PORT = "DINE_DBG_AGENT_PORT", 47801
 
 
@@ -239,18 +239,52 @@ def lldb_memory_cmds() -> list[str]:
             "settings set target.process.memory-cache-line-size 16384"]
 
 
+def release() -> bool:
+    """DINE_RELEASE=1: the iOS builds leave out every dev and test part (CLAUDE.md)."""
+    value = os.environ.get("DINE_RELEASE", "")
+    if value not in ("", "0", "1"):
+        raise DineError(f"DINE_RELEASE={value!r}: set 1 for a release build, or leave it unset")
+    return value == "1"
+
+
+def atl_hooks_problem(build_dir: Path, release: bool) -> str | None:
+    """The iOS ATL build's test_hooks option against the build being made: the archive comes from
+    a separate step (`ios build-atl`), and a stale dev one would ship its hooks."""
+    info = build_dir / "meson-info/intro-buildoptions.json"
+    if not info.exists():
+        return f"no iOS ATL build in {build_dir}: run tools/dine ios build-atl"
+    hooks = next((o["value"] for o in json.loads(info.read_text()) if o["name"] == "test_hooks"), None)
+    want = "DINE_RELEASE=1 tools/dine ios build-atl" if release else "tools/dine ios build-atl"
+    if hooks is None:
+        return f"the iOS ATL build predates its test_hooks option: run {want}"
+    if hooks == release:
+        return (f"the iOS ATL build has test_hooks={str(hooks).lower()}, this is a "
+                f"{'release' if release else 'dev'} build: run {want}")
+    return None
+
+
+def check_atl_build() -> None:
+    """For `ios run`, before it kills or builds anything."""
+    if problem := atl_hooks_problem(paths.OUT / "ios/build/dine-atl", release()):
+        raise DineError(problem)
+
+
 def run_libexec(script: str, *args: str) -> int:
+    release()  # a malformed DINE_RELEASE stops here, before any script reads it
     return subprocess.run([str(paths.LIBEXEC / script), *args]).returncode
 
 
 def cmd_install(app: str) -> int:
-    """build-native, build-assets + `xtool dev run` (build, sign, install); launching is the caller's step."""
+    """build-native, build-dev, build-assets + `xtool dev run` (build, sign, install); the caller
+    runs check_atl_build first and launches after."""
+    rel = release()
     require_tunnel()
-    rc = run_libexec("build-ios-native.sh") or run_libexec("build-ios-assets.sh", app)
+    rc = run_libexec("build-ios-native.sh") or run_libexec("build-ios-dev.sh") or run_libexec("build-ios-assets.sh", app)
     if rc:
         return rc
+    cmd = ["xtool", "dev", "run", *(["-c", "release"] if rel else [])]
     # xtool crashes with stdin = /dev/null (epoll_ctl EPERM): give it a pty when not on a terminal.
-    xtool = ["xtool", "dev", "run"] if sys.stdin.isatty() else ["script", "-qec", "xtool dev run", "/dev/null"]
+    xtool = cmd if sys.stdin.isatty() else ["script", "-qec", shlex.join(cmd), "/dev/null"]
     proc = subprocess.Popen(xtool, cwd=paths.app_dir(app), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     out = b""
     # Chunks, not lines: xtool's yes/no prompts end without a newline.

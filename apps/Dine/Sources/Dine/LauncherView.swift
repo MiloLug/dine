@@ -27,13 +27,10 @@ struct LauncherView: View {
                 }
             }
             .navigationTitle("Apps")
+            #if DEBUG
+            .devScreens()
+            #endif
             .toolbar {
-                ToolbarItemGroup(placement: .topBarLeading) {
-                    NavigationLink("hello++", value: DevScreen.hello)
-                    NavigationLink("probe", value: DevScreen.probe)
-                    NavigationLink("art", value: DevScreen.art)
-                    NavigationLink("atl", value: DevScreen.atl)
-                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         newName = ""
@@ -42,14 +39,6 @@ struct LauncherView: View {
                         Image(systemName: "plus")
                     }
                     .accessibilityLabel("Add App")
-                }
-            }
-            .navigationDestination(for: DevScreen.self) { screen in
-                switch screen {
-                case .hello: HelloView()
-                case .probe: ProbeView()
-                case .art: ArtView()
-                case .atl: AtlView()
                 }
             }
             .onAppear { navigator.attachLauncher() }

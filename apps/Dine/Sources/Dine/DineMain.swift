@@ -1,4 +1,3 @@
-import CDbgAgent
 import SwiftUI
 
 @main
@@ -7,7 +6,9 @@ struct DineMain: App {
     @StateObject private var navigator = Navigator()
 
     init() {
-        dine_dbg_agent_start()
+        #if DEBUG
+        startDevServices()
+        #endif
     }
 
     var body: some Scene {

@@ -1,0 +1,5 @@
+// native/artbridge's dev.cpp, in libartbridge in dev builds only; CArtBridge links it.
+module CArtDev [system] {
+    header "../../../../native/artbridge/include/dineart_dev.h"
+    export *
+}

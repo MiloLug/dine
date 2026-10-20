@@ -1,9 +1,9 @@
+#if DEBUG
 import CDineHello
 import OSLog
 import SwiftUI
 
 private let log = Logger(subsystem: "dev.dine.Dine", category: "app")
-
 struct HelloView: View {
     private let native = String(cString: dine_hello())
 
@@ -23,3 +23,4 @@ struct HelloView: View {
         .onAppear { log.notice("Dine native: \(native, privacy: .public)") }
     }
 }
+#endif

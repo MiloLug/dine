@@ -1,3 +1,4 @@
+#if DEBUG
 import OSLog
 import SwiftUI
 import UIKit
@@ -133,3 +134,4 @@ private func components(_ c: UIColor) -> [Int] {
     c.getRed(&r, green: &g, blue: &b, alpha: &a)
     return [r, g, b, a].map { Int(($0 * 255).rounded()) }
 }
+#endif

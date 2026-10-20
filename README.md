@@ -27,8 +27,8 @@ symbols, ATL build, and a verification checklist.
 | `tools/systemd/usbmuxd-bridge.service` | `/var/run/usbmuxd` → Windows Apple Mobile Device Service (`127.0.0.1:27015`) |
 | `tools/systemd/dine-tunneld.service` | `pymobiledevice3 remote tunneld` (iOS 17+ developer services) |
 | `tools/cmake/ios.toolchain.cmake` | clang cross-compile → `arm64-apple-ios` with xtool's SDK |
-| `native/hello` | C++ static lib smoke test (stand-in for ART / bionic shim) |
-| `apps/Dine` | xtool SwiftUI app: launcher grid (SQLite) + hello++ screen linking `native/hello` + probe screen for its asset catalog (`Resources/`: `AppIcon.icon`, `Assets.xcassets`) |
+| `native/dev/` | libs only dev builds link: the debug agent, `hello` (C++ static lib smoke test), `runtimetests` |
+| `apps/Dine` | xtool SwiftUI app: launcher grid (SQLite); dev builds add `Sources/Dine/Dev/`: a hello++ screen linking `native/dev/hello`, a probe screen for the asset catalog (`Resources/`: `AppIcon.icon`, `Assets.xcassets`, dev-only `Dev.xcassets`), art and atl run screens |
 | `../dine-accord` | sibling repo: accord, an `actool` for Linux; compiles `apps/<App>/Resources` into `Assets.car` + icon plist keys |
 | `third_party/` | upstream clones: bionic_translation, libopensles, atl_test_apks (gitignored) |
 | `dine-art/` | submodule: our fork of art_standalone (ART + libcore), branch `dine` |
@@ -41,10 +41,10 @@ symbols, ATL build, and a verification checklist.
 | Command | What |
 |---|---|
 | `tools/dine ios tunnel start\|status` | iOS 17+ developer services: `dine-tunneld` runs from boot; `start` starts it if stopped (sudo), waits for the tunnel and mounts the DDI (after a phone reboot) |
-| `tools/dine ios build-native [lib…]` | `native/*` → `out/ios/{lib,include}` (`DINE_IOS_BUILD_TYPE`, default `RelWithDebInfo`) |
+| `tools/dine ios build-native [lib…]` | `native/*`, plus `native/dev/*` unless `DINE_RELEASE=1` → `out/ios/{lib,include}` (`DINE_IOS_BUILD_TYPE`, default `RelWithDebInfo`) |
 | `tools/dine ios build-art` | dine-art (ART, libcore natives, androidfw) plus ICU, lz4, liblzma, wolfSSL → static archives in `out/ios/lib`, boot jars → `out/ios/share/art` |
-| `tools/dine ios build-atl` | dine-atl's headless build (meson cross) → `out/ios/lib/libtranslation_layer_main.a`; its jars, `demo_app.apk` and `looper.apk` → `out/ios/share/atl`; needs `linux build atl` first |
-| `tools/dine ios run [App]` | kill a running instance → native libs → asset catalog (accord → `out/ios/assets/<App>`) → `xtool dev` (build/sign/install) → launch via DVT |
+| `tools/dine ios build-atl` | dine-atl's uikit build (meson cross) → `out/ios/lib/libtranslation_layer_main.a`; its jars → `out/ios/share/atl`; the looper, dialog and nav test APKs → `out/tests/apks`; needs `linux build atl` first |
+| `tools/dine ios run [App]` | kill a running instance → native libs → dev payload (test APKs and jars → `out/ios/dev`) → asset catalog (accord → `out/ios/assets/<App>`) → `xtool dev` (build/sign/install) → launch via DVT. `DINE_RELEASE=1` (after `DINE_RELEASE=1 tools/dine ios build-atl`): a release build without dev or test code (CLAUDE.md) |
 | `tools/dine ios launch [--suspended] [App]` | (re)launch via DVT, print the pid |
 | `tools/dine ios ps [App] [--all]`, `tools/dine ios kill <App\|pid>` | device processes |
 | `tools/dine ios logs [App]` | live syslog to the terminal |
@@ -136,7 +136,7 @@ tools/dine dbg stop-server                        # detaches; never kills the ap
   elsewhere (exit 1) or exits/crashes (exit 3). Timeout: exit 2 with the recent events.
 - Exit codes: 0 ok, 1 error or bad state (the message names the command to run), 2 timeout,
   3 exited/crashed during a wait, 4 no server.
-- `ui ls|tap|back` go to the debug agent linked into Dine (`native/dbgagent`), so they need no
+- `ui ls|tap|back` go to the debug agent linked into Dine's dev builds (`native/dev/dbgagent`), so they need no
   attach and don't pause the app: `ls` takes ~0.15 s, `tap`/`back` ~0.6–1 s including the wait
   for the screen to settle. The agent runs only in a process started by `tools/dine ios launch`
   (or `dbg fresh`, `ios run`). While lldb has the app stopped they refuse; a tap that hits a

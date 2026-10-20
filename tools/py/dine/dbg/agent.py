@@ -1,4 +1,4 @@
-"""Client of the app's debug agent (native/dbgagent/agent.mm): one request line, one JSON reply line,
+"""Client of the app's debug agent (native/dev/dbgagent/agent.mm): one request line, one JSON reply line,
 over a usbmux connection to the agent's port on the phone."""
 
 import asyncio

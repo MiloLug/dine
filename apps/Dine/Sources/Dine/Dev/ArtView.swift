@@ -1,4 +1,5 @@
-import CArtBridge
+#if DEBUG
+import CArtDev
 import OSLog
 import SwiftUI
 
@@ -32,9 +33,9 @@ struct ArtView: View {
     }
 
     private func run(_ test: String) {
-        // `art/` holds the boot jars (xtool.yml); it's also ANDROID_ROOT.
+        // `art/` holds the boot jars, `dev/` the test jars (xtool.yml); `art/` is also ANDROID_ROOT.
         guard let root = Bundle.main.path(forResource: "art", ofType: nil),
-              let jar = Bundle.main.path(forResource: test, ofType: "jar"),
+              let jar = Bundle.main.path(forResource: test, ofType: "jar", inDirectory: "dev"),
               let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
         else {
             return log.error("art: boot jars, \(test, privacy: .public).jar or caches dir missing")
@@ -42,3 +43,4 @@ struct ArtView: View {
         dine_art_run(root, caches.path, jar, "Main")
     }
 }
+#endif

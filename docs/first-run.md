@@ -197,8 +197,8 @@ tools/dine ios symbols      # phone's dyld shared cache → out/ios-symbols/<ver
 ## 7. First app install
 
 Dine links ART and ATL and bundles their jars, so sections 8 and 9 come first, plus the authored
-test jars its `art` screen runs: `tools/dine test runtime fetch`, then `tools/dine test runtime
-build -f '^dine-'`.
+test jars a dev build's `art` screen runs (`ios run` copies them into `out/ios/dev`):
+`tools/dine test runtime fetch`, then `tools/dine test runtime build -f '^dine-'`.
 
 ```sh
 tools/dine ios run                     # from a real terminal (prompts!)
@@ -260,7 +260,7 @@ git clone --depth 1 --branch release-78.3 --filter=blob:none --sparse https://gi
 git -C icu sparse-checkout set icu4c
 git clone --depth 1 --branch v5.9.4-stable https://github.com/wolfSSL/wolfssl.git
 cd .. && tools/dine ios build-art     # ICU, lz4, liblzma, wolfSSL, then dine-art → out/ios/lib/*.a
-tools/dine ios build-atl              # dine-atl headless → out/ios/lib, its jars, demo_app.apk and looper.apk → out/ios/share/atl
+tools/dine ios build-atl              # dine-atl uikit → out/ios/lib, its jars → out/ios/share/atl, test APKs → out/tests/apks
 ```
 
 - The versions match Arch's `icu`, `lz4` and `xz` and AUR's `wolfssl-jni`, so iOS and Linux use

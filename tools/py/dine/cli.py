@@ -24,7 +24,8 @@ def _ios(sub):
     t.add_argument("op", choices=["start", "status"])
     t.set_defaults(func=lambda a: print(ios.tunnel_start() if a.op == "start" else ios.tunnel_status()))
 
-    t = s.add_parser("build-native", help="native/<lib> → out/ios (DINE_IOS_BUILD_TYPE, default RelWithDebInfo)")
+    t = s.add_parser("build-native", help="native/<lib> → out/ios (DINE_IOS_BUILD_TYPE, default RelWithDebInfo); "
+                                          "native/dev/* unless DINE_RELEASE=1")
     t.add_argument("libs", nargs="*")
     t.set_defaults(func=lambda a: ios.run_libexec("build-ios-native.sh", *a.libs))
 
@@ -32,11 +33,13 @@ def _ios(sub):
                                        "static archives in out/ios/lib")
     t.set_defaults(func=lambda a: ios.run_libexec("build-ios-art.sh"))
 
-    t = s.add_parser("build-atl", help="dine-atl headless build → out/ios/lib/libtranslation_layer_main.a, "
-                                       "jars + demo_app.apk, looper.apk → out/ios/share/atl (after linux build atl)")
+    t = s.add_parser("build-atl", help="dine-atl uikit build → out/ios/lib/libtranslation_layer_main.a, jars → "
+                                       "out/ios/share/atl, test APKs → out/tests/apks (after linux build atl); "
+                                       "DINE_RELEASE=1: no test hooks or APKs")
     t.set_defaults(func=lambda a: ios.run_libexec("build-ios-atl.sh"))
 
-    t = s.add_parser("run", help="build-native + build-assets + xtool dev (build/sign/install) + launch; kills a running instance first")
+    t = s.add_parser("run", help="build-native + dev payload + build-assets + xtool dev (build/sign/install) + launch; "
+                                 "kills a running instance first. DINE_RELEASE=1: release build, no dev or test code")
     t.add_argument("app", nargs="?", default="Dine")
     t.set_defaults(func=_ios_run)
 
@@ -99,6 +102,7 @@ def _ios_launch(a) -> int:
 
 
 def _ios_run(a) -> int:
+    ios.check_atl_build()
     # A previously debugged instance makes the install hang at "[Installing] 100%".
     for proc in ios.processes(a.app):
         _notify_server("killing", f"killing pid {proc['pid']} before reinstalling", mark=True)
