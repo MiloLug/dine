@@ -64,8 +64,11 @@ final class Navigator: ObservableObject {
         let list = AppsListController(navigator: self, appRuns: app != nil)
         appsList = list
         dismissContainer("list") { [self] in
-            rootController?.present(list, animated: true)
-            log.notice("nav: apps list shown")
+            afterTransitions { [self] in
+                guard appsList === list else { return }
+                rootController?.present(list, animated: true)
+                log.notice("nav: apps list shown")
+            }
         }
     }
 
@@ -120,24 +123,45 @@ final class Navigator: ObservableObject {
         showContainer()
     }
 
+    /// UIKit drops a present or dismiss asked for while another one animates.
+    private func afterTransitions(_ body: @escaping () -> Void) {
+        var controller = rootController
+        while let current = controller {
+            if let coordinator = current.transitionCoordinator {
+                coordinator.animate(alongsideTransition: nil) { [self] _ in afterTransitions(body) }
+                return
+            }
+            controller = current.presentedViewController
+        }
+        body()
+    }
+
     private func showContainer() {
-        guard let app, container == nil, let root = rootController else { return }
+        guard let app, container == nil else { return }
         let controller = AppContainerController(app: app, navigator: self)
         container = controller
-        root.present(controller, animated: true)
         log.notice("nav: container shown \(app, privacy: .public)")
+        afterTransitions { [self] in
+            guard container === controller else { return } // dismissed before it could show
+            rootController?.present(controller, animated: true)
+        }
     }
 
     private func dismissContainer(_ reason: String, then: (() -> Void)? = nil) {
-        guard let controller = container, let presenter = controller.presentingViewController else {
-            container = nil
+        guard let controller = container else {
             then?()
             return
         }
         container = nil
-        // also takes down an alert ATL presented on it
-        presenter.dismiss(animated: true, completion: then)
         log.notice("nav: container dismissed \(reason, privacy: .public)")
+        afterTransitions {
+            // also takes down an alert ATL presented on it
+            guard let presenter = controller.presentingViewController else {
+                then?()
+                return
+            }
+            presenter.dismiss(animated: true, completion: then)
+        }
     }
 
     private func popToRoot() {
@@ -207,7 +231,6 @@ final class AppContainerController: UIViewController {
             },
         ]
     }
-
 }
 
 /// Accessibility escape (VoiceOver's scrub, `dbg ui back`) on a view: escape searches up through

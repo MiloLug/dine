@@ -74,6 +74,7 @@ final class EdgeGestureRecognizer: NSObject, UIGestureRecognizerDelegate {
         super.init()
         pan.delegate = self
         pan.cancelsTouchesInView = true
+        pan.maximumNumberOfTouches = 1
         pan.addTarget(self, action: #selector(panned))
         view.addGestureRecognizer(pan)
         indicator.tintColor = .label
@@ -85,7 +86,8 @@ final class EdgeGestureRecognizer: NSObject, UIGestureRecognizerDelegate {
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-        guard let view = pan.view else { return false }
+        // a second finger mid-swipe must not reset it
+        guard pan.state == .possible, let view = pan.view else { return false }
         edge = EdgeGesture.edge(at: touch.location(in: view), in: view.bounds, safeArea: view.safeAreaInsets,
                                 settings: .current)
         axis = nil
