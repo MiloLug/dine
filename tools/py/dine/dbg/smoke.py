@@ -52,6 +52,7 @@ def _demo_viewtree(since: int) -> str | None:
 STARTUP = {"Dine": r"loaded \d+ apps"}
 ART_FAIL = ("art main threw", "a run is still active")
 ATL_FAIL = ("atl already ran", "atl needs a process without a VM", r"atl main returned (?!0\b)")
+NAV_LIST_FAIL = (r"nav: list \d", "nav: list canceled")  # an answer nobody gave
 
 SCENARIOS = {
     "Dine": [
@@ -94,6 +95,18 @@ SCENARIOS = {
             Step("back to app", tap="back to app", ok=("nav: A onRestart", "nav: A onResume", "nav: container shown nav"),
                  fail=ATL_FAIL),
             Step("Home", action="Home", ok=("nav: A onStop", "nav: launcher root"), fail=ATL_FAIL),
+            # A showed its list in that onStop, while in the back: it waits for the front
+            Step("Recent apps, list held", action="Recent apps", ok=("nav: apps list shown",)),
+            Step("back to app, list shown", tap="back to app", ok=("nav: container shown nav", "dialog: presented"),
+                 fail=ATL_FAIL + NAV_LIST_FAIL),
+            Step("Home with the list", action="Home", ok=("nav: container dismissed home", "nav: A onStop"),
+                 fail=ATL_FAIL + NAV_LIST_FAIL),
+            Step("Recent apps, list held again", action="Recent apps", ok=("nav: apps list shown",)),
+            Step("back to app, list again", tap="back to app", ok=("nav: container shown nav", "dialog: presented"),
+                 fail=ATL_FAIL + NAV_LIST_FAIL),
+            Step("Odd item", tap="Odd ��\U0001f600��", ok=("dialog: closed", "nav: list 1"),
+                 fail=ATL_FAIL + ("nav: list canceled",)),
+            Step("Home at the end", action="Home", ok=("nav: A onStop", "nav: launcher root"), fail=ATL_FAIL),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("art", [
             Step("art", tap="art", ok=("art probe done",)),
