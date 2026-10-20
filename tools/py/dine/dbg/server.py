@@ -23,9 +23,10 @@ from .targets import TARGETS
 from .targets.base import CmdError, Unsupported
 
 # Never touch lldb, so they can't queue behind a stuck lldb command.
-UNLOCKED = {"interrupt", "syslog_start", "syslog_stop", "fake", "ui_ls", "ui_tap", "ui_back", "ui_screenshot"}
+UNLOCKED = {"interrupt", "syslog_start", "syslog_stop", "fake", "ui_ls", "ui_tap", "ui_back", "ui_action",
+            "ui_screenshot"}
 # Start something that later shows up as events; `wait --since mark` starts before them.
-ACTIONS = {"attach", "continue", "interrupt", "step", "next", "finish", "stepi", "cmd", "ui_tap", "ui_back",
+ACTIONS = {"attach", "continue", "interrupt", "step", "next", "finish", "stepi", "cmd", "ui_tap", "ui_back", "ui_action",
            "call", "syslog_start", "fake"}
 # Output of these isn't worth a copy in the cmd log.
 QUIET = {"status", "log", "wait", "note"}

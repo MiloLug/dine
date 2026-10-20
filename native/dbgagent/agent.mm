@@ -1,19 +1,24 @@
 // In-app debug agent behind `tools/dine dbg ui …`: UI work without lldb or the host's accessibility
 // inspector. One request line, one JSON reply line per connection:
 //   ls               {"labels": [[isElement, label], …]} of the key window's accessibility walk
-//   tap N "LABEL"    activates element N of the last walk if it still has LABEL (a JSON string), or
-//                    the alert action with that title; replies before the activation runs, so a
-//                    breakpoint it hits can't block the reply
+//   tap N "LABEL"    activates element N of the last walk if it still has LABEL (a JSON string): its
+//                    accessibilityActivate, else a control's tap events, else the alert action with
+//                    that title; replies before the activation runs, so a breakpoint it hits can't
+//                    block the reply
 //   back             accessibility escape (VoiceOver's back gesture), also run after the reply
+//   action "NAME"    the first accessibility custom action named NAME up from the walk, as back
+//                    searches; also run after the reply
 //   settle MS        waits until the last tap/back ran, no transition runs and the labels hold still,
 //                    or MS pass (at most 10 s): {"labels", "settled", "ran",
-//                    "result": tap's BOOL, or back's handler class or null}
+//                    "result": tap's or action's BOOL (action: null when none has the name), or
+//                    back's handler class or null}
 // Anything else closes the connection unanswered.
 
 #import <UIKit/UIKit.h>
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netinet/in.h>
+#include <objc/message.h>
 #include <os/log.h>
 #include <pthread.h>
 #include <string.h>
@@ -106,6 +111,26 @@ id Escape() {
   return NSNull.null;
 }
 
+id RunAction(NSString *name) {
+  for (NSInteger i = (NSInteger)gItems.count - 1; i >= 0; i--) {
+    id c = gItems[i];
+    for (int k = 0; c && k < 40; k++) {
+      id up = nil;
+      @try {
+        for (UIAccessibilityCustomAction *action in [c accessibilityCustomActions]) {
+          if (![action.name isEqualToString:name]) continue;
+          if (action.actionHandler) return @(action.actionHandler(action));
+          return @(((BOOL (*)(id, SEL, id))objc_msgSend)(action.target, action.selector, action));
+        }
+        up = [c accessibilityContainer];
+      } @catch (NSException *) {
+      }
+      c = up ?: ([c respondsToSelector:@selector(nextResponder)] ? [c nextResponder] : nil);
+    }
+  }
+  return NSNull.null;
+}
+
 void Reply(int fd, NSDictionary *obj) {
   NSMutableData *data = [[NSJSONSerialization dataWithJSONObject:obj options:0 error:nil] mutableCopy];
   [data appendBytes:"\n" length:1];
@@ -123,6 +148,14 @@ NSString *ReadLine(int fd) {
     if (buf[n] == '\n') return [[NSString alloc] initWithBytes:buf length:n encoding:NSUTF8StringEncoding];
   }
   return nil;
+}
+
+// UIKit controls decline accessibilityActivate too (VoiceOver touches them): send what a tap sends.
+// One mask, so an action registered for both events runs once.
+BOOL ActivateControl(id item) {
+  if (![item isKindOfClass:UIControl.class] || !((UIControl *)item).enabled) return NO;
+  [(UIControl *)item sendActionsForControlEvents:UIControlEventTouchUpInside | UIControlEventPrimaryActionTriggered];
+  return YES;
 }
 
 // UIAlertController's action views decline accessibilityActivate (VoiceOver touches their activation
@@ -156,10 +189,20 @@ void Tap(int fd, NSInteger n, NSString *label) {
     gBefore = gLabels;
     gResult = nil;
     dispatch_async(dispatch_get_main_queue(), ^{
-      gResult = @([item accessibilityActivate] || ActivateAlertAction(label));
+      gResult = @([item accessibilityActivate] || ActivateControl(item) || ActivateAlertAction(label));
     });
   });
   Reply(fd, ok ? @{@"ok": @YES} : @{@"error": @"the screen changed since the last ls"});
+}
+
+void Action(int fd, NSString *name) {
+  OnMain(^{
+    Walk();
+    gBefore = gLabels;
+    gResult = nil;
+    dispatch_async(dispatch_get_main_queue(), ^{ gResult = RunAction(name); });
+  });
+  Reply(fd, @{@"ok": @YES});
 }
 
 void Back(int fd) {
@@ -221,6 +264,12 @@ void Handle(int fd) {
     Back(fd);
   } else if (words.count == 2 && [words[0] isEqualToString:@"settle"] && Digits(words[1])) {
     Settle(fd, MIN(words[1].integerValue, 10000));
+  } else if (words.count >= 2 && [words[0] isEqualToString:@"action"]) {
+    NSString *json = [[words subarrayWithRange:NSMakeRange(1, words.count - 1)] componentsJoinedByString:@" "];
+    id name = [NSJSONSerialization JSONObjectWithData:[json dataUsingEncoding:NSUTF8StringEncoding]
+                                              options:NSJSONReadingFragmentsAllowed
+                                                error:nil];
+    if ([name isKindOfClass:NSString.class]) Action(fd, name);
   } else if (words.count >= 3 && [words[0] isEqualToString:@"tap"] && Digits(words[1])) {
     NSString *json = [[words subarrayWithRange:NSMakeRange(2, words.count - 2)] componentsJoinedByString:@" "];
     id label = [NSJSONSerialization JSONObjectWithData:[json dataUsingEncoding:NSUTF8StringEncoding]

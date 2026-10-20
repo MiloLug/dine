@@ -282,9 +282,11 @@ def _dbg(sub):
         args=_log_args)
 
     def ui_setup(t):
-        t.add_argument("op", choices=["ls", "tap", "back", "screenshot"])
-        t.add_argument("arg", nargs="?", help="tap: label (loose match) or #N from ls; screenshot: path")
-    req("ui", None, "app UI: ls | tap <label|#N> | back | screenshot [path]", timeout=60, setup=ui_setup).set_defaults(
+        t.add_argument("op", choices=["ls", "tap", "back", "action", "screenshot"])
+        t.add_argument("arg", nargs="?", help="tap: label (loose match) or #N from ls; action: an accessibility "
+                                              "custom action's name (Back, Home, Recent apps); screenshot: path")
+    req("ui", None, "app UI: ls | tap <label|#N> | back | action <name> | screenshot [path]", timeout=60,
+        setup=ui_setup).set_defaults(
         func=lambda a: _request(a, f"ui_{a.op}", {"arg": a.arg} if a.arg else {}))
 
     def call_setup(t):

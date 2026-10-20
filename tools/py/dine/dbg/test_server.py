@@ -83,6 +83,7 @@ class FakeServerTest(unittest.TestCase):
         self.assertEqual(r.stdout.splitlines(), ["tapped 'hello++'", "screen: hello++ | probe"])
         self.assertIn("#1 probe", self.dbg("ui", "ls", check=0).stdout)
         self.assertIn("no element matches", self.dbg("ui", "tap", "nope", check=1).stdout)
+        self.assertEqual(self.dbg("ui", "action", "Home", check=0).stdout.splitlines()[0], "ran 'Home'")
 
     def test_status_and_log(self):
         self.assertIn("target fake", self.dbg("status", check=0).stdout)

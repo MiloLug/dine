@@ -271,6 +271,17 @@ class IosTarget(Target):
             raise CmdError("nothing on screen handled the escape (no back navigation here?)")
         return "went back" + (f" (escape handled by {r['result']})" if r.get("result") else "") + tail
 
+    def do_ui_action(self, arg=None, timeout=60):
+        if not arg:
+            raise CmdError("usage: tools/dine dbg ui action <name>")
+        self._agent(f"action {json.dumps(arg)}")
+        tail, r = self._settle()
+        if r.get("ran") and r.get("result") is None:
+            raise CmdError(f"no accessibility action {arg!r} on this screen")
+        if r.get("ran") and r.get("result") is False:
+            raise CmdError(f"{arg!r} declined")
+        return f"ran {arg!r}" + tail
+
     def _in_app(self, fn, timeout: float):
         """`fn(left)` runs paused on the main thread; `left()` is the time remaining."""
         h = self.host
