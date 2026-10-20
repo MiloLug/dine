@@ -11,6 +11,7 @@ struct AtlView: View {
         List {
             Button("run demo") { run("demo_app", activity: "com/example/demo_application/MainActivity") }
             Button("run looper") { run("looper", activity: "dev/dine/looper/MainActivity") }
+            Button("run dialog") { run("dialog", activity: "dev/dine/dialog/MainActivity") }
         }
         .navigationTitle("atl")
         .navigationBarTitleDisplayMode(.inline)

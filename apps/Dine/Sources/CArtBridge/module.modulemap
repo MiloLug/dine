@@ -34,5 +34,6 @@ module CArtBridge [system] {
     link "c++"
     link framework "CoreFoundation"
     link framework "Security"
+    link framework "UIKit"
     export *
 }

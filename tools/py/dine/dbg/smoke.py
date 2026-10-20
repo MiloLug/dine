@@ -73,6 +73,13 @@ SCENARIOS = {
                  timeout=120),
             Step("back", back=True),
         ], uses_vm=True, needs_clean=True, alive=True),
+        Scenario("atl-dialog", [
+            Step("atl", tap="atl"),
+            Step("run dialog", tap="run dialog", ok=("dialog: presented",), fail=ATL_FAIL, timeout=120),
+            Step("Yes", tap="Yes", ok=("dialog onClick -1", "dialog: presented"), fail=ATL_FAIL),
+            Step("Green", tap="Green", ok=("dialog onClick 1", "dialog done", "atl main returned 0"), fail=ATL_FAIL),
+            Step("back", back=True),
+        ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("art", [
             Step("art", tap="art", ok=("art probe done",)),
             Step("run hello", tap="run hello", ok=("Hello from dine runtime tests", "art main returned"),
