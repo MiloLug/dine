@@ -1,8 +1,9 @@
 // In-app debug agent behind `tools/dine dbg ui …`: UI work without lldb or the host's accessibility
 // inspector. One request line, one JSON reply line per connection:
 //   ls               {"labels": [[isElement, label], …]} of the key window's accessibility walk
-//   tap N "LABEL"    activates element N of the last walk if it still has LABEL (a JSON string);
-//                    replies before the activation runs, so a breakpoint it hits can't block the reply
+//   tap N "LABEL"    activates element N of the last walk if it still has LABEL (a JSON string), or
+//                    the alert action with that title; replies before the activation runs, so a
+//                    breakpoint it hits can't block the reply
 //   back             accessibility escape (VoiceOver's back gesture), also run after the reply
 //   settle MS        waits until the last tap/back ran, no transition runs and the labels hold still,
 //                    or MS pass (at most 10 s): {"labels", "settled", "ran",
@@ -124,6 +125,28 @@ NSString *ReadLine(int fd) {
   return nil;
 }
 
+// UIAlertController's action views decline accessibilityActivate (VoiceOver touches their activation
+// point instead), so the topmost alert's enabled action with that title runs as a tap runs it: the
+// alert dismisses, then the handler (private, through KVC) runs.
+BOOL ActivateAlertAction(NSString *label) {
+  UIViewController *top = KeyWindow().rootViewController;
+  while (top.presentedViewController) top = top.presentedViewController;
+  if (![top isKindOfClass:UIAlertController.class] || top.isBeingDismissed) return NO;
+  for (UIAlertAction *action in ((UIAlertController *)top).actions) {
+    if (!action.enabled || ![action.title isEqualToString:label]) continue;
+    void (^handler)(UIAlertAction *) = nil;
+    @try {
+      handler = [action valueForKey:@"handler"];
+    } @catch (NSException *) {
+    }
+    [top.presentingViewController dismissViewControllerAnimated:YES completion:^{
+      if (handler) handler(action);
+    }];
+    return YES;
+  }
+  return NO;
+}
+
 void Tap(int fd, NSInteger n, NSString *label) {
   __block BOOL ok = NO;
   OnMain(^{
@@ -132,7 +155,9 @@ void Tap(int fd, NSInteger n, NSString *label) {
     id item = gItems[n];
     gBefore = gLabels;
     gResult = nil;
-    dispatch_async(dispatch_get_main_queue(), ^{ gResult = @([item accessibilityActivate]); });
+    dispatch_async(dispatch_get_main_queue(), ^{
+      gResult = @([item accessibilityActivate] || ActivateAlertAction(label));
+    });
   });
   Reply(fd, ok ? @{@"ok": @YES} : @{@"error": @"the screen changed since the last ls"});
 }
