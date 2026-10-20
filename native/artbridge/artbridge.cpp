@@ -317,6 +317,7 @@ bool StartVmThread(void *(*body)(void *), void *arg) {
 
 struct AtlRun {
   std::string resource_dir, atl_dir, data_dir, apk, activity;
+  atl_embedded_listener listener;
 };
 
 bool gAtlStarted = false;
@@ -381,6 +382,7 @@ void *AtlThread(void *arg) {
       .framework_res_apk = framework_res.c_str(),
       .apk = run->apk.c_str(),
       .activity = run->activity.empty() ? nullptr : run->activity.c_str(),
+      .listener = &run->listener,
   };
   int n_options;
   JavaVMOption *options = atl_embedded_vm_options(&config, &n_options);
@@ -391,6 +393,7 @@ void *AtlThread(void *arg) {
       gVmState = VmState::kNone;
     }
     AtlExited();
+    if (run->listener.exited) run->listener.exited(run->listener.context, -1);
     return nullptr;
   }
   // *:i: ATL logs its lifecycle (onResume) at info
@@ -447,7 +450,7 @@ int dine_art_run(const char *resource_dir, const char *data_dir, const char *cla
 }
 
 int dine_atl_run(const char *resource_dir, const char *atl_dir, const char *data_dir,
-                 const char *apk, const char *activity) {
+                 const char *apk, const char *activity, const atl_embedded_listener *listener) {
   std::lock_guard<std::mutex> lock(gLock);
   if (gAtlStarted) {
     os_log_error(Log(), "atl already ran in this process: relaunch Dine");
@@ -458,7 +461,8 @@ int dine_atl_run(const char *resource_dir, const char *atl_dir, const char *data
     return -1;
   }
   if (gOutput < 0) RedirectOutput();
-  auto *run = new AtlRun{resource_dir, atl_dir, data_dir, apk, activity ? activity : ""};
+  auto *run = new AtlRun{resource_dir, atl_dir, data_dir, apk, activity ? activity : "",
+                         listener ? *listener : atl_embedded_listener{}};
   if (!StartVmThread(AtlThread, run)) {
     delete run;
     return -1;

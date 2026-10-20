@@ -5,6 +5,8 @@
 extern "C" {
 #endif
 
+struct atl_embedded_listener; // atl/nav.h
+
 /// Checks the platform facts ART depends on. Logs each result to os_log as
 /// `art probe <name> <value>` and returns them newline-separated; the string stays valid until
 /// the next call.
@@ -18,12 +20,13 @@ const char *dine_art_probe(void);
 int dine_art_run(const char *resource_dir, const char *data_dir, const char *class_path,
                  const char *main_class);
 
-/// Runs `activity` (NULL: the manifest's main one) of `apk` headless through ATL on a new thread
-/// that stays its Android main thread. ATL's jars are in `atl_dir`; app data goes to
-/// `data_dir`/atl. It creates the process's only VM, so it returns -1 once any run started,
-/// after logging why.
+/// Runs `activity` (NULL: the manifest's main one) of `apk` through ATL on a new thread that
+/// stays its Android main thread. ATL's jars are in `atl_dir`; app data goes to `data_dir`/atl.
+/// `listener` (copied; NULL: none) hears task moves and the exit, on that thread; `exited` also
+/// comes when ATL can't start. It creates the process's only VM, so it returns -1 once any run
+/// started, after logging why.
 int dine_atl_run(const char *resource_dir, const char *atl_dir, const char *data_dir,
-                 const char *apk, const char *activity);
+                 const char *apk, const char *activity, const struct atl_embedded_listener *listener);
 
 /// Logs `atl probe now: stack used N KiB …`, the ATL main thread's deepest stack use so far, and
 /// the process's physical footprint and its peak. For the debugger (`dbg call`).

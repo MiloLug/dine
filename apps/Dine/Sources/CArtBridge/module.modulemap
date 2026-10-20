@@ -3,6 +3,7 @@
 // Package.swift instead: ART looks their symbols up with dlsym.
 module CArtBridge [system] {
     header "../../../../native/artbridge/include/dineart.h"
+    header "../../../../out/ios/include/atl/nav.h"
     link "artbridge"
     link "art"
     link "artbase"

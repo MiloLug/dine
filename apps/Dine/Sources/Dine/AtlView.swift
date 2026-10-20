@@ -25,6 +25,6 @@ struct AtlView: View {
         else {
             return log.error("atl: art/, atl/ or caches dir missing")
         }
-        dine_atl_run(root, atl, caches.path, atl + "/" + apk + ".apk", activity)
+        dine_atl_run(root, atl, caches.path, atl + "/" + apk + ".apk", activity, nil)
     }
 }
