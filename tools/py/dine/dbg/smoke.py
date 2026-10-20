@@ -134,9 +134,10 @@ SCENARIOS = {
         Scenario("atl-views", [
             Step("atl", tap="atl"),
             # c was laid out before its free; a layout pass after it walks the records without it
-            Step("run views", tap="views", ok=('viewfreed: android.widget.TextView "c"', "views done",
+            Step("run views", tap="views", ok=("dialogfreed:", "drawablefreed:", 'viewfreed: android.widget.TextView "c"', "views done",
                                                "atl main returned 0", "nav: container dismissed exit"),
-                 fail=ATL_FAIL + ("native_1destructor", "native_1removeView"), timeout=120),
+                 fail=ATL_FAIL + ("native_1destructor", "native_1removeView", "nativeDestroy", "native_1unref"),
+                 timeout=120),
             Step("back", back=True),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-dialog", [
