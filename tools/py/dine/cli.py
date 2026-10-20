@@ -8,7 +8,7 @@ import subprocess
 import sys
 import time
 
-from . import ios, paths
+from . import ios, linux, paths
 from .dbg import client, session, smoke
 from .paths import DineError
 
@@ -137,6 +137,11 @@ def _linux(sub):
     t.add_argument("stages", nargs="*", choices=[[], "bionic", "art", "opensles", "atl", "atl-headless"],
                    metavar="stage")
     t.set_defaults(func=lambda a: ios.run_libexec("build-linux-stack.sh", *a.stages))
+    t = s.add_parser("smoke", help="gtk runs Gravity Defied to onResume, headless runs demo_app and looper "
+                                   "(after linux build; --list for the checks)")
+    t.add_argument("names", nargs="*", metavar="check")
+    t.add_argument("--list", action="store_true", help="print the checks")
+    t.set_defaults(func=lambda a: print(linux.listing()) if a.list else linux.smoke(a.names))
 
 
 def _test(sub):

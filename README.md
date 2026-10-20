@@ -53,6 +53,7 @@ symbols, ATL build, and a verification checklist.
 | `tools/dine ios lldb-offline [App] <bp> [-- lldb args]` | same lldb setup on a synthetic core, no phone |
 | `tools/dine dbg …` | the debug server: see [Debug server](#debug-server) |
 | `tools/dine linux build [stage…]` | bionic_translation → dine-art → libopensles → dine-atl → `out/linux/prefix`, then headless dine-atl in `out/linux/build/dine-atl-headless` |
+| `tools/dine linux smoke [check…] [--list]` | gtk ATL runs Gravity Defied to `onResume`; headless ATL runs demo_app and looper.apk (after `linux build`) |
 | `tools/dine test runtime [-- harness args]` | ART run-tests on the local `dalvikvm -Xint` (suite `dine-art/tests/runtime`, engine `tests/harness`) |
 | `tools/dine test unit` | unit tests of `tests/harness` and `tools/py` |
 
@@ -216,6 +217,7 @@ apps/<App>/xtool/<App>.app/<App>` (local Mach-O + debug info) → `target.sdk-pa
 
 ```sh
 tools/dine linux build                  # all stages; or: bionic art opensles atl atl-headless
+tools/dine linux smoke                  # gd, demo, looper: one line each, then "smoke passed: …"
 source env.sh                           # PATH + LD_LIBRARY_PATH for out/linux/prefix
 ANDROID_APP_DATA_DIR=$PWD/out/linux/appdata \
   android-translation-layer third_party/atl_test_apks/org.happysanta.gd_29.apk \

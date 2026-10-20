@@ -8,7 +8,7 @@ from pathlib import Path
 
 PACKAGE = Path(__file__).resolve().parents[1]
 # Never imported by the server.
-CLIENT_ONLY = {"__main__.py", "cli.py", "dbg/client.py", "dbg/smoke.py"}
+CLIENT_ONLY = {"__main__.py", "cli.py", "linux.py", "dbg/client.py", "dbg/smoke.py"}
 
 # Fixed, not $TMPDIR: a sandboxed shell may set its own TMPDIR and then miss the running server.
 BASE = Path(os.environ.get("DINE_DBG_DIR", "/tmp/dine-dbg"))

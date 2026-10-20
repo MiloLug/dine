@@ -297,8 +297,7 @@ tools/dine dbg start-server && tools/dine dbg smoke  # every step "ok", then "sm
 tools/dine ios lldb -- -b -o "expr -l c -- (const char *)dine_hello()" -o "process detach"
 tools/dine ios lldb --suspended -- -b -o "b HelloView.swift:8" -o c -o "po self" -o "process detach"
 tools/dine test unit                                 # harness + tools unit tests (debug server on a fake target)
-ANDROID_APP_DATA_DIR=$PWD/out/linux/appdata android-translation-layer \
-  third_party/atl_test_apks/org.happysanta.gd_29.apk -l org/happysanta/gd/GDActivity -X -Xint
+tools/dine linux smoke                               # gd (opens a window), demo, looper: "smoke passed: …"
 tools/dine test runtime                              # ART run-tests: exits 0 (no regressions)
 tools/dine ios build-art                             # ART as arm64-apple-ios archives in out/ios/lib
 tools/dine ios build-atl                             # ATL's headless build as an archive in out/ios/lib
