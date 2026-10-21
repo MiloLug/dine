@@ -19,18 +19,34 @@ struct NavigationSettings {
     static let current = NavigationSettings()
 }
 
+/// The spans of the side edges the app takes back (View.setSystemGestureExclusionRects), pt from the
+/// top of the app's window.
+struct EdgeExclusion: Equatable {
+    var left: [ClosedRange<CGFloat>] = []
+    var right: [ClosedRange<CGFloat>] = []
+}
+
 enum EdgeGesture {
     enum Edge: String { case left, right }
     enum Axis: String { case inward, down }
 
     static let commitVelocity: CGFloat = 600
 
-    /// The edge whose strip `point` is in, between the safe area's top and bottom.
-    static func edge(at point: CGPoint, in bounds: CGRect, safeArea: UIEdgeInsets, settings: NavigationSettings) -> Edge? {
+    /// The edge whose strip `point` is in, between the safe area's top and bottom, unless the app
+    /// excluded that part of it; the app's window starts at the safe area's top.
+    static func edge(at point: CGPoint, in bounds: CGRect, safeArea: UIEdgeInsets, settings: NavigationSettings,
+                     exclusion: EdgeExclusion = EdgeExclusion()) -> Edge? {
         guard point.y >= bounds.minY + safeArea.top, point.y <= bounds.maxY - safeArea.bottom else { return nil }
-        if point.x <= bounds.minX + settings.stripWidth.left { return .left }
-        if point.x >= bounds.maxX - settings.stripWidth.right { return .right }
-        return nil
+        let edge: Edge
+        if point.x <= bounds.minX + settings.stripWidth.left {
+            edge = .left
+        } else if point.x >= bounds.maxX - settings.stripWidth.right {
+            edge = .right
+        } else {
+            return nil
+        }
+        let y = point.y - bounds.minY - safeArea.top
+        return (edge == .left ? exclusion.left : exclusion.right).contains { $0.contains(y) } ? nil : edge
     }
 
     /// The dominant direction once the pan begins, if it is inward or down. The pan's own start
@@ -65,14 +81,17 @@ enum EdgeGesture {
 final class EdgeGestureRecognizer: NSObject, UIGestureRecognizerDelegate {
     private let allows: (NavAction) -> Bool
     private let perform: (NavAction) -> Void
+    private let exclusion: () -> EdgeExclusion
     private let pan = UIPanGestureRecognizer()
     private let indicator = UIImageView()
     private var edge: EdgeGesture.Edge?
     private var axis: EdgeGesture.Axis?
 
-    init(on view: UIView, allows: @escaping (NavAction) -> Bool, perform: @escaping (NavAction) -> Void) {
+    init(on view: UIView, allows: @escaping (NavAction) -> Bool, perform: @escaping (NavAction) -> Void,
+         exclusion: @escaping () -> EdgeExclusion = { EdgeExclusion() }) {
         self.allows = allows
         self.perform = perform
+        self.exclusion = exclusion
         super.init()
         pan.delegate = self
         pan.cancelsTouchesInView = true
@@ -91,7 +110,7 @@ final class EdgeGestureRecognizer: NSObject, UIGestureRecognizerDelegate {
         // a second finger mid-swipe must not reset it
         guard pan.state == .possible, let view = pan.view else { return false }
         edge = EdgeGesture.edge(at: touch.location(in: view), in: view.bounds, safeArea: view.safeAreaInsets,
-                                settings: .current)
+                                settings: .current, exclusion: exclusion())
         axis = nil
         guard let edge else { return false }
         return [EdgeGesture.Axis.inward, .down].contains { axis in

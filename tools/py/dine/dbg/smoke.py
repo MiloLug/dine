@@ -159,9 +159,12 @@ SCENARIOS = {
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-nav", [
             Step("atl", tap="atl"),
-            Step("run nav", tap="nav", ok=("nav: B onResume", "nav: container shown nav"), fail=ATL_FAIL,
-                 timeout=120),
-            Step("Back", action="Back", ok=("nav: B onDestroy", "nav: A onResume"), fail=ATL_FAIL),
+            # px at 3x: 20 pt side strips, the home indicator at the bottom; B excludes 200-300 px of its right edge
+            Step("run nav", tap="nav", ok=("nav: B onResume", "nav: container shown nav",
+                                          r"nav: B insets 60 0 60 [1-9]\d* 0 0 0 [1-9]\d* 0 0 0 [1-9]\d*",
+                                          "nav: exclusion left 0 right 1"), fail=ATL_FAIL, timeout=120),
+            Step("Back", action="Back", ok=("nav: B onDestroy", "nav: A onResume", "nav: exclusion left 0 right 0"),
+                 fail=ATL_FAIL),
             Step("back on the task root", back=True,
                  ok=("nav: A onStop", "nav: container dismissed back", "nav: launcher root"), fail=ATL_FAIL),
             Step("Recent apps", action="Recent apps", ok=("nav: apps list shown",)),

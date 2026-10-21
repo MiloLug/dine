@@ -17,6 +17,8 @@ final class Navigator: ObservableObject {
     private var appsList: AppsListController?
     private var listReturnsToApp = false
     private var keepScreenOn = false  // the app asks; it applies while its container shows
+    private(set) var exclusion = EdgeExclusion()  // the shown activity's
+    private var insetsSent: [Float] = []
     private var listener = atl_embedded_listener()
     private var launcherEdges: EdgeGestureRecognizer?
 
@@ -30,6 +32,16 @@ final class Navigator: ObservableObject {
         listener.exited = { context, _ in
             let navigator = Unmanaged<Navigator>.fromOpaque(context!).takeUnretainedValue()
             DispatchQueue.main.async { MainActor.assumeIsolated { navigator.exited() } }
+        }
+        listener.exclusion_changed = { context, exclusion in
+            let navigator = Unmanaged<Navigator>.fromOpaque(context!).takeUnretainedValue()
+            let spans = EdgeExclusion(exclusion!.pointee)
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    navigator.exclusion = spans
+                    log.notice("nav: exclusion left \(spans.left.count) right \(spans.right.count)")
+                }
+            }
         }
         listener.keep_screen_on = { context, on in
             let navigator = Unmanaged<Navigator>.fromOpaque(context!).takeUnretainedValue()
@@ -48,8 +60,7 @@ final class Navigator: ObservableObject {
         guard let keyWindow = rootController?.view.window else {
             return log.error("atl: no key window to size the app's window from")
         }
-        // below the status bar to the screen's bottom, under the home indicator: ATL doesn't
-        // dispatch insets yet, so content would sit under the clock and the notch
+        // below the status bar to the screen's bottom: the app gets the home indicator as insets
         let safeArea = keyWindow.safeAreaLayoutGuide.layoutFrame
         let size = CGSize(width: safeArea.width, height: keyWindow.bounds.maxY - safeArea.minY)
         let traits = keyWindow.traitCollection
@@ -60,6 +71,7 @@ final class Navigator: ObservableObject {
         case .light: 0x10
         default: 0
         }
+        sendInsets(safeArea: keyWindow.safeAreaInsets)
         let window = dine_atl_window(view: Unmanaged.passUnretained(view).toOpaque(),
                                      width: Int32((size.width * scale).rounded(.down)),
                                      height: Int32((size.height * scale).rounded(.down)),
@@ -218,6 +230,24 @@ final class Navigator: ObservableObject {
     private func updateIdleTimer() {
         UIApplication.shared.isIdleTimerDisabled = keepScreenOn && container != nil
     }
+
+    /// notes/nav-gestures.md, pt as dp; the window starts below the status bar: nothing at its top
+    func sendInsets(safeArea: UIEdgeInsets) {
+        let settings = NavigationSettings.current
+        func strip(_ edge: String, _ width: CGFloat) -> Float {
+            let bound = ["inward", "down"].contains { (settings.bindings["\(edge).\($0)"] ?? .none) != .none }
+            return bound ? Float(width) : 0
+        }
+        let left = strip("left", settings.stripWidth.left), right = strip("right", settings.stripWidth.right)
+        let bottom = Float(safeArea.bottom)
+        guard insetsSent != [left, right, bottom] else { return }
+        insetsSent = [left, right, bottom]
+        var insets = atl_window_insets()
+        insets.system_gestures = atl_edges(left: left, top: 0, right: right, bottom: bottom)
+        insets.mandatory_gestures = atl_edges(left: 0, top: 0, right: 0, bottom: bottom)
+        insets.navigation_bars = atl_edges(left: 0, top: 0, right: 0, bottom: bottom)
+        atl_nav_set_insets(&insets)
+    }
 }
 
 /// ATL's window, with the frame its shown activity asks for: the status bar's color (nil: Dine's
@@ -282,7 +312,8 @@ final class AppContainerController: UIViewController {
             surface.heightAnchor.constraint(equalToConstant: size.height),
         ])
         let navigator = navigator
-        edges = EdgeGestureRecognizer(on: view, allows: { _ in true }, perform: { navigator.perform($0) })
+        edges = EdgeGestureRecognizer(on: view, allows: { _ in true }, perform: { navigator.perform($0) },
+                                      exclusion: { navigator.exclusion })
         // edge swipes don't work under VoiceOver, and the debug agent drives the UI through these
         view.accessibilityCustomActions = [
             UIAccessibilityCustomAction(name: "Back") { _ in MainActor.assumeIsolated { navigator.back() }; return true },
@@ -297,6 +328,14 @@ final class AppContainerController: UIViewController {
     override var preferredStatusBarStyle: UIStatusBarStyle {
         guard surface.frameColor != nil else { return .default }
         return surface.lightFrame ? .darkContent : .lightContent
+    }
+
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        // a dismissed container leaving the window reports zero insets
+        if view.window != nil {
+            navigator.sendInsets(safeArea: view.safeAreaInsets)
+        }
     }
 
     // fullscreen: Android's default cutout mode keeps the window below the notch, the strip black
@@ -375,5 +414,18 @@ final class AppsListController: UIViewController, UIAdaptivePresentationControll
 
     func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
         navigator.appsListSwipedAway()
+    }
+}
+
+extension EdgeExclusion {
+    init(_ exclusion: atl_gesture_exclusion) {
+        var exclusion = exclusion
+        func spans<T>(_ tuple: inout T, _ count: Int32) -> [ClosedRange<CGFloat>] {
+            withUnsafeBytes(of: &tuple) { bytes in
+                bytes.bindMemory(to: atl_span.self).prefix(Int(count)).map { CGFloat($0.top)...CGFloat($0.bottom) }
+            }
+        }
+        left = spans(&exclusion.left, exclusion.left_count)
+        right = spans(&exclusion.right, exclusion.right_count)
     }
 }
