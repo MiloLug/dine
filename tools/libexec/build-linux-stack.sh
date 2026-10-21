@@ -48,6 +48,8 @@ atl_headless_stage() {
       -Dhost=cli -Dloop=poll -Dui=headless -Dgfx=record
   fi
   meson compile -C "$dir" -j "$JOBS"
+  # not built by default: the framework tests' --instrument runner
+  meson compile -C "$dir" -j "$JOBS" test_runner.jar
 }
 
 art_stage() {
