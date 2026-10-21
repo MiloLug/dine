@@ -162,7 +162,7 @@ CHECKS = [
     Check("dialog-gtk", "gtk: the same through the GTK dialog's widgets (opens a window)", _dialog_gtk),
     Check("nav", "headless: nav.apk's lifecycle under Back, Home and front from cli -c", _nav),
     Check("views", "headless: views.apk removes, re-adds and frees views, view tree matches the golden", _views),
-    Check("views-gtk", "gtk: the same removals and frees through GTK's widgets (opens a window)", _views_gtk),
+    Check("views-gtk", "gtk: the same through GTK's widgets, and gsk frees a nine-patch and a StateListDrawable (opens a window)", _views_gtk),
 ]
 
 
