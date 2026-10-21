@@ -20,6 +20,7 @@ struct AtlView: View {
                 tile("dialog", activity: "dev/dine/dialog/MainActivity")
                 tile("nav", activity: "dev/dine/nav/MainActivity")
                 tile("views", activity: "dev/dine/views/MainActivity")
+                tile("widgets", activity: "dev/dine/widgets/MainActivity")
             }
             .padding()
         }

@@ -141,6 +141,14 @@ SCENARIOS = {
                  timeout=120),
             Step("back", back=True),
         ], uses_vm=True, needs_clean=True, alive=True),
+        Scenario("atl-widgets", [
+            Step("atl", tap="atl"),
+            Step("run widgets", tap="widgets", ok=("widgets shown", "nav: frame fullscreen true"), ui=("widgets fullscreen",),
+                 fail=ATL_FAIL, timeout=120),
+            Step("windowed after 5 s", ok=("widgets fullscreen off", "nav: frame fullscreen false"), ui=("widgets windowed",),
+                 fail=ATL_FAIL),
+            Step("Home", action="Home", ok=("nav: launcher root",)),
+        ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-dialog", [
             Step("atl", tap="atl"),
             Step("run dialog", tap="dialog", ok=("dialog: presented",), fail=ATL_FAIL, timeout=120),
@@ -247,6 +255,9 @@ def run(app: str, names: list[str], network: bool, relaunch: Callable[[], int], 
                 if resp["code"]:
                     out(f"{sc.name}: {st.title}: FAILED\n{resp['text']}")
                     return 1
+            else:
+                # it waits for what earlier steps set off: lines from before it would match too early
+                client.call("note", {"kind": "smoke", "text": st.title, "mark": True})
             for ok in st.ok:
                 resp = client.call("wait", {"log_re": [ok, *st.fail], "since": "mark"}, timeout=st.timeout)
                 hit = fail_hit(resp["text"], st.fail)
