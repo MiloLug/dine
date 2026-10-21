@@ -85,6 +85,9 @@ paru -S --needed swift-bin ipsw-bin wolfssl-jni bsd-compat-headers android-sdk-b
   (`archlinux-java status`; `sudo archlinux-java set java-8-openjdk` if a JDK install changed it).
   The package also puts `aapt` on `PATH`; ATL ignores it (see step 8).
 - `smali` and `jasmin` only build the runtime tests (`tools/dine test runtime`).
+- The desktop ATL build links pacman's `graphene`; the headless and iOS builds clone graphene
+  1.10.8 through dine-atl's meson wrap (`subprojects/graphene.wrap`, built without GObject), so
+  their first setup needs network.
 - `swift-bin` installs into `/usr/lib/swift/usr` and only symlinks `swift`, `swiftc` and
   `sourcekit-lsp`, so it doesn't clash with system clang/lldb. **The Swift version must match
   the Xcode version** xtool expects (Swift 6.4 ↔ Xcode 27). Check xtool's docs when either one

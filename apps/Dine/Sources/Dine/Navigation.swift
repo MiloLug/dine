@@ -16,6 +16,7 @@ final class Navigator: ObservableObject {
     private var container: AppContainerController?
     private var appsList: AppsListController?
     private var listReturnsToApp = false
+    private var keepScreenOn = false  // the app asks; it applies while its container shows
     private var listener = atl_embedded_listener()
     private var launcherEdges: EdgeGestureRecognizer?
 
@@ -29,6 +30,15 @@ final class Navigator: ObservableObject {
         listener.exited = { context, _ in
             let navigator = Unmanaged<Navigator>.fromOpaque(context!).takeUnretainedValue()
             DispatchQueue.main.async { MainActor.assumeIsolated { navigator.exited() } }
+        }
+        listener.keep_screen_on = { context, on in
+            let navigator = Unmanaged<Navigator>.fromOpaque(context!).takeUnretainedValue()
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    navigator.keepScreenOn = on
+                    navigator.updateIdleTimer()
+                }
+            }
         }
     }
 
@@ -160,6 +170,7 @@ final class Navigator: ObservableObject {
         guard let app, let surface, container == nil else { return }
         let controller = AppContainerController(surface: surface.view, size: surface.size, navigator: self)
         container = controller
+        updateIdleTimer()
         log.notice("nav: container shown \(app, privacy: .public)")
         afterTransitions { [self] in
             guard container === controller else { return } // dismissed before it could show
@@ -173,6 +184,7 @@ final class Navigator: ObservableObject {
             return
         }
         container = nil
+        updateIdleTimer()
         log.notice("nav: container dismissed \(reason, privacy: .public)")
         afterTransitions {
             // also takes down an alert ATL presented on it
@@ -199,20 +211,27 @@ final class Navigator: ObservableObject {
     private func exited() {
         app = nil
         surface = nil
+        keepScreenOn = false
         dismissContainer("exit")
+    }
+
+    private func updateIdleTimer() {
+        UIApplication.shared.isIdleTimerDisabled = keepScreenOn && container != nil
     }
 }
 
 /// ATL's window, with the frame its shown activity asks for: the status bar's color (nil: Dine's
-/// own) and whether it is light.
+/// own), whether it is light, and whether the app is fullscreen (the status bar hidden).
 final class AppSurfaceView: UIView, ATLSurface {
     private(set) var frameColor: UIColor?
     private(set) var lightFrame = false
+    private(set) var fullscreen = false
     var frameChanged: (@MainActor () -> Void)?
 
-    func atlFrameChanged(_ color: UIColor?, light: Bool) {
+    func atlFrameChanged(_ color: UIColor?, light: Bool, fullscreen: Bool) {
         frameColor = color
         lightFrame = light
+        self.fullscreen = fullscreen
         frameChanged?()
     }
 }
@@ -280,9 +299,13 @@ final class AppContainerController: UIViewController {
         return surface.lightFrame ? .darkContent : .lightContent
     }
 
+    // fullscreen: Android's default cutout mode keeps the window below the notch, the strip black
+    override var prefersStatusBarHidden: Bool { surface.fullscreen }
+
     private func matchFrame() {
-        statusBar.backgroundColor = surface.frameColor
+        statusBar.backgroundColor = surface.fullscreen ? .black : surface.frameColor
         setNeedsStatusBarAppearanceUpdate()
+        log.notice("nav: frame fullscreen \(self.surface.fullscreen)")
     }
 }
 

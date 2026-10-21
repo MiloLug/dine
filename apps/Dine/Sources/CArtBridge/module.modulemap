@@ -32,6 +32,7 @@ module CArtBridge [system] {
     link "utils"
     link "cutils"
     link "sqlite3"
+    link "graphene-1.0"
     link "wolfssl"
     link "c++"
     link framework "CoreFoundation"
