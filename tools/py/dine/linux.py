@@ -1,5 +1,6 @@
 """Linux smoke: the gtk build runs Gravity Defied to onResume and the dialog and views APKs; the
-headless build runs demo_app and the looper, dialog, nav and views APKs. Needs a prior `tools/dine linux build`."""
+headless build runs demo_app and the looper, dialog, nav, views and widgets APKs. Needs a prior
+`tools/dine linux build`."""
 
 import os
 import shutil
@@ -23,6 +24,7 @@ LOOPER_APK = paths.OUT / "tests/apks/looper.apk"
 DIALOG_APK = paths.OUT / "tests/apks/dialog.apk"
 NAV_APK = paths.OUT / "tests/apks/nav.apk"
 VIEWS_APK = paths.OUT / "tests/apks/views.apk"
+WIDGETS_APK = paths.OUT / "tests/apks/widgets.apk"
 LOG_DIR = paths.OUT / "linux/smoke"
 GD_TIMEOUT = 120
 
@@ -38,7 +40,7 @@ class Check:
 def _need_display(check: str) -> None:
     if not (os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY")):
         raise DineError(f"{check} needs a display (WSLg sets WAYLAND_DISPLAY); headless only: "
-                        "tools/dine linux smoke demo demo-480 looper dialog nav views")
+                        "tools/dine linux smoke demo demo-480 looper dialog nav views widgets")
 
 
 def _gd() -> str | None:
@@ -153,6 +155,12 @@ def _views_gtk() -> str | None:
     return _views_apk() or _script("run-views.sh", HEADLESS_TESTS / "run-views.sh", GTK_BUILD, VIEWS_APK)
 
 
+def _widgets() -> str | None:
+    _need_headless()
+    return (_script("apk.py", sys.executable, paths.ROOT / "tests/harness/apk.py", HEADLESS_TESTS / "widgets", WIDGETS_APK)
+            or _script("run-widgets.sh", HEADLESS_TESTS / "run-widgets.sh", HEADLESS_BUILD, WIDGETS_APK))
+
+
 CHECKS = [
     Check("gd", "gtk: Gravity Defied reaches onResume under -Xint (opens a window)", _gd),
     Check("demo", "headless: demo_app reaches onResume, view tree matches the golden", _demo),
@@ -163,6 +171,7 @@ CHECKS = [
     Check("nav", "headless: nav.apk's lifecycle under Back, Home and front from cli -c", _nav),
     Check("views", "headless: views.apk removes, re-adds and frees views, view tree matches the golden", _views),
     Check("views-gtk", "gtk: the same through GTK's widgets, and gsk frees a nine-patch and a StateListDrawable (opens a window)", _views_gtk),
+    Check("widgets", "headless: widgets.apk takes taps, a hold, Tab, Enter, a drag and keys from cli -c", _widgets),
 ]
 
 
