@@ -282,7 +282,7 @@ tools/dine ios build-atl              # dine-atl uikit → out/ios/lib, its jars
 - dine-art's iOS build includes androidfw, libutils and libcutils for ATL's resource natives,
   without aapt2's PNG code (the SDK has no libpng) and libutils' epoll `Looper`.
 - dine-atl builds for iOS as a meson cross build (`-Dhost=embedded -Dloop=cfrunloop
-  -Dui=headless -Dgfx=record`, build dir `out/ios/build/dine-atl`). It compiles no Java: the jars
+  -Dui=uikit -Dgfx=record`, build dir `out/ios/build/dine-atl`). It compiles no Java: the jars
   and the JNI headers in `src/api-impl-jni/generated_headers` come from the Linux build, so
   `tools/dine linux build atl` runs first.
 - ICU's data is built into `libicudata.a` (`--with-data-packaging=static`, ~33 MB), as in Linux's
@@ -313,6 +313,7 @@ tools/dine ios lldb --suspended -- -b -o "b HelloView.swift:8" -o c -o "po self"
 tools/dine test unit                                 # harness + tools unit tests (debug server on a fake target)
 tools/dine linux smoke                               # gd, dialog-gtk, views-gtk open windows: "smoke passed: …"
 tools/dine test runtime                              # ART run-tests: exits 0 (no regressions)
+tools/dine test framework                            # android.* JUnit suites: exits 0 (no regressions)
 tools/dine ios build-art                             # ART as arm64-apple-ios archives in out/ios/lib
-tools/dine ios build-atl                             # ATL's headless build as an archive in out/ios/lib
+tools/dine ios build-atl                             # dine-atl's uikit build as an archive in out/ios/lib
 ```

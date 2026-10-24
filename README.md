@@ -43,7 +43,7 @@ symbols, ATL build, and a verification checklist.
 | `tools/dine ios tunnel start\|status` | iOS 17+ developer services: `dine-tunneld` runs from boot; `start` starts it if stopped (sudo), waits for the tunnel and mounts the DDI (after a phone reboot) |
 | `tools/dine ios build-native [lib…]` | `native/*`, plus `native/dev/*` unless `DINE_RELEASE=1` → `out/ios/{lib,include}` (`DINE_IOS_BUILD_TYPE`, default `RelWithDebInfo`) |
 | `tools/dine ios build-art` | dine-art (ART, libcore natives, androidfw) plus ICU, lz4, liblzma, wolfSSL → static archives in `out/ios/lib`, boot jars → `out/ios/share/art` (ART's junit jars → `out/ios/share/art-junit`, bundled by dev builds only) |
-| `tools/dine ios build-atl` | dine-atl's uikit build (meson cross) → `out/ios/lib/libtranslation_layer_main.a`; its jars → `out/ios/share/atl`; the looper, dialog, nav and views test APKs → `out/tests/apks`; needs `linux build atl` first |
+| `tools/dine ios build-atl` | dine-atl's uikit build (meson cross) → `out/ios/lib/libtranslation_layer_main.a`; its jars → `out/ios/share/atl`; the looper, dialog, nav, views and widgets test APKs → `out/tests/apks`; needs `linux build atl` first |
 | `tools/dine ios run [App]` | kill a running instance → native libs → dev payload (test APKs and jars → `out/ios/dev`) → asset catalog (accord → `out/ios/assets/<App>`) → `xtool dev` (build/sign/install) → launch via DVT. `DINE_RELEASE=1` (after `DINE_RELEASE=1 tools/dine ios build-atl`): a release build without dev or test code (CLAUDE.md) |
 | `tools/dine ios icons` | `apps/Dine/Resources/Icons.xcassets` from its `sources.txt`: copies the listed icons from the pack's clone |
 | `tools/dine ios launch [--suspended] [App]` | (re)launch via DVT, print the pid |
@@ -54,8 +54,9 @@ symbols, ATL build, and a verification checklist.
 | `tools/dine ios lldb-offline [App] <bp> [-- lldb args]` | same lldb setup on a synthetic core, no phone |
 | `tools/dine dbg …` | the debug server: see [Debug server](#debug-server) |
 | `tools/dine linux build [stage…]` | bionic_translation → dine-art → libopensles → dine-atl → `out/linux/prefix`, then headless dine-atl in `out/linux/build/dine-atl-headless` |
-| `tools/dine linux smoke [check…] [--list]` | gtk ATL runs Gravity Defied to `onResume` and the dialog and views APKs; headless ATL runs demo_app (also at 480 dpi) and the looper, dialog, nav and views APKs (after `linux build`) |
-| `tools/dine test runtime [-- harness args]` | ART run-tests on the local `dalvikvm -Xint` (suite `dine-art/tests/runtime`, engine `tests/harness`) |
+| `tools/dine linux smoke [check…] [--list]` | gtk ATL runs Gravity Defied to `onResume` and the dialog and views APKs; headless ATL runs demo_app (also at 480 dpi) and the looper, dialog, nav, views and widgets APKs, the last one also through its controls activity (after `linux build`) |
+| `tools/dine test runtime [fetch\|build\|run\|all] [-f REGEX] [--update-expectations]` | ART run-tests on the local `dalvikvm -Xint` (suite `dine-art/tests/runtime`, engine `tests/harness`); `tools/dine test runtime -- --help` lists every option |
+| `tools/dine test framework [-f REGEX] [--update-expectations]` | `android.*` JUnit suites in-VM on the headless ATL build (suite `dine-atl/tests/framework`, after `linux build`) |
 | `tools/dine test unit` | unit tests of `tests/harness` and `tools/py` |
 
 ## Device connection
@@ -194,8 +195,8 @@ apps/<App>/xtool/<App>.app/<App>` (local Mach-O + debug info) → `target.sdk-pa
 - Attach takes ~14 s (~10 s of it lldb parsing the symbol tables of ~1400 system dylibs).
   Memory is read in 16 KiB lines (`target.process.memory-cache-line-size`). A small gdb-remote
   round trip takes ~1.6 ms with `quickack` on the route to Windows (`../wsl-quickack`), ~44 ms
-  without: AMDS's small writes wait for Linux's 40 ms delayed ACK. The first Swift expression
-  takes ~1–3 s.
+  without: AMDS's small writes wait for Linux's 40 ms delayed ACK. The first Swift `po`
+  after a fresh server's attach takes up to ~15 s (`notes/dbg-optimizations.md`).
 - System frames are symbolicated from the local symbols (`SwiftUI\`View.toolbar(content:)`).
 - `ios lldb` always (re)launches the app via DVT, then attaches (`dbg attach` attaches to the
   running instance instead). Without `--suspended`, startup code has already run by then.
@@ -218,7 +219,7 @@ apps/<App>/xtool/<App>.app/<App>` (local Mach-O + debug info) → `target.sdk-pa
 
 ```sh
 tools/dine linux build                  # all stages; or: bionic art opensles atl atl-headless
-tools/dine linux smoke                  # gd, demo, demo-480, looper, dialog, dialog-gtk, nav, views, views-gtk: one line each
+tools/dine linux smoke                  # gd, demo, demo-480, looper, dialog, dialog-gtk, nav, views, views-gtk, widgets, controls: one line each
 source env.sh                           # PATH + LD_LIBRARY_PATH for out/linux/prefix
 ANDROID_APP_DATA_DIR=$PWD/out/linux/appdata \
   android-translation-layer third_party/atl_test_apks/org.happysanta.gd_29.apk \
@@ -228,14 +229,16 @@ ANDROID_APP_DATA_DIR=$PWD/out/linux/appdata \
 Test APKs: `third_party/atl_test_apks` (gitlab.com/android_translation_layer/atl_test_apks).
 Verified: Gravity Defied reaches `onResume` under `-Xint` in WSLg.
 
-Runs under WSLg (Wayland). ART here builds with gcc for x86_64; the iOS port will need
-a clang/arm64-apple-ios build of the same sources.
+Runs under WSLg (Wayland). ART here builds with gcc for x86_64; `tools/dine ios build-art`
+cross-compiles the same tree with clang for arm64-apple-ios.
 
 ## Tests
 
-`tests/README.md` describes the test worlds. Working today: ART run-tests on the local
+`tests/README.md` describes the test worlds. Working: ART run-tests on the local
 `dalvikvm -Xint`, `tools/dine test runtime` (exit 1 = regression against
-`dine-art/tests/runtime/expectations/`). Details: `dine-art/tests/runtime/README.md` (suite) and
+`dine-art/tests/runtime/expectations/`), and the `android.*` JUnit suites on the headless ATL build,
+`tools/dine test framework` (graded the same way against `dine-atl/tests/framework/expectations/`).
+Details: `dine-art/tests/runtime/README.md`, `dine-atl/tests/framework/README.md` (suites) and
 `tests/harness/README.md` (engine).
 
 ## Gotchas
