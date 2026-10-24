@@ -7,6 +7,12 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - Our delta: `git diff upstream/master...dine`. Local `master` lags upstream.
 - Upstream isn't merged: read its commits since the last merge and reimplement the wanted ones
   by hand.
+- EditText's text is Java's Editable (AOSP's TextView setText, ChangeWatcher and listener list, in
+  `EditText.java`); the toolkit field reports each edit to `EditText.atlEdited` and takes Java's
+  snapshots (`ui_edit_*`, `src/shared/android_widget_EditText.c`). The gtk GtkText is
+  `src/backends/ui/gtk/edit.c`; the legacy EditText natives are gone: port upstream EditText fixes
+  into the Java or that file. InputMethodManager's keyboard state is Java; only a view with its
+  own InputConnection reaches the gtk IM context (`nativeInit`, lazily).
 - Input is AOSP's Java: View/ViewGroup touch dispatch and `onTouchEvent`, focus, FocusFinder, the
   Activity/Dialog key chain. Backends call `atl_upcall_touch`/`atl_upcall_key`
   (`src/shared/input.c`) for a window's root view, which reach `android.view.ATLInput`

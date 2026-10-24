@@ -19,8 +19,8 @@ its row here changes when that block does.
 | [Pre-M4 batch](#pre-m4-batch-2026-10-21) | natives that layouts reach before input | done |
 | [M4a](#m4a-touch-scrolling-and-keys) | touch, scrolling and keys | done |
 | [M4b](#m4b-controls) | controls | done |
-| [M4c](#m4c-text-input) | text input | next |
-| [M5a](#m5a-renderer-and-display-list) | renderer choice, display list | planned |
+| [M4c](#m4c-text-input) | text input | done |
+| [M5a](#m5a-renderer-and-display-list) | renderer choice, display list | next |
 | [M5b](#m5b-drawing-on-the-phone) | drawing on the phone | planned |
 | [M5c](#m5c-text) | text | planned |
 | [M5d](#m5d-paths-nine-patch-layers-gravity-defied) | paths, nine-patch, layers; Gravity Defied | planned |
@@ -506,9 +506,9 @@ Natives that layouts and app setup reach before any input, moved behind the slot
 - Shared Java: one floating ViewTreeObserver per view without a window; the View constructor
   reads `keepScreenOn`.
 - Input for tests: the cli host's `-c` stdin takes touch and key lines next to `back`, `home` and
-  `front`; text lines come with M4c's text fields. gtk and iOS have no injection path (the debug
-  agent's `tap` is `accessibilityActivate`, and iOS has no public touch synthesis), so their input
-  steps are checks by hand.
+  `front`, and M4c's text lines. gtk and iOS have no touch injection path (the debug agent's `tap`
+  is `accessibilityActivate`, and iOS has no public touch synthesis), so their touch steps are
+  checks by hand.
 - Target: the widgets APK, which exists for checks by eye on iOS (`dbg smoke atl-widgets`), gets
   steps graded on headless: a tap, a long press, a scroll, a key, and a selector background's
   selected child following the pressed state, read from a log line (nothing draws it before M5b).
@@ -642,15 +642,76 @@ pass. Not checked by hand: the controls' look on gtk. Next stops on headless: fl
   selection and edit menu, so Copy writes the system pasteboard and Paste reads it, on iOS and gtk.
   An app's ClipboardManager reaches the same pasteboard through M7's clipboard item.
 - Text lines on the cli host's `-c` stdin.
-- Chosen with a diverger run when the stage starts: where the text's truth lives (the toolkit
-  widget, Java's Editable, or a mirror both threads read), how user edits and Java's `setText`
-  reconcile, marked text against InputFilter, single and multi-line fields.
-- Open questions: keyboard avoidance (the surface has a fixed size and `atl_window_insets` no IME
-  edge, so a keyboard covers fields low on the screen); a debug agent command that types into the
-  first responder (`insertText:`, `setMarkedText:`) so `dbg smoke` grades the text path;
-  InputMethodManager's static initializer calls the gtk-only `nativeInit`, which apps reach through
-  appcompat.
 - Target: the widgets APK's text field, graded on headless and checked by hand on gtk and iOS.
+
+**Status: done (2026-10-25).** `linux smoke text` and the framework suite `text` pass on headless;
+on the iPhone 13 `dbg smoke atl-text` passes, and `dbg ui type` into a Button is refused. Not
+checked by hand: on gtk typing, Enter, the selection and Copy/Paste; on the phone the software
+keyboard's own typing, a CJK keyboard's marked text, the selection handles and edit menu, a
+selectable TextView's Copy, the return keys and the pads' Done bar, password dots, the number
+keyboard, the keyboard after Home and front. As built:
+- Truth: Java's Editable. EditText keeps one from `Editable.Factory`; `setText` makes a new one as
+  AOSP does (filters against an empty Spanned, the listeners get `(0, old, new)`, the ChangeWatcher
+  span moves to it), and the old one stops reporting. The toolkit's field is the IME's side: it
+  applies the user's edit at once and reports `{prev, prev selection, text, selection, seq}`
+  (`atl_upcall_edit_report`, positions in UTF-16 code units). `EditText.atlEdited` finds the change
+  around prev's selection and replaces Java's own selection widened by the same amounts through
+  `Editable.replace` (filters, watchers), so a report on a base Java moved on from lands at Java's
+  cursor, as an IME's `commitText` does. A state that differs from the report's goes back as a
+  snapshot (`ui_edit_set_state`, acking the seq); Java's own changes send one per message. A field
+  takes a snapshot only when it acks the field's last report and no marked text is open; otherwise
+  its newer report makes Java answer. Marked text stays in the field until committed, and its end
+  always reports.
+- Slot: `ui_edit_new` (a text node: color, size, style and alignment apply, text and markup
+  don't), `ui_edit_set_config` (keyboard kind, return key, autocap, secure, multi-line,
+  autocorrect, hint, resolved in Java from `inputType` and `imeOptions`), `ui_edit_set_state`,
+  `ui_edit_set_keyboard`, `ui_text_set_selectable`; upcalls `atl_upcall_edit_report`, `_action`
+  and `_focus`.
+- Keyboard and focus: InputMethodManager holds the EditText the keyboard serves and whether it
+  shows. The keyboard follows Java's focus between EditTexts and hides when focus leaves them, on
+  Done, and on Back (its down and up both go to the keyboard). A tap the toolkit takes itself gives
+  the field the keyboard and Java's focus (`atl_upcall_edit_focus`); on headless a tap goes through
+  Java (EditText takes `clickable` from its style by hand). gtk keeps GTK's focus with Java's
+  (`ui_view_set_focused`), and `ui_edit_set_keyboard` does nothing there.
+- Java: `Editable`, `InputType` and `InputFilter` are AOSP's, and EditorInfo has the IME
+  constants. TextView keeps the hint, the selectable state, the transformation method and the
+  editor action listener, with AOSP's `onEditorAction`. EditText has AOSP's input types (a bare
+  EditText is multi-line), single line, filters, `maxLength`, password and the Enter keys. A soft
+  keyboard's return key on a single-line field (iOS, headless) is the IME's editor action, or an
+  Enter key with `IME_FLAG_NO_ENTER_ACTION`; gtk's Enter is a hardware key.
+  `Context.INPUT_METHOD_SERVICE` is `"input_method"`.
+- headless: the field with the keyboard takes the `-c` text lines (`notes/dev-reference.md`) and
+  prints `edit:` and `keyboard:` lines; `text hold` keeps reports back, so the drop rule runs. It
+  measures the text or the hint, a multi-line field by its lines.
+- gtk: a GtkText, single-line. It reports from an idle (typing over a selection is one report) and
+  upcalls focus enter and leave; the config sets the placeholder, visibility, input purpose and
+  hints. An EditText takes a hardware Enter before its GtkText, as Android takes a physical
+  keyboard's (an open preedit's Enter stays the IM's): a single-line field moves focus down, a
+  listener gets `IME_NULL` with the key, and a multi-line one takes it as a confirm key, with no
+  newline. A selectable TextView's GtkLabel is selectable and takes its own presses; its Ctrl+C
+  goes to GTK. A key's release goes to Java only after its press did (by hardware keycode; a
+  window going inactive forgets them, without a canceled up): GTK passes on the releases of
+  presses a text widget took. The IM-context callbacks of InputMethodManager push a local frame.
+- uikit: a UITextField for a single-line field, a UITextView for a multi-line one (swapped in
+  place, the state and the first responder carried over), `ATLSelectableText` (a UITextView that
+  doesn't edit) for a selectable TextView. A report waiting for the Android thread takes the next
+  change too. A field Java gave the keyboard before its root was in a window gets the first
+  responder when the root shows; a field that resigns (another activity shows, Dine leaves the
+  front) tells Java the keyboard is gone. Return on a single-line field is the editor action; the
+  number and phone pads, which have no return key, get a bar above them with it. The hint is the
+  accessibility label. A scratch UITextField or UITextView measures, an empty one as a space.
+- Debug agent: `ui type <label> <text>` (`insertText:`; no marked text).
+- Tests: `run-text.sh` (`linux smoke text`, the widgets APK's `TextActivity`), the framework suite
+  `text`, smoke `atl-text`.
+- Open: keyboard avoidance (M6b); Java's click and touch listeners on a field or a selectable
+  TextView where the toolkit takes its touches (gtk; on iOS unchecked); a hardware keyboard types
+  only into the field with the keyboard (no KeyListener); gtk multi-line; a Dialog's EditText
+  (M6b's content-view root); ClipboardManager (M7); `onCreateInputConnection` on EditText,
+  BaseInputConnection (a stub whose own `Editable` class shadows `android.text.Editable`) and
+  `onKeyPreIme`; key listeners as filters (a number field takes letters; M5c); line limits and a
+  fixed-height multi-line field's scrolling (M5c);
+  AutoCompleteTextView's drop-down (PopupWindow, M6b); on headless a field whose activity another
+  one covers keeps the keyboard (Java's next Back hides it); typing lag under `-Xint`, unmeasured.
 
 ### M5: Canvas
 
@@ -706,6 +767,16 @@ line).
   `Paint.measureText` instead of the width estimate ([Java](#java)), text bounds and font metrics
   (gtk-only now), `Canvas.drawText`.
 - Measure on the phone how close UIKit text metrics come to what dp-based layouts expect.
+- Key listeners as input filters, AOSP's: `NumberKeyListener`, `DigitsKeyListener` for number
+  fields and `DialerKeyListener` for phone fields (ATL has no `DialerKeyListener`, and the other
+  two are empty stubs), with TextView's rule
+  that adds the key listener to the field's filters. Until then a number field takes letters from a
+  hardware keyboard or a paste, on every build.
+- TextView's line limits: `maxLines`, `lines`, `minLines` and `maxHeight` (attributes and setters;
+  ATL's setters are empty), in the measured height as AOSP's `getDesiredHeight` caps and pads it.
+  Until then a `wrap_content` multi-line EditText grows without a cap. A multi-line field whose
+  height is fixed scrolls its own text to keep the cursor visible: on iOS its UITextView doesn't
+  scroll yet.
 - Unblocks on headless: Compose after `onResume` stops at `text.Layout.native_constructor`
   (Compose itself is M9).
 
@@ -754,6 +825,9 @@ Findings from M4b and M5 (M5's stages add and update them):
   describe may do the same.
 - flower_finder stops at `Region.nativeConstructor` (material's FloatingActionButton): Region's
   natives are gtk-only.
+- uikit's `keys.m` sends a hardware keyboard's keypad Enter as `KEYCODE_NUMPAD_ENTER` (160), which
+  no Java Enter reader takes (EditText's Enter keys, `isConfirmKey`, touch mode, lists); gtk sends
+  it as `KEYCODE_ENTER`. Whether Android 10's readers take 160 like Enter decides the fix.
 
 **Done when:** the last triage's table (APK, stop before, stop after) is in this section, and each
 stop and finding is fixed, named in a later stage or under Not staged.
@@ -773,6 +847,12 @@ stop and finding is fixed, named in a later stage or under Not staged.
   `getActionBar()` returns null, so multitouch stops at `ActionBar.setHomeButtonEnabled`, and a
   method alone would only move the failure to a NullPointerException.
 - Configuration changes: no resize or trait-change relayout (portrait only).
+- The UIKit pieces the uikit backend adds around Android's views match the iPhone's own in light
+  and dark: the Done bar above the number and phone pads (M4c) looks off next to the keyboard.
+- Keyboard avoidance: a keyboard covers a field low on the screen, since the surface has a fixed
+  size and `atl_window_insets` no IME edge. The window's `softInputMode` (adjustPan, adjustResize;
+  `Window.setSoftInputMode` does nothing, the manifest's is parsed) and the keyboard's frame from
+  Dine.
 - Immersive mode and status-bar insets for a window that covers the whole screen
   (`notes/nav-gestures.md` Status). The Dine setting that hides the home indicator for every app is
   [M8c](#m8c-navigation-settings-store)'s.

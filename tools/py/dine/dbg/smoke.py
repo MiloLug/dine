@@ -17,6 +17,7 @@ class Step:
     tap: str | None = None
     back: bool = False
     action: str | None = None  # an accessibility custom action's name
+    type: tuple[str, str] | None = None  # (label, text): the text typed into that field
     declined: bool = False      # the tap must be declined (a disabled control or alert action)
     ok: tuple[str, ...] = ()    # regexes that must all show up in the app's syslog
     ui: tuple[str, ...] = ()    # accessibility labels that must all show up, after ok
@@ -171,6 +172,16 @@ SCENARIOS = {
             Step("lamp off", tap="lamp off", ok=("controls click toggle lamp on",), ui=("lamp on",), fail=ATL_FAIL),
             Step("Home", action="Home", ok=("nav: launcher root",)),
         ], uses_vm=True, needs_clean=True, alive=True),
+        Scenario("atl-text", [
+            Step("atl", tap="atl"),
+            Step("run text", tap="text", ok=("text shown",), ui=("name", "fill"), fail=ATL_FAIL, timeout=120),
+            # the field's filter drops the digit: Java's watcher sees the filtered text
+            Step("type into name", type=("name", "hi1"), ok=('text after "hi"',), fail=ATL_FAIL),
+            Step("show", tap="show", ok=('text show "hi" 2,2',), fail=ATL_FAIL),
+            Step("fill", tap="fill", ok=('text after "filled"',), fail=ATL_FAIL),
+            Step("type after fill", type=("name", "!"), ok=('text after "filled!"',), fail=ATL_FAIL),
+            Step("Home", action="Home", ok=("nav: launcher root",)),
+        ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-dialog-keep", [
             Step("atl", tap="atl"),
             # onShow disabled "Yes", hid "Later" and took over "No"
@@ -229,8 +240,8 @@ def listing(app: str) -> str:
         flags = [f for f, on in (("fresh process", sc.needs_clean), ("app stays up", sc.alive)) if on]
         lines.append(f"{sc.name}" + (f" ({', '.join(flags)})" if flags else ""))
         for st in sc.steps:
-            what = f"tap {st.tap!r}" if st.tap else f"action {st.action!r}" if st.action else \
-                "back" if st.back else st.title
+            what = f"tap {st.tap!r}" if st.tap else f"type {st.type[1]!r} into {st.type[0]!r}" if st.type else \
+                f"action {st.action!r}" if st.action else "back" if st.back else st.title
             lines.append(f"  {what}" + (f"; wait for {', '.join(st.ok)}" if st.ok else "")
                          + (f"; shows {', '.join(map(repr, st.ui))}" if st.ui else "")
                          + (" [--network]" if st.network else ""))
@@ -274,8 +285,9 @@ def run(app: str, names: list[str], network: bool, relaunch: Callable[[], int], 
                 out(f"{sc.name}: {st.title}: skipped (needs --network)")
                 continue
             t = time.monotonic()
-            if st.tap or st.back or st.action:
+            if st.tap or st.type or st.back or st.action:
                 resp = client.call("ui_tap", {"arg": st.tap}, timeout=30) if st.tap else \
+                    client.call("ui_type", {"arg": st.type[0], "text": st.type[1]}, timeout=30) if st.type else \
                     client.call("ui_action", {"arg": st.action}, timeout=30) if st.action else \
                     client.call("ui_back", {}, timeout=30)
                 declined = bool(resp["code"]) and "declined the activation" in resp["text"]

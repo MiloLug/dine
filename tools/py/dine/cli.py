@@ -294,12 +294,13 @@ def _dbg(sub):
         args=_log_args)
 
     def ui_setup(t):
-        t.add_argument("op", choices=["ls", "tap", "back", "action", "screenshot"])
-        t.add_argument("arg", nargs="?", help="tap: label (loose match) or #N from ls; action: an accessibility "
+        t.add_argument("op", choices=["ls", "tap", "type", "back", "action", "screenshot"])
+        t.add_argument("arg", nargs="?", help="tap, type: label (loose match) or #N from ls; action: an accessibility "
                                               "custom action's name (Back, Home, Recent apps); screenshot: path")
-    req("ui", None, "app UI: ls | tap <label|#N> | back | action <name> | screenshot [path]", timeout=60,
-        setup=ui_setup).set_defaults(
-        func=lambda a: _request(a, f"ui_{a.op}", {"arg": a.arg} if a.arg else {}))
+        t.add_argument("text", nargs="?", help="type: the text a keyboard inserts")
+    req("ui", None, "app UI: ls | tap <label|#N> | type <label|#N> <text> | back | action <name> | screenshot [path]",
+        timeout=60, setup=ui_setup).set_defaults(
+        func=lambda a: _request(a, f"ui_{a.op}", {k: v for k, v in (("arg", a.arg), ("text", a.text)) if v is not None}))
 
     def call_setup(t):
         t.add_argument("--po", action="store_true", help="object description (like po)")

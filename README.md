@@ -117,7 +117,7 @@ tools/dine ios tunnel status
 tools/dine dbg start-server                       # fails if one already runs
 tools/dine dbg smoke                              # the smoke checks, one line per step; --list, --network
 tools/dine dbg fresh                              # syslog on, relaunch, wait until the UI answers
-tools/dine dbg ui tap hello                       # prints the screen it led to; ui back, ui ls
+tools/dine dbg ui tap hello                       # prints the screen it led to; ui type, ui back, ui ls
 tools/dine dbg attach                             # ~15 s for the first one per server, ~3.5 s later; the app is stopped
 tools/dine dbg bp add HelloView.swift:23
 tools/dine dbg continue
@@ -138,7 +138,7 @@ tools/dine dbg stop-server                        # detaches; never kills the ap
   elsewhere (exit 1) or exits/crashes (exit 3). Timeout: exit 2 with the recent events.
 - Exit codes: 0 ok, 1 error or bad state (the message names the command to run), 2 timeout,
   3 exited/crashed during a wait, 4 no server.
-- `ui ls|tap|back` go to the debug agent linked into Dine's dev builds (`native/dev/dbgagent`), so they need no
+- `ui ls|tap|type|back` go to the debug agent linked into Dine's dev builds (`native/dev/dbgagent`), so they need no
   attach and don't pause the app: `ls` takes ~0.15 s, `tap`/`back` ~0.6–1 s including the wait
   for the screen to settle. The agent runs only in a process started by `tools/dine ios launch`
   (or `dbg fresh`, `ios run`). While lldb has the app stopped they refuse; a tap that hits a

@@ -29,7 +29,12 @@ touches. Commands and setup live in `tools/dine <group> --help`, `README.md` and
 - `dine-atl/tests/headless/run-*.sh` drive one APK each; each script's header has its usage and
   what it checks. `tools/dine linux smoke` runs them.
 - The cli host's `-c` reads commands on stdin: `back`, `home`, `front`, `insets`,
-  `touch down|move|up|cancel <id> <x> <y>` (window px), `key down|up <code> [<meta> [<unicode>]]`.
+  `touch down|move|up|cancel <id> <x> <y>` (window px), `key down|up <code> [<meta> [<unicode>]]`,
+  and text lines for the field that has the keyboard: `text commit|compose <text>` (`\n` a
+  newline), `text delete <before> <after>`, `text select <start> <end>` (UTF-16 code units),
+  `text tap <x> <y>` (the field there takes the keyboard as a toolkit's own tap gives it),
+  `text action` (the return key), `text dismiss`, and `text hold` / `text release` (reports wait,
+  so Java's snapshots meet a newer report). The field prints `edit:` and `keyboard:` lines.
 - An authored test APK by hand:
   `tests/harness/apk.py dine-atl/tests/headless/looper out/tests/apks/looper.apk`.
 
@@ -49,6 +54,9 @@ transition, labels unchanged).
   `UIAlertController` and runs the action's handler, as a touch would.
 - `action <name>` runs an accessibility custom action found the way escape is: up from the walked
   elements, then from the presented controllers' views, top first.
+- `type <label> <text>` makes the element the first responder if it edits text and inserts the text
+  with `insertText:`, as a keyboard's committed text; no marked text. It can't press return: a
+  UITextField takes an inserted newline as a space.
 - It listens on the phone's loopback only when the app gets `DINE_DBG_AGENT_PORT` in its
   environment, which `ios launch` passes; the server reaches it through a usbmux connection. A
   home-screen launch has no agent, so `dbg ui` asks for a relaunch.

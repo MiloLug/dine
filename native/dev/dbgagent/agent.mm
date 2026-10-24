@@ -5,6 +5,9 @@
 //                    accessibilityActivate, else a control's tap events, else the alert action with
 //                    that title; replies before the activation runs, so a breakpoint it hits can't
 //                    block the reply
+//   type N ["LABEL", "TEXT"]  makes element N of the last walk the first responder if it still has
+//                    LABEL and edits text, then inserts TEXT as a keyboard does; also run after the
+//                    reply
 //   back             accessibility escape (VoiceOver's back gesture), also run after the reply
 //   action "NAME"    the first accessibility custom action named NAME up from the walk, as back
 //                    searches; also run after the reply
@@ -205,6 +208,24 @@ void Tap(int fd, NSInteger n, NSString *label) {
   Reply(fd, ok ? @{@"ok": @YES} : @{@"error": @"the screen changed since the last ls"});
 }
 
+void Type(int fd, NSInteger n, NSString *label, NSString *text) {
+  __block BOOL ok = NO;
+  OnMain(^{
+    if (n < 0 || n >= (NSInteger)gLabels.count || ![gLabels[n][1] isEqualToString:label]) return;
+    ok = YES;
+    id item = gItems[n];
+    gBefore = gLabels;
+    gResult = nil;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      BOOL typed = [item isKindOfClass:UIResponder.class] && [item conformsToProtocol:@protocol(UITextInput)] &&
+                   ([item isFirstResponder] || [item becomeFirstResponder]);
+      if (typed) [(id<UITextInput>)item insertText:text];
+      gResult = @(typed);
+    });
+  });
+  Reply(fd, ok ? @{@"ok": @YES} : @{@"error": @"the screen changed since the last ls"});
+}
+
 void Action(int fd, NSString *name) {
   OnMain(^{
     Walk();
@@ -286,6 +307,12 @@ void Handle(int fd) {
                                                options:NSJSONReadingFragmentsAllowed
                                                  error:nil];
     if ([label isKindOfClass:NSString.class]) Tap(fd, words[1].integerValue, label);
+  } else if (words.count >= 3 && [words[0] isEqualToString:@"type"] && Digits(words[1])) {
+    NSString *json = [[words subarrayWithRange:NSMakeRange(2, words.count - 2)] componentsJoinedByString:@" "];
+    id pair = [NSJSONSerialization JSONObjectWithData:[json dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
+    if ([pair isKindOfClass:NSArray.class] && [pair count] == 2 && [pair[0] isKindOfClass:NSString.class] &&
+        [pair[1] isKindOfClass:NSString.class])
+      Type(fd, words[1].integerValue, pair[0], pair[1]);
   }
 }
 

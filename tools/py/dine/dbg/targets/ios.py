@@ -264,6 +264,22 @@ class IosTarget(Target):
             raise CmdError(f"{label!r} declined the activation (back navigation: tools/dine dbg ui back)")
         return f"tapped {label!r}" + tail
 
+    def do_ui_type(self, arg=None, text=None, timeout=60):
+        if not arg or text is None:
+            raise CmdError("usage: tools/dine dbg ui type <label|#N> <text>")
+        if arg.startswith("#") and arg[1:].isdigit():
+            i = int(arg[1:])
+            if i >= len(self._ui):
+                raise CmdError(f"no {arg} in the last `ui ls` ({len(self._ui)} elements)")
+        else:
+            i = agent.pick(self._ls(), arg)
+        label = self._ui[i][1]
+        self._agent(f"type {i} {json.dumps([label, text])}")
+        tail, r = self._settle()
+        if r.get("ran") and r.get("result") is False:
+            raise CmdError(f"{label!r} takes no text (not a text field, or it can't become the first responder)")
+        return f"typed {text!r} into {label!r}" + tail
+
     def do_ui_back(self, timeout=60):
         self._agent("back")
         tail, r = self._settle()
