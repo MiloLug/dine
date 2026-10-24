@@ -3,7 +3,7 @@
 The spec for Android's system navigation in Dine: edge swipes that send Back, Home and open the
 running apps list for the Android app in front, the gesture areas apps see through `WindowInsets`,
 and the exclusion rects apps use to opt parts of an edge out. Slots, milestones and test layout are
-in `notes/atl-port.md`; tool commands and gotchas are in `CLAUDE.md`.
+in `notes/atl-port.md`; tool commands and gotchas are in `README.md` and `CLAUDE.md`.
 
 System navigation is system UI, so the host owns it. Dine recognizes the gestures and owns their
 settings. ATL shared code owns the Android semantics (Back, task to back and front, insets,

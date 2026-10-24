@@ -59,7 +59,7 @@ Not actionable now, just recorded (2026-10-18).
   cherry-picked both into `stable/23.x` (PRs #13944, #14589) and `next`; no 6.4 branch has them.
 - Versions on 2026-10-18: Swift 6.4.1 (newest release) is on LLVM 21; LLVM 23.1.3 is the newest
   release and `main` is 24. Swift freezes an LLVM branch per release line, so the fix arrives
-  with the first Swift release built on `stable/23.x` (and its matching Xcode, see CLAUDE.md
-  version coupling).
+  with the first Swift release built on `stable/23.x` (and its matching Xcode, see the Swift and
+  Xcode coupling in `docs/first-run.md`).
 - Then: enable the cache in `ios.lldb_memory_cmds()` (path under `out/`), attach twice (fill,
   then use it) and check the second attach doesn't crash.

@@ -3,7 +3,7 @@
 How Android apps expect to run when they are not on screen, what iOS offers instead, and what Dine
 can map between the two. Why Dine has one process and what limits that brings is in
 `notes/meta.md`; the service-backend plan (M7) is in `notes/service-impl.md`; tool commands are in
-`CLAUDE.md`.
+`README.md`.
 
 Marks used below:
 - **Checked**: read in this repo.
