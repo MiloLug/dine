@@ -4,8 +4,6 @@ third_party/
 .build/
 .swiftpm/
 xtool/
-notes/
-CLAUDE.md
 .claude/
 .venv/
 __pycache__/
