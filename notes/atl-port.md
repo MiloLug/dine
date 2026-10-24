@@ -18,7 +18,8 @@ its row here changes when that block does.
 | [M3](#m3-demo_appapk-on-screen) | `demo_app.apk` on screen | done |
 | [Pre-M4 batch](#pre-m4-batch-2026-10-21) | natives that layouts reach before input | done |
 | [M4a](#m4a-touch-scrolling-and-keys) | touch, scrolling and keys | done |
-| [M4b](#m4b-controls-and-text-input) | controls and text input | next |
+| [M4b](#m4b-controls) | controls | done |
+| [M4c](#m4c-text-input) | text input | next |
 | [M5a](#m5a-renderer-and-display-list) | renderer choice, display list | planned |
 | [M5b](#m5b-drawing-on-the-phone) | drawing on the phone | planned |
 | [M5c](#m5c-text) | text | planned |
@@ -204,7 +205,7 @@ is extracted:
 | `Window.remove_gtk_background` | `Window.clear_background`, calling `ui_window_clear_background` (done) | M1 |
 | `GDK_MEMORY_*` pixel formats in Bitmap | Android `Bitmap.Config` values; the backend maps them | M5b |
 | CSS class names set from TextView (bold, italic) | typeface style passed to the ui slot (done) | M3 |
-| CSS classes for `setAllCaps`, `setTextAlignment`, Button's `ATL-no-border` | ui slot calls | M4b |
+| CSS classes for `setAllCaps`, `setTextAlignment`, Button's `ATL-no-border` | all caps in Java (AOSP's transformation), `ui_text_set_alignment`, the border from the view's background (done) | M4b |
 | `Paint.measureText` width estimate | text measurement from the gfx slot | M5c |
 | AlertDialog's three toolkit-bound Buttons | dialog content as data (see M2) | M2 |
 | `GTK_FILE_CHOOSER_ACTION_*` ints in Activity | file-picker service request kinds | M7 (file picker) |
@@ -388,8 +389,8 @@ and `dialog-gtk` pass the same APK with `ATL_DIALOG_ANSWERS='Yes;Green'`. As bui
   dialogs (the backend's ref is weak) in show order, closed and shown again with the task
   (`notes/nav-gestures.md`). `atlDialogResult` (package-private) ignores results unless drawn
   (showing, not hidden, task in front); AlertDialog runs the listener, then `dismiss()`, for items
-  too. The NewPipe 10 ms delayed close is kept. `getButton` returns null until M4b: no Button
-  views. `OnCancelListener.onCancel` exists; `setCancelable` and the cancel and dismiss listeners
+  too. The NewPipe 10 ms delayed close is kept. `getButton`'s Button views: M4b.
+  `OnCancelListener.onCancel` exists; `setCancelable` and the cancel and dismiss listeners
   are stored (Builder too).
 - gtk: `src/backends/ui/gtk/dialog.c`, a GtkWindow per dialog; alerts get a label, a GtkListBox
   and GtkButtons; close-request and a tap outside are cancel results, close only hides.
@@ -431,7 +432,7 @@ the Linux golden: `1170x2391` roots, TextViews `315x51` and `375x51` at y 0 and 
   `atl_vm_init`; `Display.density_dpi` feeds `DisplayMetrics.DENSITY_DEVICE` and
   `AssetManager_init`; `atl_display_apply` writes dp. The cli host takes `-d DPI`;
   `run-demo.sh --density 480` and `linux smoke demo-480` cover sp, dp and px on Linux.
-- TextView: one px method `setRawTextSize` (package-private, no-op in the Button family);
+- TextView: one px method `setRawTextSize` (package-private, a no-op in EditText);
   `setTextSize(float)` is sp, `setTextSize(unit, size)` converts. `setTypeface` style goes through
   `ui_text_set_style` (gtk: the old CSS classes; uikit: bold and italic system font).
 - Dine: `Navigator.run` creates the surface (`AppSurfaceView`) and reads the window from the key
@@ -505,7 +506,7 @@ Natives that layouts and app setup reach before any input, moved behind the slot
 - Shared Java: one floating ViewTreeObserver per view without a window; the View constructor
   reads `keepScreenOn`.
 - Input for tests: the cli host's `-c` stdin takes touch and key lines next to `back`, `home` and
-  `front`; text lines come with M4b's text fields. gtk and iOS have no injection path (the debug
+  `front`; text lines come with M4c's text fields. gtk and iOS have no injection path (the debug
   agent's `tap` is `accessibilityActivate`, and iOS has no public touch synthesis), so their input
   steps are checks by hand.
 - Target: the widgets APK, which exists for checks by eye on iOS (`dbg smoke atl-widgets`), gets
@@ -541,11 +542,11 @@ Gravity Defied stops at `NinePatchDrawable.nativeCreate` (M5d). As built:
   moves Java's offset at once; `smoothScrollTo` waits for the toolkit's reports.
 - gtk: each GtkWindow (the app's, each dialog's) gets a capture-phase touch controller and key
   controllers; popovers' events pass their window's. The per-widget touch, click, long-press and
-  key controllers are gone. Widgets that take their own presses (GtkButton, GtkText, check and
-  switch, GtkScale, the spinner, pickers, WebView, scrollbars) are marked with `input_take_native`:
-  a gesture that starts on one stays with GTK, and Button's `clicked` still calls `performClick`.
-  A text widget with GTK's focus gets keys first. The scroll node is GtkScrolledWindow; a request
-  its range can't take yet waits for the range to grow. Hover and the wheel stay per widget.
+  key controllers are gone. Widgets that take their own presses (GtkText, GtkScale, the spinner,
+  pickers, WebView, scrollbars) are marked with `input_take_native`: a gesture that starts on one
+  stays with GTK. The Button family's GTK widgets take none (M4b). A text widget with GTK's focus
+  gets keys first. The scroll node is GtkScrolledWindow; a request its range can't take yet waits
+  for the range to grow. Hover and the wheel stay per widget.
 - headless: the cli host's `-c` takes `touch down|move|up|cancel <id> <x> <y>` (window px) and
   `key down|up <code> [<meta> [<unicode>]]`. A drag that starts in a scroll node and passes the
   touch slop along its axis stands in for the toolkit's pan: Java gets CANCEL, the offset follows.
@@ -571,9 +572,68 @@ Gravity Defied stops at `NinePatchDrawable.nativeCreate` (M5d). As built:
   on popovers on gtk; a GtkText's Tab moves GTK's focus, not Java's; lists don't scroll
   (`ViewGroup.offsetChildrenTopAndBottom`, M6b).
 
-### M4b: controls and text input
+### M4b: controls
 
-- Button, CheckBox, RadioButton, Switch, ImageButton.
+- Button, CheckBox, RadioButton (with RadioGroup), Switch, ToggleButton, ImageButton.
+- `AlertDialog.getButton` returns Button views bound to the alert's actions, for apps that change
+  a button in `onShow`: `setText`, `setEnabled` and visibility reach the backend through a ui slot
+  call that changes the shown alert in place; `performClick` gives the dialog result;
+  `setOnClickListener` replaces the default listener-then-dismiss.
+- The GTK-isms `setAllCaps`, `setTextAlignment` and Button's `ATL-no-border` ([Java](#java)).
+- Unblocks on headless: flower_finder and accelerometerdemo get past
+  `ImageButton.native_constructor`.
+- Target: the widgets APK's controls, graded on headless and checked by hand on gtk and iOS, and a
+  dialog APK step whose `onShow` disables "Yes" and overrides a click to keep the dialog open,
+  passing on headless, gtk and iOS.
+
+**Status: done (2026-10-24).** `linux smoke controls`, `dialog` and `dialog-gtk`, and the
+framework suite `controls` pass; on the iPhone 13 `dbg smoke atl-controls` and `atl-dialog-keep`
+pass. Not checked by hand: the controls' look on gtk. Next stops on headless: flower_finder at
+`Region.nativeConstructor` (material's FloatingActionButton), accelerometerdemo at
+`SensorManager.register_accelerometer_listener_native` (M7's sensors). As built:
+- Input stays Java's (M4a): a control is a passive toolkit widget showing Java's pressed and
+  checked state, and its touches and keys go through AOSP's dispatch on every build.
+  `ui_button_new(kind)` (push, toggle, check, radio, switch) makes a text node with a control, so
+  every `ui_text_*` call applies; `Button.drawableStateChanged` sends `ui_button_set_state`.
+- Java: Button takes its style's clickable and focusable by hand, as EditText does. CompoundButton's
+  checked state, toggle in `performClick`, listener order, the widget listener RadioGroup uses and
+  `state_checked` are AOSP 10's; RadioButton never unchecks itself; ToggleButton shows its on or off
+  text from its constructor; ImageButton is an ImageView node, focusable as in AOSP. `setAllCaps`
+  upper-cases the shown text in Java (markup's tags and entities kept) and `getText` keeps the
+  app's; `getTextAlignment` resolves INHERIT, and `ui_text_set_alignment` gets start, center or
+  end (GRAVITY is start: ATL ignores TextView gravity). `setCompoundDrawables` goes through
+  `ui_text_set_drawables` (gtk draws them; the records backends keep nothing before M5b).
+- Dialogs: AlertDialog's Buttons (made on demand, GONE without a label) hold the label,
+  visibility and enabled state; `ui_alert.disabled` and `ui_dialog_set_button` carry them to the
+  backend, and a result for a disabled or hidden button is ignored. `atl_upcall_dialog_result`
+  returns whether the dialog is still drawn: uikit then presents the alert again (UIKit dismisses
+  on every action tap), headless and gtk take the next scripted answer. Scripted answers match when
+  delivered, after `onShow`, against the alert's current buttons; a disabled or hidden one matches
+  nothing.
+- gtk: a GtkButton or GtkToggleButton holding the text box, or a GtkCheckButton (a radio in a
+  private group) or GtkSwitch beside it, with `can_target` and `focusable` off; push and toggle
+  buttons drop GTK's border while the view has a background. Text calls find the label through
+  object data and skip handles without one.
+- headless: fixed control sizes (a check or radio box one line high, a switch two lines wide);
+  `dialog: button` lines for in-place changes.
+- uikit: `ATLButton` holds a passive UIButton (gray; filled for a toggle that is on; plain with a
+  background of its own; SF Symbols `square`, `checkmark.square.fill`, `circle` and
+  `largecircle.fill.circle` for check and radio) or a label and a UISwitch, measured with a scratch
+  view per kind. Accessibility activation (VoiceOver, `dbg ui tap`) calls `performClick` through
+  `atl_upcall_click`. `dialog.m` queues with the views (`uikit_enqueue`); `ATLDialog` keeps the
+  alert as a model and builds the controller when it presents, so `onShow`'s changes are in the
+  first one; `enabled` changes in place, a label or visibility change rebuilds the alert without
+  animation.
+- Tests: `run-controls.sh` (`linux smoke controls`, the widgets APK's `ControlsActivity`),
+  `run-dialog.sh`'s `KeepActivity` runs, the framework suite `controls`, smoke `atl-controls` and
+  `atl-dialog-keep` (`Step.declined`: a tap the agent must be refused).
+- Open: a Switch's thumb can't be dragged on iOS (a tap toggles it); a view with INHERIT keeps its
+  native alignment when its parent's changes later; Button text gravity, and with it
+  `setTextAlignment` on iOS buttons (a push button's text stays centered: the slot's start can't
+  tell an explicit start from none); button drawables and tints are kept, not drawn (M5b).
+
+### M4c: text input
+
 - EditText as UITextField with the keyboard and IME through UITextInput. UITextInput and
   accessibility queries read a text-state mirror on UIKit's thread: UIKit's thread never waits
   for the Android one ([Interface rules](#interface-rules)). gtk's EditText and
@@ -581,16 +641,16 @@ Gravity Defied stops at `NinePatchDrawable.nativeCreate` (M5d). As built:
 - Selectable text (EditText, a TextView with `setTextIsSelectable`) with the toolkit's own
   selection and edit menu, so Copy writes the system pasteboard and Paste reads it, on iOS and gtk.
   An app's ClipboardManager reaches the same pasteboard through M7's clipboard item.
-- `AlertDialog.getButton` returns Button views bound to the alert's actions, for apps that change
-  a button in `onShow`: `setText`, `setEnabled` and visibility reach the backend through a ui slot
-  call that changes the shown alert in place (`ui_dialog_show` on a shown dialog would stack a
-  second `UIAlertController`); `performClick` gives the dialog result; `setOnClickListener`
-  replaces the default listener-then-dismiss.
-- Unblocks on headless: flower_finder and accelerometerdemo stop at
-  `ImageButton.native_constructor`.
-- Target: the widgets APK's controls and a text field, graded on headless and checked by hand on
-  gtk and iOS, and a dialog APK step whose `onShow` disables "Yes" and overrides its click to keep
-  the dialog open, passing on headless, gtk and iOS.
+- Text lines on the cli host's `-c` stdin.
+- Chosen with a diverger run when the stage starts: where the text's truth lives (the toolkit
+  widget, Java's Editable, or a mirror both threads read), how user edits and Java's `setText`
+  reconcile, marked text against InputFilter, single and multi-line fields.
+- Open questions: keyboard avoidance (the surface has a fixed size and `atl_window_insets` no IME
+  edge, so a keyboard covers fields low on the screen); a debug agent command that types into the
+  first responder (`insertText:`, `setMarkedText:`) so `dbg smoke` grades the text path;
+  InputMethodManager's static initializer calls the gtk-only `nativeInit`, which apps reach through
+  appcompat.
+- Target: the widgets APK's text field, graded on headless and checked by hand on gtk and iOS.
 
 ### M5: Canvas
 
@@ -686,8 +746,14 @@ app's first input that fit the existing slots, and the findings below; every oth
 the stage that owns it (M6b, M7, M9) or to Not staged; a stop an M6b item names stays there. The
 triage then runs again; the cycle ends when a triage finds only stops owned elsewhere.
 
-Findings from M5 (its stages add and update them):
+Findings from M4b and M5 (M5's stages add and update them):
 - gtk `ui_view_set_background_drawable` makes a CSS provider per call and never unrefs it.
+- A triage run shows one stop only: `activity_start` (`src/shared/activity.c`) calls
+  `ExceptionDescribe` after `onCreate` throws, ART's `ExceptionDescribe` leaves the exception
+  pending, and the next JNI call (`_GET_BOOL_FIELD`) aborts under CheckJNI. Other spots that only
+  describe may do the same.
+- flower_finder stops at `Region.nativeConstructor` (material's FloatingActionButton): Region's
+  natives are gtk-only.
 
 **Done when:** the last triage's table (APK, stop before, stop after) is in this section, and each
 stop and finding is fixed, named in a later stage or under Not staged.

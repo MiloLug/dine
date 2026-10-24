@@ -68,7 +68,7 @@ tools/dine dbg log tail|grep|show [--app] [--text] [--from SEQ]   # listings sta
 
 # Linux ATL/ART stack (third_party/ → out/linux/prefix, no sudo)
 tools/dine linux build [bionic|art|opensles|atl|atl-headless ...]   # default: all, in that order
-tools/dine linux smoke [gd|demo|demo-480|looper|dialog|dialog-gtk|nav|views|views-gtk|widgets ...] [--list]   # the Linux smoke checks, one line each
+tools/dine linux smoke [gd|demo|demo-480|looper|dialog|dialog-gtk|nav|views|views-gtk|widgets|controls ...] [--list]   # the Linux smoke checks, one line each
 ANDROID_APP_DATA_DIR=$PWD/out/linux/appdata android-translation-layer <apk> -l <pkg/path/Activity> -X -Xint
                                          #   ATL_DUMP_VIEWTREE=1: view tree on stdout at first layout
                                          #   ATL_DIALOG_ANSWERS='Yes;Green': answers alerts in order (labels, !cancel)
@@ -79,7 +79,8 @@ tests/harness/apk.py dine-atl/tests/headless/looper out/tests/apks/looper.apk   
 dine-atl/tests/headless/run-looper.sh out/linux/build/dine-atl-headless out/tests/apks/looper.apk
                                          #   worker loops + last activity finishing; ATL exits 0
 dine-atl/tests/headless/run-dialog.sh [--headless] <build dir> out/tests/apks/dialog.apk
-                                         #   alert + list with scripted answers, gtk or headless build
+                                         #   alert + list with scripted answers, then an alert whose onShow
+                                         #   changes its buttons (KeepActivity); gtk or headless build
 dine-atl/tests/headless/run-nav.sh out/linux/build/dine-atl-headless out/tests/apks/nav.apk
                                          #   back/home/front/insets on the cli host's stdin (-c); lifecycle
                                          #   order, the insets each show gets, exclusion spans (host: lines),
@@ -89,6 +90,9 @@ dine-atl/tests/headless/run-widgets.sh out/linux/build/dine-atl-headless out/tes
                                          #   key down|up <code> [<meta> [<unicode>]]; tap, hold, Tab/Enter, a
                                          #   drag that scrolls, exclusion following scroll and translation, a
                                          #   drag to the end of the range (padding included), ESC
+dine-atl/tests/headless/run-controls.sh out/linux/build/dine-atl-headless out/tests/apks/widgets.apk
+                                         #   ControlsActivity through -c: button, disabled button, checkbox,
+                                         #   radios (one checked), switch, toggle, image button, Tab/Enter
 dine-atl/tests/headless/run-views.sh [--headless] <build dir> out/tests/apks/views.apk
                                          #   removeView, re-add, collected views freed (viewfreed: lines);
                                          #   gtk: a nine-patch and a StateListDrawable freed (drawablefreed: <type>);
@@ -135,9 +139,13 @@ The smoke tests are:
   https**). It covers the app grid, **hello++**, **probe** (accord's `Assets.car`), **atl** (run
   demo: both strings on screen, its `viewtree:` lines shaped like the Linux golden (window and text
   sizes differ), then Home; run looper, Dine still running after; run views, a laid-out view
-  freed, Dine still running after; run dialog, tapping the alert's "Yes" and the list's "Green"; run nav: B's insets (the side strips, the home indicator) and its exclusion span, Back,
-  Back on the task root, Recent apps, back to app, Home; the list A shows while in the back appears
-  on back to app, leaves with Home and comes back, then its "Odd" item is tapped; run widgets:
+  freed, Dine still running after; run dialog, tapping the alert's "Yes" and the list's "Green";
+  run dialog keep: its disabled "Yes" declines a tap, "No" keeps the alert open and shows "Sure",
+  which closes it; run controls: taps on a button, a disabled one (declined), a checkbox, two
+  radios, a switch and a toggle, each with its Java log line, then Home; run nav: B's insets (the
+  side strips, the home indicator) and its exclusion span, Back, Back on the task root, Recent
+  apps, back to app, Home; the list A shows while in the back appears on back to app, leaves with
+  Home and comes back, then its "Odd" item is tapped; run widgets:
   fullscreen frame, windowed after 5 s, Home; it stays open for checks by eye: status bar,
   spinner, a bar at 50%, a grey box, the screen kept on) and **art** (run
   hello, run jni args, run park), relaunching where ATL needs a process without a VM.
@@ -145,9 +153,9 @@ The smoke tests are:
   `tools/py/dine/dbg/smoke.py`.
 - **Linux:** `tools/dine linux smoke` (after `linux build`): **gd** (the gtk build runs Gravity
   Defied to `onResume` under `-Xint`; opens a WSLg window), **demo**, **demo-480** (density 480),
-  **looper**, **dialog**, **nav**, **views** and **widgets** (`dine-atl/tests/headless/run-demo.sh`,
-  `run-looper.sh`, `run-dialog.sh --headless`, `run-nav.sh`, `run-views.sh --headless`,
-  `run-widgets.sh`) and
+  **looper**, **dialog**, **nav**, **views**, **widgets** and **controls**
+  (`dine-atl/tests/headless/run-demo.sh`, `run-looper.sh`, `run-dialog.sh --headless`, `run-nav.sh`,
+  `run-views.sh --headless`, `run-widgets.sh`, `run-controls.sh`) and
   **dialog-gtk** and **views-gtk** (`run-dialog.sh`, `run-views.sh` on the gtk build; open
   windows). The table is `tools/py/dine/linux.py`.
 
@@ -231,7 +239,8 @@ The smoke tests are:
     installed: run it from its build dir with `RUN_FROM_BUILDDIR=1`) and iOS
     (`embedded`/`cfrunloop`/`uikit`/`record`, meson cross, `out/ios/build/dine-atl`; uikit keeps
     the headless view records, mirrors them as UIViews and measures text with UILabel, and shows
-    alerts as `UIAlertController`s; ScrollView is a UIScrollView). Never build
+    alerts as `UIAlertController`s; ScrollView is a UIScrollView; the Button family are
+    UIButtons and UISwitches that only show Java's pressed and checked state). Never build
     the two Linux ones at once: both write `src/api-impl-jni/generated_headers`. The iOS build
     compiles no Java and uses those headers and the Linux jars.
   - In Dine, artbridge owns the one VM: `dine_atl_run` creates it with ATL's options and runs the

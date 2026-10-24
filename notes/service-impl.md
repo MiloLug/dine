@@ -62,8 +62,8 @@ Native paths below are under `dine-atl/src/api-impl-jni/`.
 - `none`: `getDefaultSensor` null and an empty sensor list, as on a device without sensors.
 - `ios`: CoreMotion. Orientation comes from the device attitude, so sensors don't wait for the
   location item; whether `desktop-linux` keeps the bearing route is decided here.
-- Reach: accelerometerdemo registers an accelerometer listener in `onCreate` (static read; the app
-  stops at `ImageButton.native_constructor` until M4b).
+- Reach: accelerometerdemo registers an accelerometer listener in `onCreate`; on headless it
+  stops at `SensorManager.register_accelerometer_listener_native`.
 - Done when: headless logs no sensors; the phone logs accelerometer readings.
 
 ## 3. Vibrator
@@ -99,7 +99,7 @@ Native paths below are under `dine-atl/src/api-impl-jni/`.
   app reads another app's copy without a paste action is unverified.
 - Copy and paste work as in a native app on iOS and gtk: select text, Copy from the system menu,
   paste in another app, and the other way round; an app's own Copy button reaches the same
-  pasteboard. The selection and the edit menu belong to the ui slot (M4b).
+  pasteboard. The selection and the edit menu belong to the ui slot (M4c).
 - Done when: headless sets a clip, reads it back and gets the change listener; by hand on the
   phone and on gtk, text copied in an Android app pastes in another app, and back.
 

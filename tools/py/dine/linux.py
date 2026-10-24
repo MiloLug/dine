@@ -155,10 +155,18 @@ def _views_gtk() -> str | None:
     return _views_apk() or _script("run-views.sh", HEADLESS_TESTS / "run-views.sh", GTK_BUILD, VIEWS_APK)
 
 
+def _widgets_apk() -> str | None:
+    return _script("apk.py", sys.executable, paths.ROOT / "tests/harness/apk.py", HEADLESS_TESTS / "widgets", WIDGETS_APK)
+
+
 def _widgets() -> str | None:
     _need_headless()
-    return (_script("apk.py", sys.executable, paths.ROOT / "tests/harness/apk.py", HEADLESS_TESTS / "widgets", WIDGETS_APK)
-            or _script("run-widgets.sh", HEADLESS_TESTS / "run-widgets.sh", HEADLESS_BUILD, WIDGETS_APK))
+    return _widgets_apk() or _script("run-widgets.sh", HEADLESS_TESTS / "run-widgets.sh", HEADLESS_BUILD, WIDGETS_APK)
+
+
+def _controls() -> str | None:
+    _need_headless()
+    return _widgets_apk() or _script("run-controls.sh", HEADLESS_TESTS / "run-controls.sh", HEADLESS_BUILD, WIDGETS_APK)
 
 
 CHECKS = [
@@ -166,12 +174,13 @@ CHECKS = [
     Check("demo", "headless: demo_app reaches onResume, view tree matches the golden", _demo),
     Check("demo-480", "headless: the same at density 480, where sp, dp and px differ", _demo_480),
     Check("looper", "headless: looper.apk goes through the loop paths and exits 0", _looper),
-    Check("dialog", "headless: dialog.apk's alert and list take scripted answers, it exits 0", _dialog),
+    Check("dialog", "headless: dialog.apk's alerts and list take scripted answers, an alert changes its buttons in onShow, it exits 0", _dialog),
     Check("dialog-gtk", "gtk: the same through the GTK dialog's widgets (opens a window)", _dialog_gtk),
     Check("nav", "headless: nav.apk's lifecycle under Back, Home and front from cli -c", _nav),
     Check("views", "headless: views.apk removes, re-adds and frees views, view tree matches the golden", _views),
     Check("views-gtk", "gtk: the same through GTK's widgets, and gsk frees a nine-patch and a StateListDrawable (opens a window)", _views_gtk),
     Check("widgets", "headless: widgets.apk takes taps, a hold, Tab, Enter, a drag and keys from cli -c", _widgets),
+    Check("controls", "headless: widgets.apk's buttons, checkboxes, radios, switch, toggle and image button take taps and keys from cli -c", _controls),
 ]
 
 

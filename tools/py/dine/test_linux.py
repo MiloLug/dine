@@ -11,14 +11,14 @@ from dine.paths import DineError
 
 class LinuxSmokeTest(unittest.TestCase):
     def test_select(self):
-        self.assertEqual([c.name for c in linux.select([])], ["gd", "demo", "demo-480", "looper", "dialog", "dialog-gtk", "nav", "views", "views-gtk"])
+        self.assertEqual([c.name for c in linux.select([])], ["gd", "demo", "demo-480", "looper", "dialog", "dialog-gtk", "nav", "views", "views-gtk", "widgets", "controls"])
         self.assertEqual([c.name for c in linux.select(["looper", "gd"])], ["looper", "gd"])
-        with self.assertRaisesRegex(DineError, "no smoke check gtk, x; there are: gd, demo, demo-480, looper, dialog, dialog-gtk, nav, views, views-gtk"):
+        with self.assertRaisesRegex(DineError, "no smoke check gtk, x; there are: gd, demo, demo-480, looper, dialog, dialog-gtk, nav, views, views-gtk, widgets, controls"):
             linux.select(["gtk", "demo", "x"])
 
     def test_listing_names_every_check(self):
         self.assertEqual([line.split(":")[0] for line in linux.listing().splitlines()],
-                         ["gd", "demo", "demo-480", "looper", "dialog", "dialog-gtk", "nav", "views", "views-gtk"])
+                         ["gd", "demo", "demo-480", "looper", "dialog", "dialog-gtk", "nav", "views", "views-gtk", "widgets", "controls"])
 
     def test_smoke_stops_at_the_first_failure(self):
         ran, lines = [], []

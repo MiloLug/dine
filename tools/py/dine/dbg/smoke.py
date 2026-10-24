@@ -17,6 +17,7 @@ class Step:
     tap: str | None = None
     back: bool = False
     action: str | None = None  # an accessibility custom action's name
+    declined: bool = False      # the tap must be declined (a disabled control or alert action)
     ok: tuple[str, ...] = ()    # regexes that must all show up in the app's syslog
     ui: tuple[str, ...] = ()    # accessibility labels that must all show up, after ok
     fail: tuple[str, ...] = ()  # any of these ends the step as failed
@@ -157,6 +158,28 @@ SCENARIOS = {
                  fail=ATL_FAIL),
             Step("back", back=True),
         ], uses_vm=True, needs_clean=True, alive=True),
+        Scenario("atl-controls", [
+            Step("atl", tap="atl"),
+            Step("run controls", tap="controls", ok=("controls shown",), ui=("PUSH", "lamp off"), fail=ATL_FAIL, timeout=120),
+            Step("PUSH", tap="PUSH", ok=("controls click push",), fail=ATL_FAIL),
+            Step("locked", tap="locked", declined=True),
+            Step("check", tap="check", ok=("controls checked check true",), fail=ATL_FAIL),
+            Step("red", tap="red", ok=("controls checked red true", "controls radio red"), fail=ATL_FAIL),
+            Step("green", tap="green", ok=("controls checked green true", "controls checked red false", "controls radio green"),
+                 fail=ATL_FAIL),
+            Step("switch", tap="switch", ok=("controls checked switch true",), fail=ATL_FAIL),
+            Step("lamp off", tap="lamp off", ok=("controls click toggle lamp on",), ui=("lamp on",), fail=ATL_FAIL),
+            Step("Home", action="Home", ok=("nav: launcher root",)),
+        ], uses_vm=True, needs_clean=True, alive=True),
+        Scenario("atl-dialog-keep", [
+            Step("atl", tap="atl"),
+            # onShow disabled "Yes", hid "Later" and took over "No"
+            Step("run dialog keep", tap="dialog keep", ok=("dialog: presented",), fail=ATL_FAIL, timeout=120),
+            Step("Yes", tap="Yes", declined=True),
+            Step("No", tap="No", ok=("keep no kept", "dialog: presented"), ui=("Sure",), fail=ATL_FAIL),
+            Step("Sure", tap="Sure", ok=("keep onClick -1", "keep done", "nav: container dismissed exit"), fail=ATL_FAIL),
+            Step("back", back=True),
+        ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-nav", [
             Step("atl", tap="atl"),
             # px at 3x: 20 pt side strips, the home indicator at the bottom; B excludes 200-300 px of its right edge
@@ -255,8 +278,10 @@ def run(app: str, names: list[str], network: bool, relaunch: Callable[[], int], 
                 resp = client.call("ui_tap", {"arg": st.tap}, timeout=30) if st.tap else \
                     client.call("ui_action", {"arg": st.action}, timeout=30) if st.action else \
                     client.call("ui_back", {}, timeout=30)
-                if resp["code"]:
-                    out(f"{sc.name}: {st.title}: FAILED\n{resp['text']}")
+                declined = bool(resp["code"]) and "declined the activation" in resp["text"]
+                if st.declined != declined or (resp["code"] and not declined):
+                    out(f"{sc.name}: {st.title}: FAILED" + (" (not declined)" if st.declined and not declined else "")
+                        + f"\n{resp['text']}")
                     return 1
             else:
                 # it waits for what earlier steps set off: lines from before it would match too early

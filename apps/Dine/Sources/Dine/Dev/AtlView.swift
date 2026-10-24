@@ -18,9 +18,11 @@ struct AtlView: View {
                 tile("demo_app", activity: "com/example/demo_application/MainActivity")
                 tile("looper", activity: "dev/dine/looper/MainActivity")
                 tile("dialog", activity: "dev/dine/dialog/MainActivity")
+                tile("dialog", activity: "dev/dine/dialog/KeepActivity", title: "dialog keep")
                 tile("nav", activity: "dev/dine/nav/MainActivity")
                 tile("views", activity: "dev/dine/views/MainActivity")
                 tile("widgets", activity: "dev/dine/widgets/MainActivity")
+                tile("widgets", activity: "dev/dine/widgets/ControlsActivity", title: "controls")
             }
             .padding()
         }
@@ -28,12 +30,12 @@ struct AtlView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    private func tile(_ apk: String, activity: String) -> some View {
-        Button { run(apk, activity: activity) } label: { AppIconView(name: apk) }
+    private func tile(_ apk: String, activity: String, title: String? = nil) -> some View {
+        Button { run(apk, activity: activity, title: title ?? apk) } label: { AppIconView(name: title ?? apk) }
             .buttonStyle(.plain)
     }
 
-    private func run(_ apk: String, activity: String) {
+    private func run(_ apk: String, activity: String, title: String) {
         // `art/` holds the runtime boot jars, `atl/` ATL's jars, `dev/` the test APKs (xtool.yml)
         guard let root = Bundle.main.path(forResource: "art", ofType: nil),
               let atl = Bundle.main.path(forResource: "atl", ofType: nil),
@@ -42,7 +44,7 @@ struct AtlView: View {
         else {
             return log.error("atl: art/, atl/, dev/\(apk, privacy: .public).apk or caches dir missing")
         }
-        navigator.run(apk) { window, listener in
+        navigator.run(title) { window, listener in
             dine_atl_run(root, atl, caches.path, path, activity, window, listener)
         }
     }

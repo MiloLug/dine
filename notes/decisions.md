@@ -16,7 +16,8 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   controllers are gone: drop upstream edits to them, port upstream input fixes into the Java.
 - gtk input: one capture-phase touch controller and key controllers per GtkWindow
   (`src/backends/ui/gtk/input.c`). A legacy constructor of a widget that takes its own presses
-  calls `input_take_native`; upstream's new GTK widgets of that kind need it.
+  calls `input_take_native`; upstream's new GTK widgets of that kind need it. The Button family's
+  widgets take no presses: drop upstream's click and toggle signal handlers for them.
 - MotionEvent's pointer methods are Java over `ids`/`coords` (`split`, `getPointerIdBits`,
   `findPointerIndex`, `offsetLocation`, `transform`); the hosts' constructor takes the down time;
   single-pointer `obtain` uses pointer id 0.
@@ -34,11 +35,16 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   which sets `Display.window_*` and `Display.density_dpi`; `DisplayMetrics.getDeviceDensity` and
   `AssetManager_init` read it, `atl_display_apply` writes dp. Port upstream density code there.
 - TextView sizes go through one px method, package-private `setRawTextSize`; `setTextSize(float)`
-  is sp. Button, EditText, CompoundButton, CheckBox and RadioButton override `setRawTextSize`, not
-  `setTextSize`: port upstream overrides that way.
+  is sp. EditText overrides `setRawTextSize`, not `setTextSize`: port upstream overrides that way.
 - `setTypeface(tf, style)` calls `native_setTextStyle` (`ui_text_set_style`); gtk's `ATL-font-*`
-  CSS classes moved to `src/backends/ui/gtk/text.c`. `setAllCaps`, `setTextAlignment` and
-  Button's `ATL-no-border` still use `native_addClass` (gtk only).
+  CSS classes are in `src/backends/ui/gtk/text.c`. `setAllCaps` upper-cases the shown text in
+  TextView's Java, `setTextAlignment` calls `ui_text_set_alignment`, and the gtk button backend sets
+  `ATL-no-border` from the view's background; `native_addClass` and its siblings are gone: drop
+  upstream edits to them.
+- Button family: `Button.native_new(kind)` (`src/shared/android_widget_Button.c`) makes a
+  `ui_button_new` text node; CompoundButton is AOSP 10's (Java checked state, toggle on
+  `performClick`, RadioGroup's widget listener). Their legacy gtk natives are gone: port upstream
+  widget fixes into the Java or `src/backends/ui/gtk/widgets.c`.
 - `src/backends/ui/records/` serves headless and uikit through the hooks in `records.h`;
   headless metrics are in `headless/views.c`, UIKit views in `uikit/view.m`.
 - `ViewGroup.native_removeView` and `View.native_destructor` are in `src/shared/` behind
@@ -80,8 +86,11 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - JavaWidget is defined in `src/backends/ui/gtk/view.c`; legacy `View.c` and `ViewGroup.c` only
   declare it. Drop upstream's definition from `View.c`.
 - Dialog and AlertDialog are ours: natives in `src/shared/android_app_Dialog.c`, GTK in
-  `src/backends/ui/gtk/dialog.c`. Port upstream Dialog fixes there; AlertDialog has no Button
-  views (`getButton` returns null until M4b). `ATLKeyboardDialog.nativeInit` uses `ui_dialog_new`.
+  `src/backends/ui/gtk/dialog.c`. Port upstream Dialog fixes there. `getButton` returns
+  AlertDialog's own Button views (AOSP's AlertController semantics: their click listener is the
+  dialog's listener and dismiss), changed in place through `ui_dialog_set_button`;
+  `atlDialogResult` returns whether the dialog is still drawn. `ATLKeyboardDialog.nativeInit` uses
+  `ui_dialog_new`.
 - `Activity.onBackPressed` moves the task root to the back when the host allows (gtk doesn't);
   `moveTaskToBack` is public and real; `activity.c` keeps task state and an activity's `stopped`.
 - `DialogInterface.OnCancelListener.onCancel` added (upstream's is empty).
@@ -133,4 +142,5 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - Min iOS 17.4 (os_sync): `env.sh` for scripts and CMake, `apps/Dine/Package.swift` for Swift.
   Never equal to the SDK version (compatibility mode).
 - Linux gate after a merge: `tools/dine linux smoke` (gd, demo, demo-480, looper, dialog, dialog-gtk, nav,
-  views, views-gtk) + `tools/dine test runtime` + `tools/dine test framework`; iOS gate: `tools/dine dbg smoke`.
+  views, views-gtk, widgets, controls) + `tools/dine test runtime` + `tools/dine test framework`; iOS gate:
+  `tools/dine dbg smoke`.
