@@ -136,6 +136,7 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 
 ## dine-art
 
+- Upstream is merged: `git merge upstream/master`.
 - `install-ios` puts ART's junit boot jars in `share/art-junit`, apart from the runtime jars:
   Dine's release builds leave them off the boot class path.
 - Park's platform calls live in `ParkWait`/`ParkWake` (`art/runtime/thread.cc`): futex on Linux,
