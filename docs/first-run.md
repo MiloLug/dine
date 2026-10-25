@@ -11,7 +11,7 @@ go to gitignored dirs **inside the repo** (`out/`), never to `~/.local` or other
 
 | Source | Tools |
 |---|---|
-| **pacman** | `base-devel` (gcc, make, binutils, pkgconf), `git`, `curl`, `clang`, `lld`, `llvm` (llvm-ar/ranlib/otool/nm, dsymutil), `cmake`, `ninja`, `socat`, `libimobiledevice`, `fuse2`, `uv`, `rustup` (cargo for accord), `jdk8-openjdk`, `jdk21-openjdk` (runs d8), `patchelf`, ATL build libraries (below); for runtime tests: `smali` |
+| **pacman** | `base-devel` (gcc, make, binutils, pkgconf), `git`, `curl`, `clang`, `lld`, `llvm` (llvm-ar/ranlib/otool/nm, dsymutil), `cmake`, `ninja`, `socat`, `libimobiledevice`, `fuse2`, `uv`, `rustup` (cargo for accord), `jdk8-openjdk`, `jdk21-openjdk` (runs d8), `patchelf`, ATL build libraries (below); for runtime tests: `smali`; for gtk runs on a hidden display: `sway`, `grim` |
 | **AUR (paru)** | `swift-bin` (Swift 6.4 + its lldb), `ipsw-bin` (splits the phone's dyld shared cache), `wolfssl-jni`, `bsd-compat-headers`, `android-sdk-build-tools` (d8 for the ART/ATL dex build, zipalign; aapt2 for test APKs); for runtime tests: `jasmin` |
 | **uv → `.venv`** (`pyproject.toml`, `uv.lock`) | CPython 3.12, `pymobiledevice3`, `meson` |
 | **cargo** | `accord` (`cargo install --git https://github.com/MiloLug/dine-accord`, into `~/.cargo/bin`, which must be on `PATH`): the `actool` that `ios run` calls |
@@ -75,7 +75,7 @@ sudo pacman -S --needed base-devel git curl clang lld llvm cmake ninja socat lib
   zip alsa-lib ffmpeg gtk4 gtk4-layer-shell graphene libgudev libportal libsecret sqlite \
   vulkan-icd-loader vulkan-headers wayland wayland-protocols webkitgtk-6.0 openxr glib2-devel \
   libglvnd libdrm \
-  smali
+  smali sway grim
 paru -S --needed swift-bin ipsw-bin wolfssl-jni bsd-compat-headers android-sdk-build-tools jasmin
 ```
 
@@ -86,6 +86,9 @@ paru -S --needed swift-bin ipsw-bin wolfssl-jni bsd-compat-headers android-sdk-b
   (`archlinux-java status`; `sudo archlinux-java set java-8-openjdk` if a JDK install changed it).
   The package also puts `aapt` on `PATH`; ATL ignores it (see step 8).
 - `smali` and `jasmin` only build the runtime tests (`tools/dine test runtime`).
+- `sway` and `grim` give the gtk build a hidden display: `linux smoke`, `test framework --gtk` and
+  `dbg start-server --target gtk` run ATL in a headless sway, and `grim` takes the debug server's
+  screenshots there.
 - The desktop ATL build links pacman's `graphene`; the headless and iOS builds clone graphene
   1.10.8 through dine-atl's meson wrap (`subprojects/graphene.wrap`, built without GObject), so
   their first setup needs network.
@@ -252,7 +255,8 @@ cd .. && tools/dine linux build       # ~10 min on 16 cores; installs to out/lin
   prefix.
 - ATL's rpaths assume the bionic_translation libraries are in a system lib dir. `env.sh` adds
   `out/linux/prefix/lib` to `LD_LIBRARY_PATH` instead (checked: no names clash with `/usr/lib`).
-- GUI apps open through WSLg (Wayland). No extra setup is needed.
+- Run by hand, GUI apps open through WSLg (Wayland); no extra setup is needed. The tools' gtk runs
+  use the hidden display instead (step 1).
 
 ## 9. ART and ATL for iOS
 
@@ -312,7 +316,7 @@ tools/dine dbg start-server && tools/dine dbg smoke  # every step "ok", then "sm
 tools/dine ios lldb -- -b -o "expr -l c -- (const char *)dine_hello()" -o "process detach"
 tools/dine ios lldb --suspended -- -b -o "b HelloView.swift:8" -o c -o "po self" -o "process detach"
 tools/dine test unit                                 # harness + tools unit tests (debug server on a fake target)
-tools/dine linux smoke                               # gd, dialog-gtk, views-gtk, draw-gtk open windows: "smoke passed: …"
+tools/dine linux smoke                               # no window opens on Windows: "smoke passed: …"
 tools/dine test runtime                              # ART run-tests: exits 0 (no regressions)
 tools/dine test framework                            # android.* JUnit suites: exits 0 (no regressions)
 tools/dine ios build-art                             # ART as arm64-apple-ios archives in out/ios/lib

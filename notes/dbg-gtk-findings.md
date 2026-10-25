@@ -57,3 +57,10 @@ already has.
   may need `WLR_RENDERER=pixman`.
 - Whether GTK picks a working renderer there; it may need `GSK_RENDERER=cairo`.
 - Weston's own screenshot tool, which needs `--debug`.
+
+## Outcome (2026-10-25)
+
+Option 1 is built, with sway: headless sway with `WLR_RENDERER=pixman` starts under WSL2, GTK
+picks `GskGLRenderer` there as on WSLg (`GSK_DEBUG=renderer`; no `GSK_RENDERER` needed), and `grim`
+captures it. UI listing and input come from an in-ATL debug agent; screenshots from `grim`.
+Current docs: README "Linux ATL / ART" and "gtk target", `notes/dev-reference.md` "Debug agent".

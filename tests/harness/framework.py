@@ -127,14 +127,15 @@ def run_suite(suite: Path, work: Path, build: Build) -> tuple[str, Run, str]:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("-f", "--filter", help="regex on suite names")
-    p.add_argument("--gtk", action="store_true", help="run on the gtk build (opens windows)")
+    p.add_argument("--gtk", action="store_true", help="run on the gtk build (needs a display; tools/dine test "
+                                                        "framework --gtk gives it a hidden one)")
     p.add_argument("--update-expectations", action="store_true",
                    help="record this run's failures as expected (passes clear their entries)")
     a = p.parse_args()
 
     build = GTK if a.gtk else HEADLESS
     if a.gtk and not (os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY")):
-        sys.exit("--gtk needs a display (WSLg sets WAYLAND_DISPLAY)")
+        sys.exit("--gtk needs a display: run it as tools/dine test framework --gtk")
     for f in (build.dir / "android-translation-layer", build.dir / "test_runner.jar"):
         if not f.exists():
             sys.exit(f"missing {f}: run tools/dine linux build")

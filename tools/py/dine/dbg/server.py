@@ -16,7 +16,6 @@ import traceback
 from pathlib import Path
 
 from . import session, wait
-from .. import ios
 from ..paths import DineError
 from .logstore import LogStore, bare, path_for, render
 from .targets import TARGETS
@@ -41,7 +40,7 @@ class Server:
         self.target_name, self.app = target_name, app
         self.started = time.time()
         self.code = session.code_fingerprint()
-        # Seq before the latest `ios launch`: where `log` listings start by default.
+        # Seq before the latest launch: where `log` listings start by default.
         self.run_start = 0
         self.lock = threading.Lock()
         self.busy: tuple[str, float] | None = None
@@ -89,6 +88,7 @@ class Server:
         if cmd == "status":
             resp["state"] = self.target.state()
             resp["app"] = self.app
+            resp["target"] = self.target_name
         return resp
 
     def _interrupt_busy(self) -> str:
@@ -151,7 +151,7 @@ class Server:
         return "\n".join(lines), 0
 
     def cmd_note(self, timeout, kind, text, mark=False):
-        """Something outside the server happened (`ios launch`/`kill`): log it; `mark` before the
+        """Something outside the server happened (a launch or kill): log it; `mark` before the
         action, so `wait --since mark` sees everything the action causes."""
         if mark:
             self.store.set_mark()
@@ -168,7 +168,7 @@ class Server:
             text = self._locked("shutdown", lambda: self.target.shutdown(kill_app), timeout)
         except CmdError as e:
             code = 1
-            text = f"{e}\ncouldn't detach cleanly: the app may be left stopped (tools/dine ios kill, then relaunch)"
+            text = f"{e}\ncouldn't detach cleanly: the app may be left stopped ({self.target.relaunch})"
         # `serve` exits once this answer is sent.
         self.shut_down = True
         return (text + "\n" if text else "") + f"server stopped; logs kept in {self.dir}", code
@@ -180,9 +180,9 @@ class Server:
             stop = True
         st = self.target.state()
         if (stop or exit) and st.get("state") == "none" and not self.target.watching_exit():
-            raise CmdError("nothing attached: tools/dine dbg attach")
+            raise CmdError(self.target.no_process)
         if (log or log_re) and not self.target.syslog_running():
-            raise CmdError("syslog capture is off: tools/dine dbg syslog start")
+            raise CmdError(f"syslog capture is off: {self.target.capture}")
         if stop:
             conds.append(wait.stop_cond(at))
         conds += [wait.log_cond(t) for t in log] + [wait.log_cond(t, True) for t in log_re]
@@ -201,7 +201,8 @@ class Server:
         def parked():
             st = self.target.state()
             return st.get("location") or "?" if st.get("state") == "stopped" else None
-        if not any(c.kind not in ("stop", "exit") for c in conds) and not st.get("attached"):
+        if not any(c.kind not in ("stop", "exit") for c in conds) and not st.get("attached") \
+                and not (exit and not stop and self.target.watching_exit()):
             # Detached or exited: only what's already logged can match.
             out = wait.run(self.store, conds, start, 0, all, parked)
             if out.code == wait.TIMEOUT:
@@ -225,8 +226,7 @@ class Server:
         scoped = since is None and self.run_start > 0
         evs = self.store.select(self.run_start if since is None else int(since), srcs)
         if app:
-            own = f" {ios.bundle_base(self.app)}/"
-            evs = [e for e in evs if e["src"] != "syslog" or own in e["text"].split(":", 1)[0] + "/"]
+            evs = [e for e in evs if e["src"] != "syslog" or self.target.is_app_line(e["text"])]
         heads = [f"since launch #{self.run_start + 1} (--from 0: whole session)"] if scoped else []
         if op == "grep":
             rx = re.compile(pattern or "", re.I)

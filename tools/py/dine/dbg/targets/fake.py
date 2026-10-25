@@ -3,14 +3,19 @@
 `dbg fake <log|stop|crash|exit|ui> …` makes the fake process emit that event after `--delay`.
 """
 
+from __future__ import annotations
+
 import threading
 
 from .. import agent
 from .base import CmdError, Target
+from .ios import IosTarget
 
 
 class FakeTarget(Target):
     name = "fake"
+    # its lines are the iOS app's
+    is_app_line = IosTarget.is_app_line
 
     def __init__(self, store, app):
         super().__init__(store, app)

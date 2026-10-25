@@ -7,6 +7,11 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - Our delta: `git diff upstream/master...dine`. Local `master` lags upstream.
 - Upstream isn't merged: read its commits since the last merge and reimplement the wanted ones
   by hand.
+- `src/api-impl/build.xml` (the ant path) runs `<depend closure="true">`: javac `-h` rewrites only
+  the headers of classes it compiles, and a header holds inherited constants. A class tied to another
+  only by an inlined constant still isn't recompiled when that value changes.
+- Ours, no upstream counterpart: the gtk debug agent (`src/backends/ui/gtk/agent.c`, test hooks,
+  `ATL_DBG_AGENT`, started from `main.c`'s window-ready poll) and `input_tap` in gtk `input.c`.
 - Upstream's `android.atl.GskCanvas` is `android.atl.ATLCanvas`; its `snapshot` field is `handle`,
   a `struct gfx_canvas` (gsk: the GtkSnapshot). Save, restore, the transforms, rect, round rect and
   lines are shared natives behind `gfx_canvas_*` (`src/shared/android_atl_ATLCanvas.c`; gsk's

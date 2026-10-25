@@ -13,6 +13,12 @@ class CmdError(Exception):
 
 class Target:
     name = "?"
+    # what to run when the app is left stopped
+    relaunch = "relaunch the app"
+    # what starts capturing the app's log
+    capture = "tools/dine dbg syslog start"
+    # `wait --stop`/`--exit` with no process to watch
+    no_process = "nothing attached: tools/dine dbg attach"
 
     # Client side, before the server is spawned.
     @classmethod
@@ -45,7 +51,12 @@ class Target:
         return False
 
     def watching_exit(self) -> bool:
+        """The app's exit gets logged although nothing is attached."""
         return False
+
+    def is_app_line(self, text: str) -> bool:
+        """`log --app`: a captured line of the app's own, not a system framework's."""
+        return True
 
     def ui_find(self, label: str, timeout: float) -> str | None:
         raise Unsupported(f"UI isn't supported by target {self.name}")

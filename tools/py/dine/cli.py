@@ -7,9 +7,11 @@ import shlex
 import subprocess
 import sys
 import time
+from pathlib import Path
 
-from . import ios, linux, paths
+from . import display, ios, linux, paths
 from .dbg import client, session, smoke
+from .dbg.targets import TARGETS
 from .paths import DineError
 
 DBG_EXIT_HELP = "exit codes: 0 ok/matched, 1 error or bad state, 2 wait timeout, " \
@@ -145,8 +147,8 @@ def _linux(sub):
     t.add_argument("stages", nargs="*", choices=[[], "bionic", "art", "opensles", "atl", "atl-headless"],
                    metavar="stage")
     t.set_defaults(func=lambda a: ios.run_libexec("build-linux-stack.sh", *a.stages))
-    t = s.add_parser("smoke", help="gtk runs Gravity Defied to onResume, headless runs demo_app and looper "
-                                   "(after linux build; --list for the checks)")
+    t = s.add_parser("smoke", help="gtk runs Gravity Defied to onResume on a hidden display, headless runs "
+                                   "demo_app and looper (after linux build; --list for the checks)")
     t.add_argument("names", nargs="*", metavar="check")
     t.add_argument("--list", action="store_true", help="print the checks")
     t.set_defaults(func=lambda a: print(linux.listing()) if a.list else linux.smoke(a.names))
@@ -159,12 +161,19 @@ def _test(sub):
                                      "(tools/dine test runtime -- --help)")
     t.set_defaults(func=lambda a: subprocess.run([sys.executable, str(paths.ROOT / "tests/harness"), *a.extra]).returncode,
                    passthrough="all")
-    t = s.add_parser("framework", help="android.* JUnit suites in-VM on the headless build, --gtk on the gtk one (after linux build); "
-                                       "args go to tests/harness/framework.py")
-    t.set_defaults(func=lambda a: subprocess.run([sys.executable, str(paths.ROOT / "tests/harness/framework.py"), *a.extra]).returncode,
-                   passthrough="all")
+    t = s.add_parser("framework", help="android.* JUnit suites in-VM on the headless build, --gtk on the gtk one on a "
+                                       "hidden display (after linux build); args go to tests/harness/framework.py")
+    t.set_defaults(func=_test_framework, passthrough="all")
     t = s.add_parser("unit", help="unit tests: tests/harness and tools/py")
     t.set_defaults(func=_test_unit)
+
+
+def _test_framework(a):
+    cmd = [sys.executable, str(paths.ROOT / "tests/harness/framework.py"), *a.extra]
+    if "--gtk" not in a.extra:
+        return subprocess.run(cmd).returncode
+    with display.headless() as d:
+        return subprocess.run(cmd, env=d.env()).returncode
 
 
 def _test_unit(a):
@@ -184,8 +193,9 @@ def _dbg(sub):
     s = p.add_subparsers(dest="action", required=True)
 
     t = s.add_parser("start-server", help="spawn the server (fails if one runs)")
-    t.add_argument("--target", default="ios", choices=["ios", "fake"])
-    t.add_argument("--app", default="Dine")
+    t.add_argument("--target", default="ios", choices=sorted(TARGETS),
+                   help="ios: the app on the phone; gtk: ATL's gtk build on a hidden display")
+    t.add_argument("--app", help="ios: the app (default Dine); gtk: the APK's path (required)")
     t.add_argument("--timeout", type=float, default=90)
     t.set_defaults(func=_start_server)
 
@@ -287,7 +297,7 @@ def _dbg(sub):
                        help="default: syslog, event, lldb")
         t.add_argument("-C", type=int, default=0, help="grep: context events")
         t.add_argument("--from", dest="since", type=int,
-                       help="only events after this seq (default: since the last ios launch; 0: all)")
+                       help="only events after this seq (default: since the last launch; 0: all)")
         t.add_argument("--app", action="store_true", help="drop other subsystems' syslog lines")
         t.add_argument("--text", action="store_true", help="message text only, no seq/time/source prefix")
     req("log", "log", "session log: tail|head|since <seq>|grep <re>|show <seq>|path", setup=log_setup,
@@ -295,8 +305,9 @@ def _dbg(sub):
 
     def ui_setup(t):
         t.add_argument("op", choices=["ls", "tap", "type", "back", "action", "screenshot"])
-        t.add_argument("arg", nargs="?", help="tap, type: label (loose match) or #N from ls; action: an accessibility "
-                                              "custom action's name (Back, Home, Recent apps); screenshot: path")
+        t.add_argument("arg", nargs="?", help="tap, type: label (loose match) or #N from ls; action (ios): an "
+                                              "accessibility custom action's name (Back, Home, Recent apps); "
+                                              "screenshot: path")
         t.add_argument("text", nargs="?", help="type: the text a keyboard inserts")
     req("ui", None, "app UI: ls | tap <label|#N> | type <label|#N> <text> | back | action <name> | screenshot [path]",
         timeout=60, setup=ui_setup).set_defaults(
@@ -312,6 +323,8 @@ def _dbg(sub):
     t = s.add_parser("fresh", help="syslog on, relaunch the app (its debug agent on), wait until its UI "
                                    "answers; --attach: then attach and continue")
     t.add_argument("--attach", action="store_true")
+    t.add_argument("--activity", help="gtk: the activity to start, as ATL's -l takes it (default: the APK's "
+                                      "launcher activity)")
     t.set_defaults(func=_fresh)
 
     t = s.add_parser("smoke", help="the app's smoke checks, one line per step; --list shows them")
@@ -329,12 +342,27 @@ def _dbg(sub):
                    else _request(a, "fake", {"action": a.fake_action, "text": a.text, "delay": a.delay}))
 
 
-def _relaunch(app: str) -> int:
-    """syslog on, `ios launch`, then wait for the debug agent to show the UI; the pid."""
-    resp = client.call("syslog_start", {"debug": False, "subsystem": None})
-    if resp["code"]:
-        raise DineError(resp["text"])
-    pid = _launch(app, False)
+def _relaunch(st: dict, activity: str | None = None) -> int:
+    """ios: syslog on, `ios launch`; gtk: the server kills and launches ATL. Then wait for the debug
+    agent to show the UI; the pid."""
+    app = st["app"]
+    if st["target"] == "gtk":
+        if (st.get("state") or {}).get("attached"):
+            raise DineError("the debug server is attached, which blocks a relaunch: tools/dine dbg detach first")
+        client.call("kill", timeout=30)
+        _notify_server("launching", f"launching {app}", mark=True)
+        resp = client.call("launch", {"activity": activity}, timeout=30)
+        if resp["code"]:
+            raise DineError(resp["text"])
+        _notify_server("launched", resp["text"])
+        pid = client.call("status", timeout=10)["state"]["pid"]
+    else:
+        if activity:
+            raise DineError("--activity is for the gtk target")
+        resp = client.call("syslog_start", {"debug": False, "subsystem": None})
+        if resp["code"]:
+            raise DineError(resp["text"])
+        pid = _launch(app, False)
     deadline = time.monotonic() + 30
     while (resp := client.call("ui_ls", timeout=10))["code"] or resp["text"].endswith("(no accessibility elements)"):
         if time.monotonic() > deadline:
@@ -346,7 +374,7 @@ def _relaunch(app: str) -> int:
 
 def _fresh(a) -> int:
     st = client.call("status", timeout=10)
-    pid = _relaunch(st["app"])
+    pid = _relaunch(st, a.activity)
     print(f"launched {st['app']} pid {pid}\n" + client.call("ui_ls", timeout=10)["text"])
     if a.attach:
         for cmd, timeout in (("attach", 120), ("continue", 30)):
@@ -358,11 +386,13 @@ def _fresh(a) -> int:
 
 
 def _smoke(a) -> int:
-    app = client.call("status", timeout=10)["app"]
+    st = client.call("status", timeout=10)
+    if st["target"] == "gtk":
+        raise DineError("dbg smoke is the iOS app's; the gtk build's: tools/dine linux smoke")
     if a.list:
-        print(smoke.listing(app))
+        print(smoke.listing(st["app"]))
         return 0
-    return smoke.run(app, a.names, a.network, lambda: _relaunch(app))
+    return smoke.run(st["app"], a.names, a.network, lambda: _relaunch(st))
 
 
 def _log_args(a):
@@ -386,7 +416,14 @@ def _request(a, cmd, args) -> int:
 
 
 def _start_server(a) -> int:
-    code, text = client.start_server(a.target, a.app, a.timeout)
+    if a.target == "gtk":
+        if not a.app:
+            raise DineError("--target gtk needs --app <apk>")
+        # the server runs in the repo root
+        app = str(Path(a.app).resolve())
+    else:
+        app = a.app or "Dine"
+    code, text = client.start_server(a.target, app, a.timeout)
     print(text)
     return code
 

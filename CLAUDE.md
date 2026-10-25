@@ -46,7 +46,7 @@ tools/dine linux smoke [check...] [--list]
 tools/dine test runtime [fetch|build|run|all] [-f REGEX] [--network] [--update-expectations]
 tools/dine test framework [-f REGEX] [--gtk] [--update-expectations]
 tools/dine test unit                     # harness + tools/py unit tests
-tools/dine dbg start-server | smoke [--network] [--list] | stop-server
+tools/dine dbg start-server [--target gtk --app <apk>] | smoke [--network] [--list] | stop-server
 ```
 
 **Dev and release builds:** iOS builds are dev builds unless `DINE_RELEASE=1` is set on
@@ -59,8 +59,9 @@ agent, hello, runtimetests; Swift imports them only from `Sources/Dine/Dev/`), a
 `dev/`). `dbg ui`, `dbg fresh` and `dbg smoke` need a dev build. A release build can't start an
 app until the launcher gets APK import (M8a).
 
-**On-device work goes through a subagent, never raw `lldb`/`pymobiledevice3` with `sleep`/`grep`
-waits.** Both drive `tools/dine dbg` and leave the server up for the next task; continue them with
+**On-device and gtk-build debugging go through a subagent, never raw `lldb`/`pymobiledevice3` with
+`sleep`/`grep` waits.** Both drive `tools/dine dbg` (target `ios`, or `gtk`: ATL's gtk build on a
+hidden display; the task names which) and leave the server up for the next task; continue them with
 SendMessage. Spawn neither from plan mode: it blocks every launch, attach and tap.
 - `dine-peek` (Sonnet, fast): a fully specified read, e.g. "value of `self.native` at
   `HelloView.swift:23` after tapping hello++", a log line after given taps, a smoke run, a screenshot.
@@ -77,8 +78,9 @@ their `expectations/` (exit 1 = regression). After a fix makes tests pass, rerun
 
 Smoke tests: iOS `tools/dine dbg smoke` (dev build, after `dbg start-server`; `--network` adds
 **run https**), Linux `tools/dine linux smoke` (after `linux build`; gd runs the gtk build,
-the rest `dine-atl/tests/headless/run-*.sh`). `--list` prints every check; the tables are
-`tools/py/dine/dbg/smoke.py` and `tools/py/dine/linux.py`.
+the rest `dine-atl/tests/headless/run-*.sh`; the gtk checks run on a hidden display, README
+"Linux ATL / ART"). `--list` prints every check; the tables are `tools/py/dine/dbg/smoke.py` and
+`tools/py/dine/linux.py`.
 
 ## Forks and builds
 

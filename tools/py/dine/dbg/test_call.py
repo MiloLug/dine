@@ -1,6 +1,6 @@
 import unittest
 
-from dine.dbg.targets.ios import c_literal
+from dine.dbg.targets.lldbcmds import c_literal
 
 
 class CLiteralTest(unittest.TestCase):

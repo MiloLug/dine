@@ -1,6 +1,7 @@
 """Server commands in-process with the fake target: log scoping and the stale-code warning."""
 
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -40,6 +41,23 @@ class ServerLogTest(unittest.TestCase):
         self.assertIn("1 matches", self.call("log", op="grep", pattern="loaded", app=True))
         lines = self.call("log", op="tail", n=1, app=True, text=True).splitlines()
         self.assertEqual(lines[1], "loaded 2 apps")
+
+    def test_wait_exit_follows_a_target_that_watches_exits(self):
+        self.server.target.watching_exit = lambda: True
+        exits = threading.Timer(0.2, self.server.store.append, ("event", "exited", "pid 9 exited with status 0"))
+        exits.start()
+        self.addCleanup(exits.cancel)
+        resp = self.server.handle({"cmd": "wait", "args": {"exit": True}, "timeout": 5})
+        self.assertEqual(resp["code"], 0, resp["text"])
+        self.assertIn("matched --exit", resp["text"])
+
+    def test_wait_without_a_process_names_the_targets_way_to_start_one(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        server = Server("gtk", "app.apk", Path(tmp.name))
+        self.addCleanup(server.store.close)
+        resp = server.handle({"cmd": "wait", "args": {"exit": True}, "timeout": 1})
+        self.assertEqual((resp["code"], resp["text"].splitlines()[0]), (1, "ATL isn't running: tools/dine dbg fresh"))
 
     def test_stale_code_warning(self):
         self.assertTrue(self.call("status", code="older").startswith("warning: the server runs older dbg code"))

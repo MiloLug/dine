@@ -110,7 +110,9 @@ stdout and never reaches syslog.
 One server process per debugging session, driven by `tools/dine dbg …`. It owns lldb (SB API in
 async mode), the app's syslog capture and UI access, and logs everything with sequence numbers to
 `/tmp/dine-dbg/sessions/<time>/` (`events.jsonl`, plus `syslog.log`, `event.log`, `lldb.log`,
-`cmd.log`). Nothing starts implicitly, every command is bounded, and waits are explicit.
+`cmd.log`). Nothing starts implicitly, every command is bounded, and waits are explicit. Its target
+is the iOS app on the phone (the default, below) or ATL's gtk build ([gtk target](#gtk-target)); one
+server runs at a time, so switching is `stop-server`, then `start-server --target …`.
 
 ```sh
 tools/dine ios tunnel status
@@ -133,7 +135,7 @@ tools/dine dbg stop-server                        # detaches; never kills the ap
 - `wait --timeout S` conditions: `--stop`, `--at LOC`, `--log TEXT` (loose match:
   case-insensitive, punctuation ignored, words in order, each a prefix), `--log-re`, `--exit`,
   `--ui LABEL`; `--all` for every one. It starts at the last action (`--since mark`: `continue`,
-  step, `ui tap`, … and `ios launch`), so a stop between `continue` and `wait` isn't missed, and
+  step, `ui tap`, … and a launch), so a stop between `continue` and `wait` isn't missed, and
   returns at once when the process stops
   elsewhere (exit 1) or exits/crashes (exit 3). Timeout: exit 2 with the recent events.
 - Exit codes: 0 ok, 1 error or bad state (the message names the command to run), 2 timeout,
@@ -145,19 +147,45 @@ tools/dine dbg stop-server                        # detaches; never kills the ap
   breakpoint returns the stop.
 - `dbg call <fn> [args]` calls a function in the app through lldb on its main thread (numbers
   as-is, other args as C strings): needs `attach`.
-- `log` listings start at the last `ios launch` (`--from 0`: the whole session); `--app` keeps
-  only the app's own subsystem, `--text` only the message text.
-- `exec` refuses a selected worker thread that waits in the kernel (an expression there can crash
-  the app once it resumes); `--force` runs it anyway.
+- `log` listings start at the last launch (`ios launch`, `dbg fresh`; `--from 0`: the whole
+  session); `--app` (ios) keeps only the app's own subsystem, `--text` only the message text.
+- ios: `exec` refuses a selected worker thread that waits in the kernel (an expression there can
+  crash the app once it resumes); `--force` runs it anyway.
 - A reply starting `warning: the server runs older dbg code` means `tools/py/dine` changed since
   `start-server`: restart the server.
 - One lldb target per server: attaching to the next process reuses it, with its breakpoints.
 - `HelloView.swift:8` (`HelloView.init`) runs at launch (SwiftUI builds the `NavigationLink`
   destination eagerly); `HelloView.swift:23` (`body`/`onAppear`) fires when the screen opens.
 - Claude Code: the `dine-peek` (narrow reads) and `dine-debugger` subagents (`.claude/agents/`,
-  gitignored) know this contract.
+  gitignored) know this contract, for both targets.
 - Tests: `tools/dine test unit` runs the server against a scripted fake target
   (`dbg start-server --target fake`).
+
+### gtk target
+
+`--target gtk` debugs ATL's gtk build (`out/linux/build/dine-atl`, from `tools/dine linux build
+atl`) on the [hidden display](#linux-atl--art); no phone or tunnel. The server starts ATL itself:
+ATL's stdout and stderr are the log (`wait --log`, `log`), and the UI goes through a debug agent
+in ATL's test hooks (`dine-atl/src/backends/ui/gtk/agent.c`, the iOS agent's protocol).
+
+```sh
+tools/dine dbg start-server --target gtk --app out/tests/apks/widgets.apk
+tools/dine dbg fresh --activity dev/dine/widgets/TextActivity   # default: the APK's launcher activity
+tools/dine dbg ui type name hi                    # an EditText's label is its hint, then "hint: text"
+tools/dine dbg ui tap fill                        # prints the screen it led to
+tools/dine dbg ui screenshot                      # PNG cropped to ATL's windows
+tools/dine dbg attach                             # local, about 1 s; bp, step, exec, call as on iOS
+```
+
+- `ui ls` lists the shown text of ATL's windows, dialogs included. `ui tap` gives a view one touch
+  at its centre through Java's dispatch, so GTK's own gesture handling doesn't run; an EditText
+  takes GTK's focus, a GTK dialog's buttons and list rows get activated. A tap Java doesn't take
+  reports "declined".
+- `ui back` sends Android's Back; when it closes the last activity, ATL exits and `fresh` starts it
+  again. `ui action` and `dbg smoke` are iOS only (the gtk checks: `tools/dine linux smoke`).
+- The app's data dir lives in the session dir and survives `fresh`.
+- lldb on gtk has no guard for threads waiting in the kernel and passes signals with lldb's
+  defaults: under `-Xint` ART raises no SIGSEGV of its own (`notes/art-findings.md`, Signals).
 
 ## Interactive lldb
 
@@ -227,17 +255,20 @@ ANDROID_APP_DATA_DIR=$PWD/out/linux/appdata \
 ```
 
 Test APKs: `third_party/atl_test_apks` (gitlab.com/android_translation_layer/atl_test_apks).
-Verified: Gravity Defied reaches `onResume` under `-Xint` in WSLg.
 
-Runs under WSLg (Wayland). ART here builds with gcc for x86_64; `tools/dine ios build-art`
-cross-compiles the same tree with clang for arm64-apple-ios.
+Run by hand, ATL's gtk build opens its window on WSLg (Wayland). `linux smoke`, `test framework
+--gtk` and the [gtk debug target](#gtk-target) run it on a hidden display instead: a headless sway
+of their own (1920x1080, windows floating at ATL's size, no input devices) that nothing on the
+Windows desktop shows, closed when they finish. ART here builds with gcc for x86_64;
+`tools/dine ios build-art` cross-compiles the same tree with clang for arm64-apple-ios.
 
 ## Tests
 
 `tests/README.md` describes the test worlds. Working: ART run-tests on the local
 `dalvikvm -Xint`, `tools/dine test runtime` (exit 1 = regression against
 `dine-art/tests/runtime/expectations/`), and the `android.*` JUnit suites on the headless ATL build,
-`tools/dine test framework` (graded the same way against `dine-atl/tests/framework/expectations/`).
+`tools/dine test framework` (graded the same way against `dine-atl/tests/framework/expectations/`;
+`--gtk`: on the gtk build, on the hidden display).
 Details: `dine-art/tests/runtime/README.md`, `dine-atl/tests/framework/README.md` (suites) and
 `tests/harness/README.md` (engine).
 

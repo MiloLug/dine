@@ -1,5 +1,6 @@
-"""Client of the app's debug agent (native/dev/dbgagent/agent.mm): one request line, one JSON reply line,
-over a usbmux connection to the agent's port on the phone."""
+"""Client of an app's debug agent (iOS: native/dev/dbgagent/agent.mm; gtk: dine-atl
+src/backends/ui/gtk/agent.c): one request line, one JSON reply line, over the connection the target's
+`connect` makes (default: usbmux to the agent's port on the phone)."""
 
 import asyncio
 import json
@@ -16,6 +17,10 @@ Labels = list[tuple[bool, str]]
 
 class AgentDown(Exception):
     """Nothing listens on the agent port: the app isn't running or wasn't started by `ios launch`."""
+
+
+class AgentClosed(CmdError):
+    """The agent closed the connection unanswered, as when the app exits under it."""
 
 
 def _connect(timeout: float) -> socket.socket:
@@ -64,7 +69,7 @@ def request(line: str, timeout: float = 10, stopped: Callable[[], str | None] = 
                 break
             buf += chunk
     if not buf:
-        raise CmdError(f"the app's debug agent closed the connection on `{verb}` (did the app exit?)")
+        raise AgentClosed(f"the app's debug agent closed the connection on `{verb}` (did the app exit?)")
     reply = json.loads(buf)
     if "error" in reply:
         raise CmdError(reply["error"])

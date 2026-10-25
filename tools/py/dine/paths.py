@@ -8,6 +8,8 @@ OUT = ROOT / "out"
 APPS = ROOT / "apps"
 VENV = ROOT / ".venv"
 PMD = VENV / "bin/pymobiledevice3"
+ATL_GTK_BUILD = OUT / "linux/build/dine-atl"
+ATL_HEADLESS_BUILD = OUT / "linux/build/dine-atl-headless"
 
 
 class DineError(Exception):

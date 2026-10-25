@@ -45,8 +45,10 @@ def frame_loc(fr: lldb.SBFrame) -> dict:
 
 
 class LldbHost:
-    def __init__(self, store: LogStore):
+    def __init__(self, store: LogStore, launch_hint: str):
+        """`launch_hint`: the command that starts the app again once it exited."""
         self.store = store
+        self.launch_hint = launch_hint
         self.dbg = lldb.SBDebugger.Create(False)
         self.dbg.SetAsync(True)
         self.ci = self.dbg.GetCommandInterpreter()
@@ -111,6 +113,9 @@ class LldbHost:
             if lldb.SBProcess.GetRestartedFromEvent(ev):
                 continue
             name = STATES.get(st)
+            if (p := lldb.SBProcess.GetProcessFromEvent(ev)).IsValid():
+                # a local attach's first stop can come before AttachToProcessWithID returns
+                self.process = p
             if name == "stopped":
                 self.report_stop()
             elif name == "exited":
@@ -148,7 +153,7 @@ class LldbHost:
         self._set("stopped", kind, f"{label}: thread #{th.GetIndexID()} {where(loc)} ({desc})",
                   reason=reason, crash=crash, thread=th.GetIndexID(), location=loc)
         if sig == "SIGKILL":
-            # Killed from outside (`ios kill`, a relaunch): it only exits once resumed, and until then
+            # Killed from outside (a kill, a relaunch): it only exits once resumed, and until then
             # it blocks launching a new instance.
             p.Continue()
 
@@ -161,39 +166,46 @@ class LldbHost:
         if self.state not in states:
             hint = {"none": "nothing attached: tools/dine dbg attach",
                     "detached": "detached: tools/dine dbg attach",
-                    "exited": "process exited: relaunch (tools/dine ios launch) and attach",
+                    "exited": f"process exited: relaunch ({self.launch_hint}) and attach",
                     "running": "process is running: tools/dine dbg interrupt, or wait --stop",
                     "stopped": f"process is stopped at {where(self.location)}: tools/dine dbg continue"}
             raise CmdError(hint.get(self.state, f"process is {self.state}"))
 
-    def connect_attach(self, url: str, pid: int, timeout: float) -> str:
+    def attach(self, pid: int, timeout: float, url: str | None = None) -> str:
+        """Through the debugserver at `url`, or to a local process."""
         if self.state in ("running", "stopped"):
             raise CmdError("already attached: tools/dine dbg detach first")
-        err = lldb.SBError()
-        self.process = self.target.ConnectRemote(self.listener, url, "gdb-remote", err)
-        if not err.Success():
-            raise CmdError(f"connect {url}: {err.GetCString()}")
+        if url:
+            err = lldb.SBError()
+            self.process = self.target.ConnectRemote(self.listener, url, "gdb-remote", err)
+            if not err.Success():
+                raise CmdError(f"connect {url}: {err.GetCString()}")
         self.store.append("event", "attaching", f"attaching to pid {pid}")
-        # Wants an empty listener (the process has ours), blocks with no deadline of its own, and its
-        # stop goes to a hijack listener; `process attach` never returns in async mode. Run it aside.
+        # Remote, it wants an empty listener (the process has ours from ConnectRemote). It blocks with
+        # no deadline of its own, and its stop goes to a hijack listener; `process attach` never
+        # returns in async mode. Run it aside.
+        listener = lldb.SBListener() if url else self.listener
+        stops = self.stops
         result: dict = {}
 
         def attach():
             e = lldb.SBError()
-            result["process"] = self.target.AttachToProcessWithID(lldb.SBListener(), pid, e)
+            result["process"] = self.target.AttachToProcessWithID(listener, pid, e)
             result["error"] = e
         t = threading.Thread(target=attach, name="lldb-attach", daemon=True)
         t.start()
         t.join(timeout)
         if t.is_alive():
             self.wedged = f"attach to pid {pid} hung"
-            raise CmdError(f"attach to pid {pid} didn't finish within {timeout:g}s (phone locked? app gone?). "
-                           "lldb is stuck in it: tools/dine dbg stop-server, then start-server")
+            raise CmdError(f"attach to pid {pid} didn't finish within {timeout:g}s"
+                           + (" (phone locked? app gone?)" if url else "")
+                           + ". lldb is stuck in it: tools/dine dbg stop-server, then start-server")
         e = result["error"]
         if not e.Success():
             raise CmdError(f"attach to pid {pid}: {e.GetCString()}")
         self.process = result["process"]
-        if self.process.GetState() == lldb.eStateStopped:
+        # locally, the stop reaches our listener and `_events` may have reported it already
+        if self.process.GetState() == lldb.eStateStopped and self.stops == stops:
             self.report_stop()
         return f"attached to pid {pid}; stopped at {where(self.location)} (attach stops the app: " \
                "tools/dine dbg continue)"

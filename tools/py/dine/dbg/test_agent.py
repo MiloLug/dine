@@ -1,13 +1,25 @@
 import json
+import os
 import socket
+import subprocess
+import sys
 import threading
 import unittest
 
+from dine import paths
 from dine.dbg import agent
 from dine.dbg.targets.base import CmdError
 
 LAUNCHER = [(False, "Toolbar"), (True, "Add App"), (True, "art"), (False, "art"), (True, "hello++"),
             (True, "Apps")]
+
+
+class ImportTest(unittest.TestCase):
+    def test_agent_imports_first(self):
+        # a fresh interpreter: in the test run, other modules have loaded the targets already
+        r = subprocess.run([sys.executable, "-c", "import dine.dbg.agent"], capture_output=True, text=True,
+                           env={**os.environ, "PYTHONPATH": str(paths.PY)})
+        self.assertEqual(r.returncode, 0, r.stderr)
 
 
 class PickTest(unittest.TestCase):

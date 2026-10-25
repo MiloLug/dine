@@ -3,24 +3,23 @@
 from __future__ import annotations
 
 import json
-import os
-import re
 import subprocess
 import sys
 import threading
-import time
 from pathlib import Path
 
 from ... import ios, paths
 from ...paths import DineError
-from .. import agent, match
+from .. import agent
+from .agentui import AgentUi
 from .base import CmdError, Target
+from .lldbcmds import LldbCommands, lldb_env
 
-NUMBER = re.compile(r"[-+]?(0[xX][0-9a-fA-F]+|\d+(\.\d+)?)")
 
-
-class IosTarget(Target):
+class IosTarget(AgentUi, LldbCommands, Target):
     name = "ios"
+    relaunch = "tools/dine ios kill, then relaunch"
+    call_lang = "objc"
 
     @classmethod
     def preflight(cls, app: str) -> None:
@@ -41,17 +40,7 @@ class IosTarget(Target):
 
     @classmethod
     def server_env(cls) -> dict[str, str]:
-        prefix = paths.OUT / "lldb"
-        pkg = next(prefix.glob("local/lib*/python3.12/site-packages/lldb/__init__.py"), None) \
-            or next(prefix.glob("lib*/python3.12/site-packages/lldb/__init__.py"), None)
-        if pkg is None:
-            raise DineError(f"no lldb Python package under {prefix}")
-        # liblldb's RUNPATH is relative to the real file, but Python loads it through the
-        # site-packages symlink; libpython3.12 comes from the .venv's base interpreter.
-        libs = [Path(sys.base_prefix) / "lib", prefix / "lib", prefix / "lib/swift/linux",
-                prefix / "lib/swift/host/compiler"]
-        return {"PYTHONPATH": str(pkg.parent.parent),
-                "LD_LIBRARY_PATH": ":".join([*map(str, libs), *filter(None, [os.environ.get("LD_LIBRARY_PATH")])])}
+        return lldb_env()
 
     def __init__(self, store, app):
         super().__init__(store, app)
@@ -61,7 +50,7 @@ class IosTarget(Target):
 
     def setup(self) -> None:
         from ..lldbhost import LldbHost
-        self.host = LldbHost(self.store)
+        self.host = LldbHost(self.store, launch_hint=f"tools/dine ios launch {self.app}")
         h = self.host
         out = h.run(ios.lldb_platform_cmd())
         for c in ios.lldb_memory_cmds():
@@ -72,21 +61,18 @@ class IosTarget(Target):
         self.store.append("lldb", "setup", out.strip())
 
     def state(self) -> dict:
-        h = self.host
-        s = {"attached": h.state in ("running", "stopped"),
-             "state": "paused" if h.state == "stopped" and h.last_quiet else h.state}
-        if h.process and h.process.IsValid() and s["attached"]:
-            s["pid"] = h.process.GetProcessID()
-        if s["state"] == "stopped":
-            from ..lldbhost import where
-            s["location"] = where(h.location)
-        return s
+        return self._lldb_state()
 
-    def interrupt_command(self, on: bool) -> None:
-        if on:
-            self.host.dbg.RequestInterrupt()
-        else:
-            self.host.dbg.CancelInterruptRequest()
+    def _main_thread(self, process):
+        return next((t for t in process if t.GetQueueName() == "com.apple.main-thread"), process.GetThreadAtIndex(0))
+
+    def _exec_refusal(self, thread) -> str | None:
+        top = thread.GetFrameAtIndex(0)
+        if not parked_in_kernel(thread.GetQueueName(), top.GetModule().GetFileSpec().GetFilename()):
+            return None
+        return (f"thread #{thread.GetIndexID()} waits in the kernel ({top.GetFunctionName()}); an expression "
+                "there can crash the app once it resumes. Use the main thread (bt --thread 1) or a "
+                "breakpoint in this thread's code; --force runs it anyway")
 
     def shutdown(self, kill_app: bool) -> str:
         out = []
@@ -109,64 +95,7 @@ class IosTarget(Target):
             if len(procs) > 1:
                 raise CmdError(f"several {self.app} processes ({', '.join(str(p['pid']) for p in procs)}): --pid")
             pid = procs[0]["pid"]
-        return self.host.connect_attach(ios.debugserver_url(), pid, timeout)
-
-    def do_detach(self):
-        return self.host.detach()
-
-    def do_continue(self, thread=None, timeout=30):
-        return self.host.resume()
-
-    def do_interrupt(self):
-        return self.host.interrupt()
-
-    def do_step(self, thread=None, timeout=30):
-        return self.host.step("step", thread, timeout)
-
-    def do_next(self, thread=None, timeout=30):
-        return self.host.step("next", thread, timeout)
-
-    def do_finish(self, thread=None, timeout=30):
-        return self.host.step("finish", thread, timeout)
-
-    def do_stepi(self, thread=None, timeout=30):
-        return self.host.step("stepi", thread, timeout)
-
-    def do_threads(self):
-        return self.host.threads()
-
-    def do_bt(self, n=20, thread=None):
-        return self.host.backtrace(n, thread)
-
-    def do_frame(self, index=None):
-        return self.host.select_frame(index)
-
-    def do_up(self):
-        return self.host.select_frame(None, +1)
-
-    def do_down(self):
-        return self.host.select_frame(None, -1)
-
-    def do_source(self, context=8):
-        return self.host.source(context)
-
-    def do_vars(self, names=()):
-        return self.host.variables(list(names))
-
-    def do_exec(self, expr, lang=None, po=False, allow_exceptions=False, force=False, timeout=60):
-        th = self.host.thread()
-        top = th.GetFrameAtIndex(0)
-        if not force and parked_in_kernel(th.GetQueueName(), top.GetModule().GetFileSpec().GetFilename()):
-            raise CmdError(f"thread #{th.GetIndexID()} waits in the kernel ({top.GetFunctionName()}); an expression "
-                           "there can crash the app once it resumes. Use the main thread (bt --thread 1) or a "
-                           "breakpoint in this thread's code; --force runs it anyway")
-        return self.host.evaluate(expr, lang, po, timeout, trap_exceptions=not allow_exceptions)
-
-    def do_cmd(self, command, timeout=60):
-        return self.host.run(command).strip() or "(no output)"
-
-    def do_bp(self, op, spec=None, cond=None, once=False):
-        return self.host.breakpoint(op, spec, cond, once)
+        return self.host.attach(pid, timeout, url=ios.debugserver_url())
 
     def syslog_running(self) -> bool:
         return self._syslog is not None and self._syslog.poll() is None
@@ -200,85 +129,18 @@ class IosTarget(Target):
             self._syslog.kill()
         return "syslog capture stopped"
 
-    def _stopped_at(self) -> str | None:
-        """Where lldb has the app stopped (the agent can't answer then), or None."""
-        if self.host.state == "stopped":
-            from ..lldbhost import where
-            return where(self.host.location)
-        return None
+    def is_app_line(self, text: str) -> bool:
+        return f" {ios.bundle_base(self.app)}/" in text.split(":", 1)[0] + "/"
 
-    def _agent(self, line: str, timeout: float = 10) -> dict:
-        if where := self._stopped_at():
-            raise CmdError(f"the app is stopped at {where} and can't answer UI requests: tools/dine dbg continue")
-        try:
-            return agent.request(line, timeout, self._stopped_at)
-        except agent.AgentDown:
-            raise CmdError(f"no debug agent in {self.app}: it isn't running, or wasn't started by "
-                           f"tools/dine ios launch (relaunch with it)") from None
+    def _request(self, line: str, timeout: float) -> dict:
+        return agent.request(line, timeout, self._stopped_at)
 
-    def _ls(self) -> agent.Labels:
-        self._ui = agent.labels_of(self._agent("ls"))
-        return self._ui
+    def _no_agent(self) -> str:
+        return (f"no debug agent in {self.app}: it isn't running, or wasn't started by tools/dine ios launch "
+                "(relaunch with it)")
 
-    def _settle(self) -> tuple[str, dict]:
-        """Waits for the screen the last tap/back led to; text to append, and the reply. No stop check
-        first: a tap into a breakpoint stops the app right after the tap's reply."""
-        try:
-            r = agent.request("settle 3000", 8, self._stopped_at)
-        except agent.AgentDown:
-            raise CmdError(f"{self.app} went away after the action (crashed?): tools/dine dbg status") from None
-        if "stopped" in r:
-            return f"; stopped at {r['stopped']}", r
-        self._ui = agent.labels_of(r)
-        if not r["ran"]:
-            return "; the app's main thread hasn't run it yet after 3 s (busy?)", r
-        return "\nscreen: " + agent.screen(self._ui) + ("" if r["settled"] else " (still changing after 3 s)"), r
-
-    def do_ui_ls(self):
-        return agent.listing(self._ls())
-
-    def ui_find(self, label: str, timeout: float) -> str | None:
-        """None also while the agent can't answer: the wait's own stop and exit checks report those."""
-        if self._stopped_at():
-            return None
-        m = match.loose(label)
-        try:
-            r = agent.request("ls", min(timeout, 2), self._stopped_at)
-        except (agent.AgentDown, CmdError, OSError):
-            return None
-        return next((l for _, l in agent.labels_of(r) if m(l)), None)
-
-    def do_ui_tap(self, arg=None, timeout=60):
-        if not arg:
-            raise CmdError("usage: tools/dine dbg ui tap <label|#N>")
-        if arg.startswith("#") and arg[1:].isdigit():
-            i = int(arg[1:])
-            if i >= len(self._ui):
-                raise CmdError(f"no {arg} in the last `ui ls` ({len(self._ui)} elements)")
-        else:
-            i = agent.pick(self._ls(), arg)
-        label = self._ui[i][1]
-        self._agent(f"tap {i} {json.dumps(label)}")
-        tail, r = self._settle()
-        if r.get("ran") and r.get("result") is False:
-            raise CmdError(f"{label!r} declined the activation (back navigation: tools/dine dbg ui back)")
-        return f"tapped {label!r}" + tail
-
-    def do_ui_type(self, arg=None, text=None, timeout=60):
-        if not arg or text is None:
-            raise CmdError("usage: tools/dine dbg ui type <label|#N> <text>")
-        if arg.startswith("#") and arg[1:].isdigit():
-            i = int(arg[1:])
-            if i >= len(self._ui):
-                raise CmdError(f"no {arg} in the last `ui ls` ({len(self._ui)} elements)")
-        else:
-            i = agent.pick(self._ls(), arg)
-        label = self._ui[i][1]
-        self._agent(f"type {i} {json.dumps([label, text])}")
-        tail, r = self._settle()
-        if r.get("ran") and r.get("result") is False:
-            raise CmdError(f"{label!r} takes no text (not a text field, or it can't become the first responder)")
-        return f"typed {text!r} into {label!r}" + tail
+    def _went_away(self) -> str:
+        return f"{self.app} went away after the action (crashed?): tools/dine dbg status"
 
     def do_ui_back(self, timeout=60):
         self._agent("back")
@@ -298,40 +160,6 @@ class IosTarget(Target):
             raise CmdError(f"{arg!r} declined")
         return f"ran {arg!r}" + tail
 
-    def _in_app(self, fn, timeout: float):
-        """`fn(left)` runs paused on the main thread; `left()` is the time remaining."""
-        h = self.host
-        if h.state not in ("running", "stopped"):
-            raise CmdError("`call` runs through the debugger: tools/dine dbg attach")
-        deadline = time.monotonic() + timeout
-
-        def left() -> float:
-            s = deadline - time.monotonic()
-            if s < 1:
-                raise CmdError(f"ran out of its {timeout:g}s")
-            return s
-        resume = h.state == "running"
-        if resume:
-            h.interrupt(quiet=True)
-            h.need("stopped")
-        th = h.process.GetSelectedThread()
-        main = next((t for t in h.process if t.GetQueueName() == "com.apple.main-thread"),
-                    h.process.GetThreadAtIndex(0))
-        h.process.SetSelectedThread(main)
-        try:
-            text = fn(left)
-        finally:
-            h.process.SetSelectedThread(th)
-            if resume and h.state == "stopped":
-                h.resume()
-        return text + ("; resumed" if resume else "; still stopped (tools/dine dbg continue to let it act)")
-
-    def do_call(self, fn, args=(), po=False, timeout=60):
-        if not re.fullmatch(r"[A-Za-z_]\w*", fn):
-            raise CmdError(f"{fn!r} isn't a function name")
-        expr = f"{fn}({', '.join(map(c_literal, args))})"
-        return self._in_app(lambda left: self.host.evaluate(expr, "objc", po, left()), timeout)
-
     def do_ui_screenshot(self, arg=None):
         d = self.store.dir / "screenshots"
         d.mkdir(exist_ok=True)
@@ -343,11 +171,6 @@ class IosTarget(Target):
 def parked_in_kernel(queue: str | None, module: str | None) -> bool:
     """A worker thread sitting in a syscall (semaphore, mach_msg, psynch wait)."""
     return queue != "com.apple.main-thread" and module == "libsystem_kernel.dylib"
-
-
-def c_literal(arg: str) -> str:
-    """A `dbg call` argument as C: numbers as written, anything else a string literal."""
-    return arg if NUMBER.fullmatch(arg) else json.dumps(arg, ensure_ascii=False)
 
 
 def syslog_text(line: str) -> str | None:

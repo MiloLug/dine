@@ -30,6 +30,18 @@ class LinuxSmokeTest(unittest.TestCase):
         self.assertTrue(lines[0].startswith("a: ok ("))
         self.assertEqual(lines[1], "b: FAILED (run.sh: exit status 1)\nFAIL: x\nlog: y")
 
+    def test_smoke_closes_the_display_a_check_started(self):
+        closed = []
+        started = mock.Mock(close=lambda: closed.append(True))
+
+        def check():
+            linux._display = started
+            return "x: exit status 1"
+        with mock.patch.object(linux, "CHECKS", [linux.Check("a", "a", check)]):
+            self.assertEqual(linux.smoke([], out=lambda _: None), 1)
+        self.assertEqual(closed, [True])
+        self.assertIsNone(linux._display)
+
     def test_smoke_passed_line(self):
         lines = []
         with mock.patch.object(linux, "CHECKS", [linux.Check("a", "a", lambda: None)]):
@@ -45,7 +57,7 @@ class GdTest(unittest.TestCase):
             stub = Path(tmp, "atl")
             stub.write_text(f"#!/bin/sh\necho $$ > {tmp}/pid\n{body}\n")
             stub.chmod(0o755)
-            with mock.patch.dict(os.environ, {"DISPLAY": ":0"}), \
+            with mock.patch.object(linux, "_gtk_env", lambda: dict(os.environ)), \
                     mock.patch.object(linux.shutil, "which", lambda _: str(stub)), \
                     mock.patch.object(linux, "LOG_DIR", Path(tmp)), mock.patch.object(linux, "GD_TIMEOUT", 1):
                 problem = linux._gd()

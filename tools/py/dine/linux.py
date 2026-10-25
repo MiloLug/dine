@@ -1,6 +1,6 @@
 """Linux smoke: the gtk build runs Gravity Defied to onResume, the dialog and views APKs and the
-widgets APK's drawing; the headless build runs demo_app and the looper, dialog, nav, views and
-widgets APKs. Needs a prior `tools/dine linux build`."""
+widgets APK's drawing, on a hidden display (display.py); the headless build runs demo_app and the
+looper, dialog, nav, views and widgets APKs. Needs a prior `tools/dine linux build`."""
 
 import os
 import shutil
@@ -12,12 +12,12 @@ import time
 from dataclasses import dataclass
 from typing import Callable
 
-from . import paths
+from . import display, paths
 from .paths import DineError
 
 ON_RESUME = b"- onResume - yay!"
-GTK_BUILD = paths.OUT / "linux/build/dine-atl"
-HEADLESS_BUILD = paths.OUT / "linux/build/dine-atl-headless"
+GTK_BUILD = paths.ATL_GTK_BUILD
+HEADLESS_BUILD = paths.ATL_HEADLESS_BUILD
 HEADLESS_TESTS = paths.ROOT / "dine-atl/tests/headless"
 APKS = paths.ROOT / "third_party/atl_test_apks"
 LOOPER_APK = paths.OUT / "tests/apks/looper.apk"
@@ -37,26 +37,26 @@ class Check:
     run: Callable[[], str | None]
 
 
-def _need_display(check: str) -> None:
-    if not (os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY")):
-        raise DineError(f"{check} needs a display (WSLg sets WAYLAND_DISPLAY); headless only: "
-                        "tools/dine linux smoke demo demo-480 looper dialog nav views widgets controls text draw")
+_display: display.Display | None = None
+
+
+def _gtk_env() -> dict[str, str]:
+    """The env for a gtk run: the smoke run's hidden display, started by its first gtk check."""
+    global _display
+    if _display is None:
+        _display = display.Display()
+    return _display.env()
 
 
 def _gd() -> str | None:
-    _need_display("gd")
     atl = shutil.which("android-translation-layer")
     if not atl:
         raise DineError("no android-translation-layer on PATH: run tools/dine linux build atl")
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     log = LOG_DIR / "gd.log"
-    # ATL runs in its own session, out of reach of signals sent to us: turn them into an exit so the
-    # finally below closes its window
-    handlers = {sig: signal.signal(sig, lambda signum, _: sys.exit(128 + signum))
-                for sig in (signal.SIGTERM, signal.SIGHUP)}
     with tempfile.TemporaryDirectory(prefix="dine-gd-") as data, open(log, "wb") as out:
         proc = subprocess.Popen([atl, str(APKS / "org.happysanta.gd_29.apk"), "-l", "org/happysanta/gd/GDActivity",
-                                 "-X", "-Xint"], env={**os.environ, "ANDROID_APP_DATA_DIR": data},
+                                 "-X", "-Xint"], env={**_gtk_env(), "ANDROID_APP_DATA_DIR": data},
                                 stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
         try:
             deadline = time.monotonic() + GD_TIMEOUT
@@ -71,8 +71,6 @@ def _gd() -> str | None:
             return f"no onResume in {GD_TIMEOUT} s; log: {log}"
         finally:
             _kill_group(proc)
-            for sig, handler in handlers.items():
-                signal.signal(sig, handler)
 
 
 def _kill_group(proc: subprocess.Popen) -> None:
@@ -88,8 +86,8 @@ def _kill_group(proc: subprocess.Popen) -> None:
             pass
 
 
-def _script(label: str, *args) -> str | None:
-    r = subprocess.run([str(a) for a in args], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+def _script(label: str, *args, env: dict[str, str] | None = None) -> str | None:
+    r = subprocess.run([str(a) for a in args], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
     return None if r.returncode == 0 else f"{label}: exit status {r.returncode}\n{r.stdout.rstrip()}"
 
 
@@ -126,10 +124,10 @@ def _dialog() -> str | None:
 
 
 def _dialog_gtk() -> str | None:
-    _need_display("dialog-gtk")
     if not GTK_BUILD.is_dir():
         raise DineError(f"no {GTK_BUILD}: run tools/dine linux build atl")
-    return _dialog_apk() or _script("run-dialog.sh", HEADLESS_TESTS / "run-dialog.sh", GTK_BUILD, DIALOG_APK)
+    return _dialog_apk() or _script("run-dialog.sh", HEADLESS_TESTS / "run-dialog.sh", GTK_BUILD, DIALOG_APK,
+                                    env=_gtk_env())
 
 
 def _nav() -> str | None:
@@ -149,10 +147,10 @@ def _views() -> str | None:
 
 
 def _views_gtk() -> str | None:
-    _need_display("views-gtk")
     if not GTK_BUILD.is_dir():
         raise DineError(f"no {GTK_BUILD}: run tools/dine linux build atl")
-    return _views_apk() or _script("run-views.sh", HEADLESS_TESTS / "run-views.sh", GTK_BUILD, VIEWS_APK)
+    return _views_apk() or _script("run-views.sh", HEADLESS_TESTS / "run-views.sh", GTK_BUILD, VIEWS_APK,
+                                   env=_gtk_env())
 
 
 def _widgets_apk() -> str | None:
@@ -181,27 +179,27 @@ def _draw() -> str | None:
 
 
 def _draw_gtk() -> str | None:
-    _need_display("draw-gtk")
     if not GTK_BUILD.is_dir():
         raise DineError(f"no {GTK_BUILD}: run tools/dine linux build atl")
-    return _widgets_apk() or _script("run-draw.sh", HEADLESS_TESTS / "run-draw.sh", GTK_BUILD, WIDGETS_APK)
+    return _widgets_apk() or _script("run-draw.sh", HEADLESS_TESTS / "run-draw.sh", GTK_BUILD, WIDGETS_APK,
+                                     env=_gtk_env())
 
 
 CHECKS = [
-    Check("gd", "gtk: Gravity Defied reaches onResume under -Xint (opens a window)", _gd),
+    Check("gd", "gtk: Gravity Defied reaches onResume under -Xint", _gd),
     Check("demo", "headless: demo_app reaches onResume, view tree matches the golden", _demo),
     Check("demo-480", "headless: the same at density 480, where sp, dp and px differ", _demo_480),
     Check("looper", "headless: looper.apk goes through the loop paths and exits 0", _looper),
     Check("dialog", "headless: dialog.apk's alerts and list take scripted answers, an alert changes its buttons in onShow, it exits 0", _dialog),
-    Check("dialog-gtk", "gtk: the same through the GTK dialog's widgets (opens a window)", _dialog_gtk),
+    Check("dialog-gtk", "gtk: the same through the GTK dialog's widgets", _dialog_gtk),
     Check("nav", "headless: nav.apk's lifecycle under Back, Home and front from cli -c", _nav),
     Check("views", "headless: views.apk removes, re-adds and frees views, view tree matches the golden", _views),
-    Check("views-gtk", "gtk: the same through GTK's widgets, and gsk frees a nine-patch and a StateListDrawable (opens a window)", _views_gtk),
+    Check("views-gtk", "gtk: the same through GTK's widgets, and gsk frees a nine-patch and a StateListDrawable", _views_gtk),
     Check("widgets", "headless: widgets.apk takes taps, a hold, Tab, Enter, a drag and keys from cli -c", _widgets),
     Check("controls", "headless: widgets.apk's buttons, checkboxes, radios, switch, toggle and image button take taps and keys from cli -c", _controls),
     Check("text", "headless: widgets.apk's text fields take cli -c text lines through filters, watchers, a composition, a held report, focus moves and Back", _text),
     Check("draw", "headless: widgets.apk's Canvas view redraws on invalidate, not on a same-size layout; display lists match the golden", _draw),
-    Check("draw-gtk", "gtk: the same view draws through gsk (opens a window)", _draw_gtk),
+    Check("draw-gtk", "gtk: the same view draws through gsk", _draw_gtk),
 ]
 
 
@@ -219,15 +217,27 @@ def select(names: list[str]) -> list[Check]:
 
 def smoke(names: list[str], out=print) -> int:
     """Exit 1 at the first failure."""
+    global _display
     begin = time.monotonic()
     checks = select(names)
-    for c in checks:
-        t = time.monotonic()
-        problem = c.run()
-        if problem:
-            head, _, rest = problem.partition("\n")
-            out(f"{c.name}: FAILED ({head})" + (f"\n{rest}" if rest else ""))
-            return 1
-        out(f"{c.name}: ok ({time.monotonic() - t:.1f} s)")
+    # gtk runs sit in their own sessions, out of reach of signals sent to us: turn them into an exit
+    # so the finally blocks kill the runs and the display
+    handlers = {sig: signal.signal(sig, lambda signum, _: sys.exit(128 + signum))
+                for sig in (signal.SIGTERM, signal.SIGHUP)}
+    try:
+        for c in checks:
+            t = time.monotonic()
+            problem = c.run()
+            if problem:
+                head, _, rest = problem.partition("\n")
+                out(f"{c.name}: FAILED ({head})" + (f"\n{rest}" if rest else ""))
+                return 1
+            out(f"{c.name}: ok ({time.monotonic() - t:.1f} s)")
+    finally:
+        if _display:
+            _display.close()
+            _display = None
+        for sig, handler in handlers.items():
+            signal.signal(sig, handler)
     out(f"smoke passed: {', '.join(c.name for c in checks)} ({time.monotonic() - begin:.0f} s)")
     return 0
