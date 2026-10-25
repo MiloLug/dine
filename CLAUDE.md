@@ -5,7 +5,10 @@
 A generic Android app runner for iOS, built as a translation layer ("Wine for Android") on top of
 ATL + ART, distributed by sideloading. Read `notes/meta.md` for the why, the iOS constraints (no
 JIT, code signing, one process, App Store rules) and the agreed layer architecture. Which stage is
-done and which is next: the Stages table at the top of `notes/atl-port.md`.
+done and which is next: the Stages table at the top of `notes/atl-port.md`. Open defects:
+`notes/bug-tracker.md`; other open work no stage owns: `notes/general-todo.md`. A defect found
+outside a stage's own work, or work no stage owns, gets a code there (`ART-n`, `ATL-n`, `DINE-n`,
+`TOOL-n`; each file's header has the rules), and other notes link the code.
 
 There's no Mac. Everything is built from Arch Linux in WSL2, and testing happens on a physical
 iPhone (iPhone 13, iOS 27.0.1, free Apple ID).
@@ -18,9 +21,6 @@ Where the rest is (read the one a task touches):
   internals, iOS build traps); its Contents list says when to read each section.
 - `notes/atl-port.md` (ATL slots, builds, milestones), `notes/decisions.md` (fork decisions),
   `notes/art-findings.md` (ART config), `notes/nav-gestures.md`, `notes/icons.md`.
-- `notes/bug-tracker.md` (open defects) and `notes/general-todo.md` (other open work): a defect
-  found outside a stage's own work, or work no stage owns, gets a code there (`ART-n`, `ATL-n`,
-  `DINE-n`, `TOOL-n`), and notes link the code.
 
 ## Commands
 
