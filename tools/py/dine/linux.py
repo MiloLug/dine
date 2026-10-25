@@ -1,6 +1,6 @@
-"""Linux smoke: the gtk build runs Gravity Defied to onResume and the dialog and views APKs; the
-headless build runs demo_app and the looper, dialog, nav, views and widgets APKs. Needs a prior
-`tools/dine linux build`."""
+"""Linux smoke: the gtk build runs Gravity Defied to onResume, the dialog and views APKs and the
+widgets APK's drawing; the headless build runs demo_app and the looper, dialog, nav, views and
+widgets APKs. Needs a prior `tools/dine linux build`."""
 
 import os
 import shutil
@@ -40,7 +40,7 @@ class Check:
 def _need_display(check: str) -> None:
     if not (os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY")):
         raise DineError(f"{check} needs a display (WSLg sets WAYLAND_DISPLAY); headless only: "
-                        "tools/dine linux smoke demo demo-480 looper dialog nav views widgets")
+                        "tools/dine linux smoke demo demo-480 looper dialog nav views widgets controls text draw")
 
 
 def _gd() -> str | None:
@@ -174,6 +174,19 @@ def _text() -> str | None:
     return _widgets_apk() or _script("run-text.sh", HEADLESS_TESTS / "run-text.sh", HEADLESS_BUILD, WIDGETS_APK)
 
 
+def _draw() -> str | None:
+    _need_headless()
+    return _widgets_apk() or _script("run-draw.sh", HEADLESS_TESTS / "run-draw.sh", "--headless", HEADLESS_BUILD,
+                                     WIDGETS_APK)
+
+
+def _draw_gtk() -> str | None:
+    _need_display("draw-gtk")
+    if not GTK_BUILD.is_dir():
+        raise DineError(f"no {GTK_BUILD}: run tools/dine linux build atl")
+    return _widgets_apk() or _script("run-draw.sh", HEADLESS_TESTS / "run-draw.sh", GTK_BUILD, WIDGETS_APK)
+
+
 CHECKS = [
     Check("gd", "gtk: Gravity Defied reaches onResume under -Xint (opens a window)", _gd),
     Check("demo", "headless: demo_app reaches onResume, view tree matches the golden", _demo),
@@ -187,6 +200,8 @@ CHECKS = [
     Check("widgets", "headless: widgets.apk takes taps, a hold, Tab, Enter, a drag and keys from cli -c", _widgets),
     Check("controls", "headless: widgets.apk's buttons, checkboxes, radios, switch, toggle and image button take taps and keys from cli -c", _controls),
     Check("text", "headless: widgets.apk's text fields take cli -c text lines through filters, watchers, a composition, a held report, focus moves and Back", _text),
+    Check("draw", "headless: widgets.apk's Canvas view redraws on invalidate, not on a same-size layout; display lists match the golden", _draw),
+    Check("draw-gtk", "gtk: the same view draws through gsk (opens a window)", _draw_gtk),
 ]
 
 

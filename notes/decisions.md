@@ -7,6 +7,17 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - Our delta: `git diff upstream/master...dine`. Local `master` lags upstream.
 - Upstream isn't merged: read its commits since the last merge and reimplement the wanted ones
   by hand.
+- Upstream's `android.atl.GskCanvas` is `android.atl.ATLCanvas`; its `snapshot` field is `handle`,
+  a `struct gfx_canvas` (gsk: the GtkSnapshot). Save, restore, the transforms, rect, round rect and
+  lines are shared natives behind `gfx_canvas_*` (`src/shared/android_atl_ATLCanvas.c`; gsk's
+  bodies in `src/backends/gfx/gsk/canvas.c`); bitmaps, paths, text, clips and RenderNode stay in
+  upstream's file, renamed `android_atl_ATLCanvas.c` (gtk). Port upstream GskCanvas edits there.
+- View's and ViewGroup's draw natives (`native_drawBackground`, `native_drawContent`,
+  `native_drawChildren`, `native_drawChild`) and `Drawable.native_draw` are shared behind
+  `ui_view_draw_*` and `gfx_canvas_draw_drawable`; gtk's bodies are in
+  `src/backends/ui/gtk/view.c` and `src/backends/gfx/gsk/canvas.c`.
+- The records ui backends run a draw pass upstream has no counterpart for (`records/ui.c`): a
+  drawing view's `draw()` records into its display list through `View.atlDraw`.
 - EditText's text is Java's Editable (AOSP's TextView setText, ChangeWatcher and listener list, in
   `EditText.java`); the toolkit field reports each edit to `EditText.atlEdited` and takes Java's
   snapshots (`ui_edit_*`, `src/shared/android_widget_EditText.c`). The gtk GtkText is
@@ -78,7 +89,8 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   `src/shared/test_hooks.c` and `src/backends/ui/{records,gtk}/dump.c`; callers see inline no-ops
   from `test_hooks.h` without it. Dine's iOS release build turns it off. With
   `ATL_DUMP_VIEWTREE`, records backends also print `viewfreed:`, `dialogfreed:` and
-  `drawablefreed: record` lines; gsk's paintables print `drawablefreed: <GType name>`.
+  `drawablefreed: record` lines; gsk's paintables print `drawablefreed: <GType name>`. With
+  `ATL_DUMP_DISPLAYLIST`, records backends print each draw's `displaylist:` lines.
 - `jstring_to_utf8` (`util.c`) gives ui slots valid UTF-8 (U+FFFD for U+0000 and lone
   surrogates); the `src/shared/` text natives use it. `attribute_set_get_string` returns its
   result, so callers `free()` it (gtk `Button.c` too). Upstream's gtk-only text natives keep
@@ -115,6 +127,8 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   `subprojects/graphene.wrap` outside the desktop build). Port upstream Matrix fixes there.
 - Paint state natives are shared behind `gfx_paint_*`; gsk's bodies are in
   `src/backends/gfx/gsk/paint.c`. Text bounds and font metrics stay in upstream's file (gtk).
+  `Paint(Paint)` and `set` copy the Java-side state too (xfermode, shader, align, color filter);
+  the default align is LEFT, as Android's.
 - `getLocationInWindow/OnScreen`, `getGlobalVisibleRect`, `offset*RectInto*` and the observer's
   window are Java (no natives): drop upstream edits to those natives.
 - Attach state is Java (`dispatchAttachedToWindow`/`dispatchDetachedFromWindow`, `isAttachedToWindow`

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""tools/dine test framework: android.* JUnit3 suites run in-VM on the headless ATL build.
+"""tools/dine test framework: android.* JUnit3 suites run in-VM on the headless ATL build, or with
+--gtk on the gtk build (needs a display).
 
 Each dine-atl/tests/framework/<suite>/ is a test APK; the runner finds its TestCases in the dex.
-Results are `<Class>#<test>` plus `suite:<name>` for the run itself.
+Results are `<Class>#<test>` plus `suite:<name>` for the run itself; each build has its own
+expectations file.
 """
 
 import argparse
@@ -19,17 +21,30 @@ import expect
 from common import PREFIX, ROOT, parallel
 
 SUITES = ROOT / "dine-atl/tests/framework"
-EXPECTATIONS = SUITES / "expectations/linux-x86_64-headless.json"
-HEADLESS = ROOT / "out/linux/build/dine-atl-headless"
 OUT = ROOT / "out/tests/framework"
-CLASSPATH = (HEADLESS / "src/test-runner/test_runner.jar",   # not dexed: the device copy is ./test_runner.jar
-             PREFIX / "lib/java/core-junit_classes.jar",
-             PREFIX / "lib/java/junit-runner_classes.jar")
+JUNIT = (PREFIX / "lib/java/core-junit_classes.jar", PREFIX / "lib/java/junit-runner_classes.jar")
 RUNNER = "android.test.InstrumentationTestRunner"
 TIMEOUT = 120
 
 STATUS_CODES = {0: "pass", -1: "fail", -2: "fail"}   # -1 error, -2 assertion failure
 MULTILINE = {"stream", "stack"}   # other lines between status lines are ATL's own stdout
+
+
+@dataclass(frozen=True)
+class Build:
+    dir: Path
+    expectations: Path
+    jobs: int
+
+    def classpath(self) -> tuple[Path, ...]:
+        # not dexed: the device copy is ./test_runner.jar
+        return (self.dir / "src/test-runner/test_runner.jar", *JUNIT)
+
+
+HEADLESS = Build(ROOT / "out/linux/build/dine-atl-headless", SUITES / "expectations/linux-x86_64-headless.json",
+                 os.cpu_count() or 4)
+# one suite at a time: their windows share the display
+GTK = Build(ROOT / "out/linux/build/dine-atl", SUITES / "expectations/linux-x86_64-gtk.json", 1)
 
 
 @dataclass
@@ -86,19 +101,20 @@ def parse(stdout: str) -> Run:
     return run
 
 
-def run_suite(suite: Path, work: Path) -> tuple[str, Run, str]:
+def run_suite(suite: Path, work: Path, build: Build) -> tuple[str, Run, str]:
     work.mkdir(parents=True)
     package = OUT / "apks" / f"{suite.name}.apk"
     try:
-        apk.build(suite, package, CLASSPATH)
+        apk.build(suite, package, build.classpath())
     except (subprocess.CalledProcessError, SystemExit) as e:
         return suite.name, Run(problems=[f"APK build failed: {e}"]), "fail"
     (work / "data").mkdir()
-    env = dict(os.environ, RUN_FROM_BUILDDIR="1", ANDROID_APP_DATA_DIR=str(work / "data"))
+    # MALLOC_PERTURB_ fills freed memory, so a use-after-free fails instead of reading intact data
+    env = dict(os.environ, RUN_FROM_BUILDDIR="1", ANDROID_APP_DATA_DIR=str(work / "data"), MALLOC_PERTURB_="85")
     cmd = ["./android-translation-layer", "--instrument", RUNNER, str(package), "-X", "-Xint"]
     with open(work / "stdout", "w") as out, open(work / "stderr", "w") as err:
         try:
-            proc = subprocess.run(cmd, cwd=HEADLESS, env=env, stdout=out, stderr=err, timeout=TIMEOUT)
+            proc = subprocess.run(cmd, cwd=build.dir, env=env, stdout=out, stderr=err, timeout=TIMEOUT)
         except subprocess.TimeoutExpired:
             run = parse((work / "stdout").read_text(errors="replace"))
             return suite.name, run, "timeout"
@@ -111,11 +127,15 @@ def run_suite(suite: Path, work: Path) -> tuple[str, Run, str]:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("-f", "--filter", help="regex on suite names")
+    p.add_argument("--gtk", action="store_true", help="run on the gtk build (opens windows)")
     p.add_argument("--update-expectations", action="store_true",
                    help="record this run's failures as expected (passes clear their entries)")
     a = p.parse_args()
 
-    for f in (HEADLESS / "android-translation-layer", HEADLESS / "test_runner.jar"):
+    build = GTK if a.gtk else HEADLESS
+    if a.gtk and not (os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY")):
+        sys.exit("--gtk needs a display (WSLg sets WAYLAND_DISPLAY)")
+    for f in (build.dir / "android-translation-layer", build.dir / "test_runner.jar"):
         if not f.exists():
             sys.exit(f"missing {f}: run tools/dine linux build")
     suites = sorted(d for d in SUITES.iterdir() if (d / "AndroidManifest.xml").exists())
@@ -124,7 +144,7 @@ def main() -> int:
     if not suites:
         sys.exit(f"no suite in {SUITES} matches")
     runs = OUT / "runs" / f"{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}"
-    done = parallel(lambda s: run_suite(s, runs / s.name), suites, os.cpu_count() or 4, "framework")
+    done = parallel(lambda s: run_suite(s, runs / s.name, build), suites, build.jobs, "framework")
 
     results: dict[str, str] = {}
     for name, run, status in sorted(done):
@@ -132,10 +152,10 @@ def main() -> int:
         results.update(run.tests)
         for problem in run.problems:
             print(f"{name}: {problem} (log: {runs / name})")
-    expectations = expect.load(EXPECTATIONS)
+    expectations = expect.load(build.expectations)
     if a.update_expectations:
-        expect.save(EXPECTATIONS, expect.update(results, expectations, "new failure"))
-        print(f"updated {EXPECTATIONS}")
+        expect.save(build.expectations, expect.update(results, expectations, "new failure"))
+        print(f"updated {build.expectations}")
         return 0
     c = expect.compare(results, expectations)
     passed = sum(s == "pass" for n, s in results.items() if not n.startswith("suite:"))

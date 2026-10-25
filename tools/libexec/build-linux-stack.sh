@@ -67,7 +67,9 @@ for s in "${stages[@]}"; do
     bionic)   meson_stage "$SRC/bionic_translation" ;;
     art)      art_stage ;;
     opensles) meson_stage "$SRC/libopensles-standalone" ;;
-    atl)      submodule dine-atl; meson_stage "$ROOT/dine-atl" ;;
+    atl)      submodule dine-atl; meson_stage "$ROOT/dine-atl"
+              # not built by default: the --instrument runner of the framework tests' --gtk runs
+              meson compile -C "$BUILD/dine-atl" -j "$JOBS" test_runner.jar ;;
     atl-headless) submodule dine-atl; atl_headless_stage ;;
     *) echo "unknown stage: $s" >&2; exit 1 ;;
   esac

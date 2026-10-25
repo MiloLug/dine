@@ -3,9 +3,9 @@
 Tested on Arch Linux in WSL2 (Windows 11), iPhone 13 on iOS 27.0.1, Swift 6.4.1, xtool 1.22.2,
 Xcode 27. About 45 minutes, mostly unattended (SDK extraction, ART build, symbol download).
 
-Rule for this repo: tools come from a package manager (pacman, paru, uv). The only manual
-downloads are things no package manager ships, and they go to gitignored dirs **inside the repo**
-(`out/`), never to `~/.local` or other system dirs.
+Rule for this repo: tools come from a package manager (pacman, paru, uv; cargo only for accord,
+the `actool` replacement). The only manual downloads are things no package manager ships, and they
+go to gitignored dirs **inside the repo** (`out/`), never to `~/.local` or other system dirs.
 
 ## Where every tool comes from
 
@@ -14,8 +14,9 @@ downloads are things no package manager ships, and they go to gitignored dirs **
 | **pacman** | `base-devel` (gcc, make, binutils, pkgconf), `git`, `curl`, `clang`, `lld`, `llvm` (llvm-ar/ranlib/otool/nm, dsymutil), `cmake`, `ninja`, `socat`, `libimobiledevice`, `fuse2`, `uv`, `rustup` (cargo for accord), `jdk8-openjdk`, `jdk21-openjdk` (runs d8), `patchelf`, ATL build libraries (below); for runtime tests: `smali` |
 | **AUR (paru)** | `swift-bin` (Swift 6.4 + its lldb), `ipsw-bin` (splits the phone's dyld shared cache), `wolfssl-jni`, `bsd-compat-headers`, `android-sdk-build-tools` (d8 for the ART/ATL dex build, zipalign; aapt2 for test APKs); for runtime tests: `jasmin` |
 | **uv → `.venv`** (`pyproject.toml`, `uv.lock`) | CPython 3.12, `pymobiledevice3`, `meson` |
+| **cargo** | `accord` (`cargo install --git https://github.com/MiloLug/dine-accord`, into `~/.cargo/bin`, which must be on `PATH`): the `actool` that `ios run` calls |
 | **Manual, in repo** | xtool AppImage → `out/tools/bin/xtool`; `Xcode_27.xip` → `out/downloads/` (deleted after use) |
-| **Sibling repo** | [`wsl-quickack`](../../wsl-quickack) (`sudo make install`): keeps `quickack` on WSL's routes to Windows; [`dine-accord`](../../dine-accord) (`git clone git@github.com:MiloLug/dine-accord.git ../dine-accord`): accord, built by `ios run` (`DINE_ACCORD` overrides the path) |
+| **Sibling repo** | [`wsl-quickack`](../../wsl-quickack) (`sudo make install`): keeps `quickack` on WSL's routes to Windows |
 | **Windows** | Apple Devices or iTunes (Apple Mobile Device Service) |
 
 State that tools manage themselves, outside the repo (leave it there):
@@ -95,7 +96,7 @@ paru -S --needed swift-bin ipsw-bin wolfssl-jni bsd-compat-headers android-sdk-b
 - `llvm` provides `llvm-ar` and `llvm-ranlib` for the iOS CMake toolchain. Arch's `clang`
   package doesn't include them. `lld` provides `ld64.lld` (Mach-O linker).
 - `fuse2` runs the xtool AppImage (Arch ships only `fuse3` by default).
-- `rustup`: run `rustup default stable` once; `ios run` builds accord (`../dine-accord`) with it.
+- `rustup`: run `rustup default stable` once; `cargo install` builds accord with it.
 - `bsd-compat-headers` is AUR-only, so pacman rejects it.
 - **Do NOT install `usbmuxd`** (the daemon). It would fight the bridge for `/var/run/usbmuxd`.
   If something pulls it in, run `sudo systemctl mask usbmuxd.service`.
@@ -311,7 +312,7 @@ tools/dine dbg start-server && tools/dine dbg smoke  # every step "ok", then "sm
 tools/dine ios lldb -- -b -o "expr -l c -- (const char *)dine_hello()" -o "process detach"
 tools/dine ios lldb --suspended -- -b -o "b HelloView.swift:8" -o c -o "po self" -o "process detach"
 tools/dine test unit                                 # harness + tools unit tests (debug server on a fake target)
-tools/dine linux smoke                               # gd, dialog-gtk, views-gtk open windows: "smoke passed: …"
+tools/dine linux smoke                               # gd, dialog-gtk, views-gtk, draw-gtk open windows: "smoke passed: …"
 tools/dine test runtime                              # ART run-tests: exits 0 (no regressions)
 tools/dine test framework                            # android.* JUnit suites: exits 0 (no regressions)
 tools/dine ios build-art                             # ART as arm64-apple-ios archives in out/ios/lib

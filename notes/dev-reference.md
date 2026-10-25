@@ -25,6 +25,8 @@ touches. Commands and setup live in `tools/dine <group> --help`, `README.md` and
   `RUN_FROM_BUILDDIR=1`.
 - Test hooks (meson `test_hooks`, default on; off in the iOS release build):
   `ATL_DUMP_VIEWTREE=1` prints the view tree on stdout at first layout;
+  `ATL_DUMP_DISPLAYLIST=1` prints a drawing view's display list after each of its draws (records
+  backends: headless, iOS);
   `ATL_DIALOG_ANSWERS='Yes;Green'` answers alerts in order (labels, `!cancel`).
 - `dine-atl/tests/headless/run-*.sh` drive one APK each; each script's header has its usage and
   what it checks. `tools/dine linux smoke` runs them.

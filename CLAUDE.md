@@ -33,7 +33,8 @@ For direct tool use, `source env.sh` first (`PATH` with `.venv/bin`, `out/tools/
 
 Only if none of them ships it, download it manually, pinned, into a gitignored dir in the repo
 (`out/tools/bin`, `out/downloads`). Never install to `~/.local` or other system dirs. Add every new
-tool to `docs/first-run.md` under its source.
+tool to `docs/first-run.md` under its source. The one exception is accord, our `actool`: `cargo
+install` from its GitHub repo (`docs/first-run.md`).
 
 ```sh
 tools/dine ios tunnel start|status       # iOS 17+ developer services; start mounts the DDI
@@ -43,7 +44,7 @@ tools/dine ios icons                     # Icons.xcassets from its sources.txt
 tools/dine linux build [bionic|art|opensles|atl|atl-headless ...]   # default: all, in that order
 tools/dine linux smoke [check...] [--list]
 tools/dine test runtime [fetch|build|run|all] [-f REGEX] [--network] [--update-expectations]
-tools/dine test framework [-f REGEX] [--update-expectations]
+tools/dine test framework [-f REGEX] [--gtk] [--update-expectations]
 tools/dine test unit                     # harness + tools/py unit tests
 tools/dine dbg start-server | smoke [--network] [--list] | stop-server
 ```
@@ -105,8 +106,9 @@ the rest `dine-atl/tests/headless/run-*.sh`). `--list` prints every check; the t
   `.mk`, delete the module's `out/host/*/obj` **and** `out/host/*/gen` intermediates (stale
   generated `asm_defines.h`).
 - ART is Android 10, libcore 8.1/9, ATL's device level (`SDK_INT`) is 21 (`notes/decisions.md`).
-- Anything that needs `actool` uses accord (sibling repo `../dine-accord`, `DINE_ACCORD`). Icons:
-  the SF Symbol where iOS has one, else the Fluent pack (`notes/icons.md`).
+- accord is this repo's `actool`: anything that needs `actool` runs the `accord` command, never
+  Xcode's (there is none) or the `../dine-accord` checkout. Icons: the SF Symbol where iOS has one,
+  else the Fluent pack (`notes/icons.md`).
 
 ## Gotchas when operating tools
 

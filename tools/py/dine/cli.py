@@ -159,7 +159,7 @@ def _test(sub):
                                      "(tools/dine test runtime -- --help)")
     t.set_defaults(func=lambda a: subprocess.run([sys.executable, str(paths.ROOT / "tests/harness"), *a.extra]).returncode,
                    passthrough="all")
-    t = s.add_parser("framework", help="android.* JUnit suites in-VM on the headless build (after linux build); "
+    t = s.add_parser("framework", help="android.* JUnit suites in-VM on the headless build, --gtk on the gtk one (after linux build); "
                                        "args go to tests/harness/framework.py")
     t.set_defaults(func=lambda a: subprocess.run([sys.executable, str(paths.ROOT / "tests/harness/framework.py"), *a.extra]).returncode,
                    passthrough="all")

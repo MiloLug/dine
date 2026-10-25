@@ -20,8 +20,8 @@ its row here changes when that block does.
 | [M4a](#m4a-touch-scrolling-and-keys) | touch, scrolling and keys | done |
 | [M4b](#m4b-controls) | controls | done |
 | [M4c](#m4c-text-input) | text input | done |
-| [M5a](#m5a-renderer-and-display-list) | renderer choice, display list | next |
-| [M5b](#m5b-drawing-on-the-phone) | drawing on the phone | planned |
+| [M5a](#m5a-renderer-and-display-list) | renderer choice, display list | done |
+| [M5b](#m5b-drawing-on-the-phone) | drawing on the phone | next |
 | [M5c](#m5c-text) | text | planned |
 | [M5d](#m5d-paths-nine-patch-layers-gravity-defied) | paths, nine-patch, layers; Gravity Defied | planned |
 | [M6a](#m6a-triage-and-fixes) | triage and fixes | planned |
@@ -201,7 +201,7 @@ is extracted:
 
 | GTK-ism in api-impl | Neutral form | When |
 |---|---|---|
-| `GskCanvas` as the Canvas implementation class | a backend-neutral Canvas class over a gfx handle | M5a |
+| `GskCanvas` as the Canvas implementation class | `android.atl.ATLCanvas` over a `struct gfx_canvas` (done) | M5a |
 | `Window.remove_gtk_background` | `Window.clear_background`, calling `ui_window_clear_background` (done) | M1 |
 | `GDK_MEMORY_*` pixel formats in Bitmap | Android `Bitmap.Config` values; the backend maps them | M5b |
 | CSS class names set from TextView (bold, italic) | typeface style passed to the ui slot (done) | M3 |
@@ -221,7 +221,7 @@ is extracted:
   Linux build and go into the app bundle.
 - iOS output: static archives in `out/ios/lib`, Java artifacts in `out/ios/share/atl`, built by a
   `tools/dine ios build-atl` step (like `ios build-art`). The test hooks (`ATL_DIALOG_ANSWERS`,
-  `ATL_DUMP_VIEWTREE`: `src/shared/test_hooks.c`, the ui backends' `dump.c`) build with meson
+  `ATL_DUMP_VIEWTREE`, `ATL_DUMP_DISPLAYLIST`: `src/shared/test_hooks.c`, the ui backends' `dump.c`) build with meson
   `test_hooks`, default on; `DINE_RELEASE=1 tools/dine ios build-atl` turns it off, and the test
   APKs go to `out/tests/apks`, which only dev builds of Dine bundle.
 - Dine `-force_load`s the archives, and the dev link's `-rdynamic` keeps their `Java_*` symbols
@@ -740,10 +740,60 @@ lines, one under `concat` with a Matrix from `preScale(2,2,10,10)` and a pivoted
 with a `new Paint(p)` copy, and the dump matches a golden as `demo_app.viewtree` does; framework
 suite tests for `mapRect` with perspective and `Paint.set(this)` pass on headless and gtk.
 
+**Status: done (2026-10-25).** `linux smoke draw` matches `draw.displaylist` on headless; the
+graphics suite's Matrix and Paint tests pass on headless and on gtk (`tools/dine test framework
+--gtk`); `linux smoke` and the runtime suite pass, and on the iPhone 13 `dbg smoke` does. As built:
+- Renderer: CoreGraphics, with CoreText and ImageIO: the `coregraphics` gfx backend, a CALayer per
+  drawing view node. It is in the iOS SDK (no build from Linux, nothing added to the app), CoreText
+  measures as the UIKit labels that measure TextViews, and CGBlendMode, CGGradient, CGPath and
+  transparency layers cover Paint's modes, shaders, paths and `saveLayer`. Skia's gn build for iOS
+  from Linux is untried and would add several MB (unmeasured); upstream ATL draws with GSK and has
+  no Skia. Pixels differ from Android's (anti-aliasing, hairlines): rasterizer goldens take a
+  tolerance, and `record` stays the oracle. Where a list rasterizes (UIKit's thread in the layer's
+  draw, or the Android thread into a CGBitmapContext) is M5b's choice.
+- Canvas: `android.atl.ATLCanvas` over a `struct gfx_canvas` (gsk: the GtkSnapshot, so gtk's
+  snapshot paths pass it as before). `gfx_canvas_*`: a recording's new and free, save, restore,
+  translate, rotate, scale, concat, rect, round rect (circle and oval), line, drawable.
+  `drawLines` takes four floats per line from `offset`, on every build.
+  Bitmaps, paths, text, clips and RenderNode stay gtk-only: on records an `onDraw` that calls one
+  gets `UnsatisfiedLinkError`, printed and cleared by the upcall.
+- `View.draw`'s and `ViewGroup.drawChild`'s toolkit parts go through `ui_view_draw_*`: gtk
+  snapshots its widgets, records draw nothing (a background, text or child is its own node).
+  `Drawable.draw` goes through `gfx_canvas_draw_drawable`; record keeps a `drawable` op for a
+  container, and a Drawable with no native paintable draws nothing.
+- Draw pass (records, so headless and iOS): a node whose class draws (`traits.draws`) redraws when
+  new, invalidated or resized, in tree order, skipping what isn't VISIBLE. It runs at the end of a
+  layout pass (after the preDraw observers, before `records_layout_done`) and from the one draw
+  post per window that `invalidate()`, or a view showing again from INVISIBLE, makes (Java
+  requests a layout only for a change to or from GONE). `View.atlDraw` runs `draw()` into a fresh
+  list and clears the canvas after. An invalidate inside `onDraw` draws in the next pass, unpaced
+  (M5b).
+  Dialog windows get no layout pass on records, so their views never draw (M6b's second layout
+  root).
+- record: each op keeps a copy of its paint and the matrix it was drawn under (Paint and Matrix
+  free their native state on the FinalizerDaemon). `ATL_DUMP_DISPLAYLIST=1` prints `displaylist:`
+  lines after each draw (`test_hooks`).
+- Matrix: pivoted `preScale` and `preRotate` keep the pivot; `mapRect` divides by w and returns
+  `rectStaysRect`, which is false with perspective or a zero scale. Paint: `Paint(Paint)` and `set`
+  copy xfermode, shader, align and color filter, `set(this)` does nothing, the default align is
+  LEFT.
+- Tests: `run-draw.sh` (`linux smoke draw` with golden `draw.displaylist`, `draw-gtk`) on the
+  widgets APK's `DrawActivity`, which redraws after `invalidate()`, not after a same-size layout,
+  and after showing again from INVISIBLE; the graphics suite's pivot, `mapRect`, `rectStaysRect`
+  and Paint copy tests. `tools/dine test framework --gtk` runs every suite on the gtk build, one at
+  a time, against `expectations/linux-x86_64-gtk.json`: `InputMethodTest#testShowAndHide` fails
+  there, as gtk shows no soft keyboard.
+- Open: a missing native's stack trace prints on every redraw of the view that calls it.
+
 #### M5b: drawing on the phone
 
-- The chosen backend draws each drawing view node's display list; RenderNode.
-- Background drawables, ImageView and DrawableContainer's selected child draw. Bitmaps get their
+- The chosen backend draws each drawing view node's display list; RenderNode. Where the list
+  rasterizes: UIKit's thread in the layer's draw, or the Android thread into a CGBitmapContext.
+- Redraws paced to the display: at most one draw pass per frame (CADisplayLink on uikit), so an
+  `onDraw` that invalidates itself doesn't spin the Android thread; headless stays unpaced.
+- `clipRect` and its restore behind the gfx slot (ATLCanvas's `push_history` is gtk's way).
+- Background drawables, ImageView, DrawableContainer's selected child and the lists' `drawable` ops
+  draw. Bitmaps get their
   own gfx handle, with Android `Bitmap.Config` values instead of `GDK_MEMORY_*` ([Java](#java)):
   ImageView hands a Bitmap's texture to `ui_image_set_drawable`, which takes a `gfx_drawable`.
 - `tests/harness/apk.py` compiles a `res/` dir (`aapt2 compile`, then `link` with it): the target
@@ -777,6 +827,7 @@ line).
   Until then a `wrap_content` multi-line EditText grows without a cap. A multi-line field whose
   height is fixed scrolls its own text to keep the cursor visible: on iOS its UITextView doesn't
   scroll yet.
+- `Layout.draw` into a records canvas: `Layout.native_draw` is gtk-only.
 - Unblocks on headless: Compose after `onResume` stops at `text.Layout.native_constructor`
   (Compose itself is M9).
 
@@ -797,7 +848,7 @@ shows the text.
   - a failed load leaves a NinePatchDrawable with paintable 0, and `setTint` writes through NULL.
     Android returns null for a missing file and a BitmapDrawable for a PNG without `npTc`.
 - Measure on the phone a real app's stack depth on the 8 MiB Android main thread (demo_app's run
-  reaches 80 KiB).
+  reaches 80 KiB), and Gravity Defied's frame time: its `draw()` runs in Java under `-Xint`.
 - The dev payload bundles Gravity Defied, with an AtlView tile: real apps reach the phone only
   through it until [M8a](#m8a-apk-import-and-launch) imports APKs.
 - Choose Android-styled or iOS-styled widgets on iOS: UIKit controls come first (M3, M4b); AOSP
@@ -825,6 +876,10 @@ Findings from M4b and M5 (M5's stages add and update them):
   describe may do the same.
 - flower_finder stops at `Region.nativeConstructor` (material's FloatingActionButton): Region's
   natives are gtk-only.
+- `new Canvas()` without a Bitmap throws a NullPointerException on every call (`synchronized` on
+  its null bitmap); AdaptiveIconDrawable makes one.
+- A 90° rotation leaves cos at -4.37e-8 in graphene, so `rectStaysRect` is false for quarter
+  turns; Skia snaps such values to 0 (unverified for Android 10's Skia).
 - uikit's `keys.m` sends a hardware keyboard's keypad Enter as `KEYCODE_NUMPAD_ENTER` (160), which
   no Java Enter reader takes (EditText's Enter keys, `isConfirmKey`, touch mode, lists); gtk sends
   it as `KEYCODE_ENTER`. Whether Android 10's readers take 160 like Enter decides the fix.
@@ -1017,3 +1072,6 @@ by a webkitgtk widget (`android_webkit_WebView.c`, gtk-only), a ui node kind on 
 - Runtime work (dine-art) has its own list: `notes/art-findings.md`, Follow-ups.
 - Apps that are keyboards (`InputMethodService` over the Wayland input-method protocol, gtk-only):
   after M9, if ever.
+- Draw cost under `-Xint`, after M5d's frame-time measurement: a `Matrix` allocated per
+  `ATLCanvas.save()` (the current matrix could live in C), Canvas ops batched into one JNI call per
+  draw, JIT through StikDebug where the phone has it (`notes/meta.md`).

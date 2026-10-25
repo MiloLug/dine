@@ -27,8 +27,6 @@ export DINE_IOS_MIN="${DINE_IOS_MIN:-17.4}"
 # Linker for iOS links: clang -fuse-ld=lld -B"$DINE_IOS_TOOLSET_BIN". The system ld64.lld rejects
 # the SDK's arm64e .tbd stubs; xtool's toolset ships one that reads them.
 export DINE_IOS_TOOLSET_BIN="${DINE_IOS_TOOLSET_BIN:-${DINE_IOS_SDK%/Developer/Platforms/*}/toolset/bin}"
-# accord (actool for Linux), a sibling checkout: tools/libexec/build-ios-assets.sh builds and runs it.
-export DINE_ACCORD="${DINE_ACCORD:-$(cd "$DINE_ROOT/.." && pwd)/dine-accord}"
 # Swift resource dir of the Darwin toolchain in the same bundle (iphoneos/prebuilt-modules, clang
 # builtins). tools/libexec/lldb makes it lldb's Swift resource dir.
 export DINE_IOS_SWIFT_RESOURCES="${DINE_IOS_SWIFT_RESOURCES:-${DINE_IOS_SDK%/Developer/Platforms/*}/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift}"
