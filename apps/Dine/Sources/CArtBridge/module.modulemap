@@ -37,6 +37,7 @@ module CArtBridge [system] {
     link "c++"
     link framework "CoreFoundation"
     link framework "CoreGraphics"
+    link framework "CoreText"
     link framework "ImageIO"
     link framework "QuartzCore"
     link framework "Security"

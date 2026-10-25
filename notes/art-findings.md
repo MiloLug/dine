@@ -7,6 +7,7 @@ suite says about it, and what stands between it and the iPhone. Sources:
 - XNU's `bsd/kern/mach_loader.c` (apple-oss-distributions/xnu `main`, fetched 2026-10-16).
 
 Facts marked **(unverified)** come from documentation or memory and haven't been tested here.
+Open runtime items are the `ART-` codes in `notes/bug-tracker.md` and `notes/general-todo.md`.
 
 ## What we run
 
@@ -32,34 +33,18 @@ Facts marked **(unverified)** come from documentation or memory and haven't been
 
 842 tests (AOSP run-tests at the same tag, plus our own): **578 pass**, 20 expected failures,
 244 skipped (130 need JVMTI, 100 need upstream's native test lib `libarttest`, 14 have custom run
-scripts). Warm run ~52 s on 16 cores, cold ~5.5 min.
+scripts). Warm run ~78 s on 16 cores with the C++ interpreter ("Runs on the phone"); cold ~5.5
+min (measured with mterp).
 
-The 20 expected failures (`dine-art/tests/runtime/expectations/linux-x86_64.json`; 082 and 123,
-wrong `StrictMath` results, were fdlibm built big-endian on x86_64, fixed 2026-10-17):
-
-| Kind | Tests | What |
-|---|---|---|
-| Runtime bugs | 536 | the interpreter skips an access-check error on `instanceof` of null that compiled code throws |
-| | 005 | invisible annotation lookup returns null |
-| | 062 | ICU charset: `IllegalCharsetNameException` for `x-UTF-16,version=1` |
-| libcore 8.1/9 gaps | 710, 712, 713 | no VarHandle factories in `MethodHandles` |
-| | 656 | no in-memory `DexFile` (`createCookieWithArray`) |
-| | 688 | no `DelegateLastClassLoader(String, String, ClassLoader)` |
-| | 071-dexfile-get-static-size | no `getStaticSizeOfDexFile` |
-| | 100 | `String`'s declared methods differ from what ART 10 expects |
-| | 959 | `unreflectSetter` on a static final field throws `IllegalAccessException` |
-| Harness or tooling | 071-dexfile-map-clean, 677, 707 | need dex2oat prebuild |
-| | 952, 979 | build needs ASM 6 |
-| | 701 | Python 2 generator |
-| | 130 | needs `hprof-conv` |
-| | 141, 150 | need `libarttest` |
-
-The libcore gaps are the "newer Android" problem in miniature: ART 10 is ahead of its libcore.
-Bumping ART is a rebase of dine-art; libcore would have to follow.
+The 20 expected failures, each with its reason, are in
+`dine-art/tests/runtime/expectations/linux-x86_64.json`: runtime bugs
+[ART-14](bug-tracker.md#art-14) to [ART-16](bug-tracker.md#art-16), libcore 8.1/9 gaps
+[ART-17](bug-tracker.md#art-17), missing test tools [TOOL-7](general-todo.md#tool-7). The libcore
+gaps are the "newer Android" problem in miniature: ART 10 is ahead of its libcore.
 
 ## How ART starts on Linux, and why it matters for iOS
 
-A plain `dalvikvm -Xint` run does more than interpret:
+A plain `dalvikvm -Xint` run of stock art_standalone does more than interpret:
 
 - **Boot image:** on first start the runtime fork+execs `dex2oat` to build a boot image of the 10
   boot jars. It writes the image into `$XDG_CACHE_HOME/art/<isa>/`, falling back to
@@ -79,8 +64,9 @@ Consequences:
   hermetic.
 
 Both are fixed in the harness (2026-10-16): the suite now runs with the flags below, and each test
-gets its own `XDG_CACHE_HOME`. `~/.cache/art` was deleted. ATL runs (the Gravity Defied smoke
-test) still use the default configuration and write there.
+gets its own `XDG_CACHE_HOME`. `~/.cache/art` was deleted. dine-art now loads no boot image or
+oat files and opens dex files without dex2oat ("Runs on the phone"; a side path that still can:
+[ART-23](bug-tracker.md#art-23)).
 
 **Experiment: the same thing with no boot image and no dex2oat.** Flags `-Xnoimage-dex2oat
 -Xcompiler:/nonexistent/dex2oat`, with an empty `XDG_CACHE_HOME` (the suite now also passes
@@ -97,17 +83,15 @@ verifying at runtime. Results:
 
 So **ART runs fine without a boot image and without dex2oat**: the configuration iOS will need
 works today on Linux, at a modest startup cost. Notes:
-- The fallback still forks; only the exec fails. On iOS `fork()` itself should fail, which goes
-  through the same fallback (`… because fork failed`) **(unverified)**. A proper "never run
-  dex2oat" switch would be cleaner than a bogus `-Xcompiler` path.
-- A prebuilt boot image (cross-compiled on Linux for arm64) could win the startup back later. But
-  the image is a heap snapshot with 32-bit references at fixed low addresses, so it inherits the
-  heap problem below. It's an optimization for later, not a starting point.
+- The fallback forked; only the exec failed. dine-art's dex open path never runs dex2oat now
+  (side path: [ART-23](bug-tracker.md#art-23)), and on Apple `Exec` returns an error without
+  forking (`runtime/exec_utils.cc`).
+- A prebuilt boot image to win the startup back: [ART-22](general-todo.md#art-22).
 - ATL passes VM flags with `--extra-jvm-option=<flag>`, one per flag.
 
 ## iOS blockers and porting surface
 
-### 1. The heap must sit below 4 GB, and iOS forbids that (blocker)
+### 1. The heap must sit below 4 GB, and iOS forbids that (blocker, solved: heap-base references)
 
 - **ART side:** 64-bit ART stores every object reference as a 32-bit raw address.
   `PtrCompression::Compress` (`runtime/mirror/object_reference.h:36-47`) is a truncating cast
@@ -135,20 +119,19 @@ works today on Linux, at a modest startup cost. Notes:
   - Offset 0 must stay null, so the region's first page stays unmapped.
   - **mterp** (the assembly interpreter) loads references and uses them as pointers directly. The
     C++ switch interpreter avoids that: `kInterpreterImplKind` is a constexpr chosen by
-    `ART_USE_CXX_INTERPRETER` (`runtime/interpreter/interpreter.cc:241`), and nothing defines it
-    today, so the Linux build uses mterp. A heap-base build would start with the C++ interpreter
-    and port mterp later, for speed.
+    `ART_USE_CXX_INTERPRETER` (`runtime/interpreter/interpreter.cc`), which dine-art defines
+    (`build/Android.common_build.mk`). The mterp port: [ART-19](general-todo.md#art-19).
   - It can be developed and tested on Linux: keep the low 4 GB unavailable (reserve it
     `PROT_NONE` before the runtime starts, or force the region above 4 GB) and run the suite.
-- **Unknown:** how much address space an iOS app may reserve. The
-  `extended-virtual-addressing` entitlement is probably out of reach on a free account
-  **(unverified)**. Needs a probe on the phone.
+- **Address space:** the phone probe reserved 6144 MB without the `extended-virtual-addressing`
+  entitlement ("Phone probe").
 
 ### 2. No fork/exec, no dex2oat
 
 Covered above: the imageless, no-dex2oat configuration works. The remaining fork sites are
 `runtime/exec_utils.cc` (dex2oat) and `runtime/native_stack_dump.cc` (addr2line for crash
-dumps); both must stay unreachable or fail cleanly.
+dumps). On Apple neither forks: `Exec` returns an error, and the stack dump's Apple branch is
+empty.
 
 ### 3. Assembly
 
@@ -182,9 +165,11 @@ packed layout all of them pass, and the Linux suite is unchanged.
   (`runtime/runtime.cc:1448`): the interpreter checks both explicitly, so ART installs no SIGSEGV
   handlers and never protects, touches or madvises a thread's stack.
 - Under lldb, `EXC_BAD_ACCESS` stops in the debugger before the signal reaches ART. Whether an
-  app can catch SIGSEGV at all needs a probe without a debugger attached.
-- `libsigchain` intercepts `sigaction` by symbol interposition, which a static link on iOS
-  can't do against libc. ART then needs to call its handlers directly.
+  app can catch SIGSEGV at all needs a probe without a debugger attached, the route for
+  [ART-10](bug-tracker.md#art-10).
+- Stock `libsigchain` intercepts `sigaction` by symbol interposition, which a static link on iOS
+  can't do against libc. The fork's Apple path exports `sigchain_*` and finds libc's `sigaction`
+  with `dlsym`.
 
 ### 6. Linux-only code
 
@@ -194,10 +179,8 @@ packed layout all of them pass, and the Linux suite is unchanged.
   (`runtime/thread-current-inl.h:39`).
 - **macOS host remnants:** 22 files under `runtime`/`libartbase` have `__APPLE__` branches,
   including thread stack bounds in `thread.cc:1223`. AOSP built ART on Mac hosts in this era.
-- **Still Linux-only:**
-  - `/proc/self` readers in 16 files: memory maps, stack dumps, `oat_file`, GC diagnostics;
-  - `memfd_create`, `prctl` and `gettid` in 9 files: `libartbase/base/memfd.cc`, `mem_map`,
-    `utils`, `thread_pool`, `runtime`, JIT.
+- **Still Linux-only:** `/proc/self` readers and `memfd_create`, `prctl`, `gettid`:
+  [ART-13](bug-tracker.md#art-13).
 
 ### 7. Native dependencies to build for iOS
 
@@ -211,13 +194,13 @@ From the installed Linux libraries' `NEEDED` entries:
 | `libwolfssljni` | wolfSSL |
 
 - The iOS SDK has zlib.
-- ICU must be built: iOS's `libicucore` has no public headers and unversioned symbols, and the
-  data file needs trimming.
+- ICU must be built: iOS's `libicucore` has no public headers and unversioned symbols. Its data
+  is linked in statically; trimming it: [ART-20](general-todo.md#art-20).
 - libcrypto and wolfSSL: build or stub.
 - The dlopen shim, nativebridge and backtrace become stubs (one process, no loading of the app's
   `.so` files).
 
-### 8. Build (done 2026-10-17: compiles and links, not run)
+### 8. Build (done 2026-10-17; runs on the phone since 2026-10-18)
 
 - dine-art's own make build cross-compiles: `make ____TARGET=ios` (`HOST_OS=darwin`,
   `HOST_ARCH=arm64`, combo `build/core/combo/HOST_darwin-arm64.mk`), shared-library modules
@@ -234,17 +217,14 @@ From the installed Linux libraries' `NEEDED` entries:
   - **arm64 asm:** `SYMBOL()`/`ASM_HIDDEN`/`FUNCTION_TYPE` (`arch/arm64/asm_symbols_arm64.h`),
     `@GOTPAGE` loads, comma-separated macro args. **No CFI on Apple** (`CFI(...)`): Mach-O starts
     an atom at every non-`L` label and CFI can't advance across atoms, and these files use `.L`
-    labels. lldb can't unwind through quick stubs or mterp frames on iOS until that's redone.
+    labels. Effects: [ART-7](bug-tracker.md#art-7).
   - `FlushCpuCaches` uses `sys_icache_invalidate` (iOS's libSystem has no `__clear_cache`).
   - `JNI_OnLoad` of libjavacore/libopenjdk renamed to `JNI_OnLoad_javacore`/`_openjdk` (JEP 178
     names) on darwin; libnativehelper's `JniInvocation` (a second `JNI_CreateJavaVM`) left out.
-  - libcore: Linux-only `Os` calls (capget/capset, prctl, sendfile, posix_fallocate, ucred) throw
-    `ErrnoException(ENOSYS)`; netlink/packet sockets compiled out; 41 `OsConstants` missing on
-    iOS keep their Java default 0.
-  - ojluni: `EPoll.c`, `LinuxNativeDispatcher.c`, `LinuxWatchService.c` left out on darwin (looked
-    up by JNI name, so calls fail with `UnsatisfiedLinkError`). Selectors use
-    `PollSelectorProvider` anyway, but `DefaultFileSystemProvider` picks by `os.name` and has no
-    Darwin case: `java.nio.file` needs a port.
+  - libcore: Linux-only `Os` calls throw `ENOSYS`, netlink and packet sockets compiled out,
+    missing `OsConstants` stay 0: [ART-12](bug-tracker.md#art-12).
+  - ojluni: `EPoll.c`, `LinuxNativeDispatcher.c`, `LinuxWatchService.c` left out on darwin:
+    [ART-11](bug-tracker.md#art-11).
   - libutils was a dead dependency of libartbase/libdexfile (0 symbols used); dropped.
 - Unrelated Linux bug found on the way: fdlibm got `-D__LITTLE_ENDIAN` only for arm/x86, so on
   x86_64 `StrictMath` used big-endian word order (`fabs` cleared bit 31 of the low word). Now set
@@ -266,7 +246,7 @@ Dine's `art` screen (`native/artbridge`, `dine_art_probe`):
 | `getpwuid_r(getuid())` | uid 501, `mobile`, `/var/mobile` |
 
 - SIGSEGV catching wasn't probed: with implicit checks off (no compiled code), ART doesn't rely on
-  it.
+  it; a fix for [ART-10](bug-tracker.md#art-10) would.
 - The first `JNI_CreateJavaVM` died at `runtime.cc`'s page-size CHECK. `Runtime::Abort` then
   recursed until the stack overflowed: `~ScopedThreadStateChange` CHECKs a thread-less runtime is
   shutting down (fixed in dine-art; affects Linux too). The bridge's SIGABRT handler drains the
@@ -302,53 +282,31 @@ What it took in dine-art (one config, Linux and iOS):
   - liblog wrote a NUL after every line (the color-support commit), so readers splitting on
     newlines saw empty lines.
 
-Startup noise on iOS, harmless for now: `Could not reserve sentinel fault page` (low 4 GB),
-`DexFile … is in boot class path but is not in a known location` ×10,
-`AsynchronousCloseMonitor: setting blocked thread signal handler failed` (signal ≥ NSIG).
+Startup noise on iOS: [ART-4](bug-tracker.md#art-4), [ART-5](bug-tracker.md#art-5),
+[ART-6](bug-tracker.md#art-6).
 
-## More hazards found (2026-10-17, not fixed: runtime work)
+## More hazards found (2026-10-17)
 
-- **16 KB pages:** iOS arm64 pages are 16 KB; `kPageSize` is a constexpr 4096 (~250 uses), so
-  4 KB guard pages and `mprotect`/`munmap` granules break.
-- **dex2oat exec without a switch:** the fork's `GetBestOatFile()` (`oat_file_assistant.cc:207-237`)
-  runs dex2oat for every app dex not up to date; nothing gates it. On Apple `Exec` now fails
-  without forking.
+Fixed since, except where a code is named:
+- **16 KB pages:** `kPageSize` is 16 KB ("Runs on the phone").
+- **dex2oat exec without a switch:** the dex open path never runs dex2oat, and on Apple `Exec`
+  fails without forking; `GetBestOatFile` still can: [ART-23](bug-tracker.md#art-23).
 - **No futex on Apple:** `ART_USE_FUTEXES` is `__linux__`-only, so ART's mutexes, condition
   variables and RW locks use pthreads there. Park and Unpark block through
   `os_sync_wait_on_address` (`ParkWait`/`ParkWake` in `thread.cc`; iOS 17.4+, the min target),
-  graded by `dine-0004-park` on Linux and from the art screen. Still on the fallback: the suspend
-  barrier spins (`thread_list.cc:769`), and `WakeupToRespondToEmptyCheckpoint` is fatal (only the
-  CC collector calls it; the GC is CMS). Moving the rest onto os_sync makes `FUTEX_REQUEUE`
-  (`mutex.cc:849`) a wake-all.
+  graded by `dine-0004-park` on Linux and from the art screen. Still on the fallback:
+  [ART-1](bug-tracker.md#art-1).
 - **Implicit null/stack-overflow checks are hardwired on for arm64** in stock ART;
   `-Xno-sig-chain` aborts in `Runtime::Start`. Interpreter-only needs neither: dine-art turns them
   off (`runtime.cc:1448`).
-- **Static JNI loading:** `JavaVMExt::LoadNativeLibrary` dlopens by name; it needs to call
-  `JNI_OnLoad_<lib>` from the main image, and those symbols must survive `-dead_strip`.
+- **Static JNI loading:** ART calls `JNI_OnLoad_<lib>` from the main image ("Runs on the phone").
 - **Startup paths:** `ANDROID_ROOT` (the dladdr fallback is compiled out on Apple) and
-  `ANDROID_DATA` must be set; boot classpath via `-Xbootclasspath:`; ICU data
-  `out/ios/share/icu/78.3/icudt78l.dat` goes in the bundle.
+  `ANDROID_DATA` must be set; boot classpath via `-Xbootclasspath:`; ICU's data is linked in
+  statically.
 - sigchain is static-friendly: the fork exports `sigchain_*` and finds libc's `sigaction` with
   `dlsym`, no interposition.
 
-## Follow-ups this suggests
-
-- **Open after the phone run (2026-10-18):** the suspend barrier's spin (above);
-  `Thread::GetCpuMicroTime` and `ThreadCpuNanoTime` log `unimplemented` on Apple; tzdata (GMT fallback); `AsynchronousCloseMonitor`'s signal; CFI for the Apple asm; the
-  sentinel page (drop it or map it in the heap region); trim the boot classpath; a
-  `java.nio.file` Darwin provider.
-- **Apple ABI hazards, not checked yet (2026-10-19):**
-  - `art_quick_invoke_stub` sizes its frame from all of `x2`, while `args_size` is a `uint32_t`.
-    The upper half is unspecified on both ABIs, and clang may leave garbage there where gcc
-    didn't.
-  - The invoke stub and the generic JNI trampoline set x29 to an address that does not hold a
-    frame record. Apple requires one, so frame-pointer walks (`backtrace()`, crash reports)
-    through native calls go wrong.
-  - With implicit checks off, natives run in the 16 KB explicit-check reserve
-    (`ART_STACK_OVERFLOW_GAP_arm64`). A deep native frame hits the guard page, and nothing turns
-    that `EXC_BAD_ACCESS` into a `StackOverflowError`.
-  - With no unwind info for the asm stubs, a C++ or ObjC exception thrown inside a native can't
-    unwind through the trampoline and terminates the app.
+## Decided
 
 - **Decided 2026-10-17, done 2026-10-18:** heap-base references are one config for Linux and
   iOS (no build flag): C++ interpreter, heap above 4 GB, graded by the Linux suite. dex2oat

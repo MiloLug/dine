@@ -18,6 +18,9 @@ Where the rest is (read the one a task touches):
   internals, iOS build traps); its Contents list says when to read each section.
 - `notes/atl-port.md` (ATL slots, builds, milestones), `notes/decisions.md` (fork decisions),
   `notes/art-findings.md` (ART config), `notes/nav-gestures.md`, `notes/icons.md`.
+- `notes/bug-tracker.md` (open defects) and `notes/general-todo.md` (other open work): a defect
+  found outside a stage's own work, or work no stage owns, gets a code there (`ART-n`, `ATL-n`,
+  `DINE-n`, `TOOL-n`), and notes link the code.
 
 ## Commands
 

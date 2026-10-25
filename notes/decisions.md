@@ -8,17 +8,23 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - Upstream isn't merged: read its commits since the last merge and reimplement the wanted ones
   by hand.
 - `src/api-impl/build.xml` (the ant path) runs `<depend closure="true">`: javac `-h` rewrites only
-  the headers of classes it compiles, and a header holds inherited constants. A class tied to another
-  only by an inlined constant still isn't recompiled when that value changes.
+  the headers of classes it compiles, and a header holds inherited constants. Its gap:
+  [ATL-1](bug-tracker.md#atl-1).
 - Ours, no upstream counterpart: the gtk debug agent (`src/backends/ui/gtk/agent.c`, test hooks,
   `ATL_DBG_AGENT`, started from `main.c`'s window-ready poll) and `input_tap` in gtk `input.c`.
 - Upstream's `android.atl.GskCanvas` is `android.atl.ATLCanvas`; its `snapshot` field is `handle`,
   a `struct gfx_canvas` (gsk: the GtkSnapshot). Save, restore, the transforms, rect, round rect and
   lines, `drawBitmap` and `clipRect` are shared natives behind `gfx_canvas_*`
   (`src/shared/android_atl_ATLCanvas.c`; gsk's bodies in `src/backends/gfx/gsk/canvas.c`, which
-  counts each save level's pushes instead of Java's `push_history`); paths, text, `clipPath` and
-  RenderNode stay in upstream's file, renamed `android_atl_ATLCanvas.c` (gtk). Port upstream
-  GskCanvas edits there.
+  counts each save level's pushes instead of Java's `push_history`), and so is `drawText`; paths,
+  `clipPath` and RenderNode stay in upstream's file, renamed `android_atl_ATLCanvas.c` (gtk). Port
+  upstream GskCanvas edits there.
+- Text is shared over `gfx_text_*`, in UTF-16 units: Paint's text natives
+  (`src/shared/android_graphics_Paint.c`) and `android.text.Layout`, a C line array whose lines the
+  backend breaks (`src/shared/android_text_Layout.c`); gsk's Pango is `src/backends/gfx/gsk/text.c`.
+  Upstream's Pango Layout natives and Paint text natives are gone: port upstream text fixes there.
+  Key listeners are AOSP's (`text/method/`), TextView's line limits AOSP's modes over
+  `ui_text_set_lines`.
 - Bitmap's handle is a `gfx_bitmap` (gsk: the GdkTexture, `src/backends/gfx/gsk/bitmap.c`):
   creation, size, ref, recycle and BitmapFactory's decode (Java reads the stream into a byte[]) are
   shared; snapshots and pixel access stay in upstream's Bitmap natives. `Config.gdk_memory_format`
@@ -175,7 +181,8 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   Dine's release builds leave them off the boot class path.
 - Park's platform calls live in `ParkWait`/`ParkWake` (`art/runtime/thread.cc`): futex on Linux,
   os_sync on Apple. Resolve upstream edits to `Thread::Park/Unpark` there.
-- Apple `parkUntil` becomes a timeout at entry: no wall-clock tracking, device sleep delays it.
+- Apple `parkUntil` becomes a timeout at entry: no wall-clock tracking, device sleep delays it
+  ([ART-18](bug-tracker.md#art-18)).
 - Apple keeps pthread mutexes, condvars and RW locks; only park uses os_sync.
 
 ## dine

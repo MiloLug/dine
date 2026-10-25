@@ -11,7 +11,8 @@ touches. Commands and setup live in `tools/dine <group> --help`, `README.md` and
 - [Smoke checks by eye](#smoke-checks-by-eye): what `atl-widgets` leaves on the phone to look at.
 - [Debug agent](#debug-agent): how `dbg ui` walks, taps, runs actions and waits; when the agent
   listens. Read before changing `native/dev/dbgagent`, the gtk agent or a `dbg ui` command.
-- [lldb and the debug server](#lldb-and-the-debug-server): SB API traps, ObjC and symbol settings.
+- [lldb and the debug server](#lldb-and-the-debug-server): SB API traps, ObjC and symbol settings,
+  Swift expression internals.
   Read before changing `tools/py/dine/dbg/` or `tools/libexec/lldb`.
 - [iOS builds](#ios-builds): native libs into Swift, the iOS linker, the SDK version check, asset
   catalogs, app bundle IDs. Read before changing a CMake project, `Package.swift`, `xtool.yml` or
@@ -59,13 +60,18 @@ transition, labels unchanged).
   elements, then from the presented controllers' views, top first.
 - `type <label> <text>` makes the element the first responder if it edits text and inserts the text
   with `insertText:`, as a keyboard's committed text; no marked text. It can't press return: a
-  UITextField takes an inserted newline as a space.
+  UITextField takes an inserted newline as a space ([TOOL-4](general-todo.md#tool-4)).
 - It listens on the phone's loopback only when the app gets `DINE_DBG_AGENT_PORT` in its
   environment, which `ios launch` passes; the server reaches it through a usbmux connection. A
   home-screen launch has no agent, so `dbg ui` asks for a relaunch.
 - Host-side AX `perform_press` is ignored by our apps, and the host AX inspector's walk
   (`developer accessibility list-items`) highlights every element on the phone as it moves its
   focus. UI work goes through the agent.
+- The agent needs no accessibility switch: after a phone reboot with no host AX client since
+  boot, its walk still sees every SwiftUI label.
+
+The gtk target runs headless sway with the pixman renderer, not Xvfb (GTK's X11 path, while WSLg
+uses Wayland) or Broadway (another GDK backend, with a browser in the loop).
 
 The gtk build's agent (`dine-atl/src/backends/ui/gtk/agent.c`, test hooks) speaks the same
 protocol on the Unix socket in `ATL_DBG_AGENT`, which the gtk target sets per session. ATL starts it
@@ -80,7 +86,8 @@ actions run on the GTK main thread, which is the Android main thread on gtk.
   GtkText takes `gtk_widget_grab_focus`, a dialog's own GtkButton or list row `gtk_widget_activate`.
 - `type` inserts at the GtkText's cursor (`gtk_editable_insert_text`), so `edit.c` reports the
   edit as it does a keyboard's.
-- `back` is `atl_nav_back`; its result is only whether ATL's main loop was up.
+- `back` is `atl_nav_back`; its result is only whether ATL's main loop was up
+  ([TOOL-5](general-todo.md#tool-5)).
 - The same hook calls `prctl(PR_SET_PTRACER, PR_SET_PTRACER_ANY)`: with Yama's `ptrace_scope` 1,
   lldb in the debug server, which is ATL's sibling, could not attach otherwise.
 
@@ -90,7 +97,7 @@ The server (`tools/py/dine/dbg/server.py`) hosts lldb through the SB API in the 
 with `out/lldb`'s `PYTHONPATH`/`LD_LIBRARY_PATH` (`dbg/targets/lldbcmds.py`); targets are a seam
 (`fake` for tests, `gtk` for ATL's gtk build). `$DINE_LLDB` borrows `libpython3.12` from the `.venv`
 interpreter, which is why Python is pinned to 3.12. What makes Swift `expr`/`po` work: README
-"Interactive lldb" and `notes/swift-dbg.md`.
+"Interactive lldb", `tools/libexec/lldb` (the relocated prefix) and the bullets below.
 
 - In batch mode, `process connect` with no process blocks unless it's wrapped in `SetAsync(True)`.
 - On Linux, `target create` needs the Mach-O inside the `.app`, not the bundle.
@@ -104,7 +111,23 @@ interpreter, which is why Python is pinned to 3.12. What makes Swift `expr`/`po`
   named like system symbols (`str`) fail: prefix them.
 - `target.preload-symbols false` and `symbols.load-on-demand true` don't shorten the attach.
 - Don't enable `symbols.enable-lldb-index-cache`: with a warm cache, attach crashes in
-  `Symbol::ResolveReExportedSymbol` (from `AppleObjCTrampolineHandler`).
+  `Symbol::ResolveReExportedSymbol` (from `AppleObjCTrampolineHandler`);
+  [TOOL-1](bug-tracker.md#tool-1).
+- `target.memory-module-load-level` `minimal` and `partial` read no nlist from device memory (only
+  `complete` does, `ObjectFileMachO::ParseSymtab`), so `po`, which JITs calls into libswiftCore,
+  needs the local symbols from `tools/dine ios symbols`.
+- lldb finds `<App>.swiftmodule` through the CU's `DW_TAG_module` `DW_AT_LLVM_include_path` and
+  loads every module through Swift Build's explicit module maps: no `-add_ast_path` or N_AST
+  stabs needed.
+- `ios lldb-offline` stops a synthetic core at the breakpoint: module setup and `type lookup` work,
+  `expr` can't finish (a core has no OS version, so `@available(iOS 0, *)` fails to parse, and
+  no JIT); the fallback `SwiftASTContext` it hits: [TOOL-2](bug-tracker.md#tool-2).
+- `expression --top-level` definitions belong to the lldb target: they can't be redefined
+  (`redefinition of …`), and their globals keep the first process's addresses. A body with an ObjC
+  message send compiles but later expressions can't see it (`use of undeclared identifier`;
+  declare it in `SBExpressionOptions.SetPrefix`). Later calls re-emit other bodies, and a `static`
+  in one fails to link (`Couldn't look up symbols: __ZL…`). `nil` resolves to a symbol named
+  `nil` (`void *`), not a null pointer.
 
 ## iOS builds
 

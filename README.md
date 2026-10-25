@@ -211,8 +211,9 @@ apps/<App>/xtool/<App>.app/<App>` (local Mach-O + debug info) → `target.sdk-pa
 `process connect` (sync mode blocks with no process) → `process attach -p`.
 
 - **Swift expressions** (`expr`, `po`, `type lookup`) need three things, all automatic once set up
-  (details: `notes/swift-dbg.md`):
-  - `target.sdk-path` = `$DINE_IOS_SDK`: lldb can't map the DWARF SDK name to a path on Linux.
+  (details: `notes/dev-reference.md` "lldb and the debug server"):
+  - `target.sdk-path` = `$DINE_IOS_SDK`: lldb can't map the DWARF SDK name to a path on Linux;
+    without it `expr` fails with `cannot load underlying module for 'Darwin'`.
   - `tools/libexec/lldb` runs lldb from a relocated copy in `out/lldb/` (rebuilt when swift-bin changes)
     because lldb's Swift resource dir is fixed to `<liblldb dir>/swift`; there it is xtool's
     Darwin one (prebuilt iOS modules). The Linux one can't load the iOS stdlib. Don't use this
@@ -224,7 +225,7 @@ apps/<App>/xtool/<App>.app/<App>` (local Mach-O + debug info) → `target.sdk-pa
   Memory is read in 16 KiB lines (`target.process.memory-cache-line-size`). A small gdb-remote
   round trip takes ~1.6 ms with `quickack` on the route to Windows (`../wsl-quickack`), ~44 ms
   without: AMDS's small writes wait for Linux's 40 ms delayed ACK. The first Swift `po`
-  after a fresh server's attach takes up to ~15 s (`notes/dbg-optimizations.md`).
+  after a fresh server's attach takes up to ~15 s.
 - System frames are symbolicated from the local symbols (`SwiftUI\`View.toolbar(content:)`).
 - `ios lldb` always (re)launches the app via DVT, then attaches (`dbg attach` attaches to the
   running instance instead). Without `--suspended`, startup code has already run by then.

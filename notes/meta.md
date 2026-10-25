@@ -8,7 +8,7 @@ setup session.
 
 A generic **Android app runner for iOS**, built as a *translation layer* ("Wine for Android"),
 not a full-system emulator. Android apps run as Dalvik/ART bytecode inside one iOS app. Their
-Android API calls get reimplemented on top of iOS (UIKit, Metal, WKWebView, …).
+Android API calls get reimplemented on top of iOS (UIKit, CoreGraphics, WKWebView, …).
 
 It isn't tied to any particular app. TachiyomiSY is useful as a realistic test case (see below),
 nothing more.
@@ -76,13 +76,13 @@ nothing more.
    interpreted, uses JIT when available. Ported, not rewritten.
 2. **Native code:** a JNI bridge plus a bionic (Android libc) compatibility shim. With JIT, load
    the APK's `.so` files; without it, substitute iOS builds of known libraries.
-3. **Framework:** the Android API surface. **The big open decision:**
-   - **Reimplement it** (the ATL/Wine way).
-   - **Run AOSP's real Java framework** and implement only the system services underneath.
-     Compatibility comes much closer to free, but it's heavy to start under an interpreter.
-4. **Graphics + input:** `android.graphics` drawn through Skia onto Metal on iOS (Vulkan/GL on
-   Linux), plus touch, the on-screen keyboard and fonts. This is the biggest single piece, and
-   nearly every app depends on it (for example Jetpack Compose).
+3. **Framework:** the Android API surface, reimplemented the ATL/Wine way: dine-atl's api-impl is
+   the one Java implementation of `android.*` (`notes/atl-port.md` Decisions). The other route,
+   AOSP's real Java framework over reimplemented system services, gets compatibility much closer
+   to free, but it's heavy to start under an interpreter.
+4. **Graphics + input:** `android.graphics` drawn through CoreGraphics on iOS and GSK on Linux
+   (`notes/atl-port.md` M5a), plus touch, the on-screen keyboard and fonts. This is the biggest
+   single piece, and nearly every app depends on it (for example Jetpack Compose).
 5. **System services:** a fake `system_server` covering activities/intents, app install
    (including APK parsing and signature checks), content providers, storage layout, permissions,
    notifications and background jobs.
@@ -93,8 +93,8 @@ nothing more.
 7. **Play Services replacement** (optional): microG-style stubs. Many apps won't start without it.
 
 **Practical start:** port ATL. It already has the runtime and much of the API working on Linux.
-The iOS work is mostly replacing its Linux desktop (GTK) backend with UIKit/Metal, plus adding
-the native-code layer.
+The iOS work is mostly replacing its Linux desktop (GTK) backend with UIKit and CoreGraphics,
+plus adding the native-code layer.
 
 ## Reference test app: TachiyomiSY
 
@@ -122,11 +122,11 @@ comes into it.
 ## Development approach (no Mac)
 
 - **Most work on Linux (WSL):** runtime, framework and system services don't depend on iOS, and
-  ATL already runs there. ART with `-Xint` reproduces the iPhone's no-JIT situation. Skia can
-  use Vulkan/GL on Linux and switch to Metal on iOS.
-- **Device-only work:** the UIKit/Metal backend, the platform bridges, and the code-signing
-  limits. The iOS Simulator is macOS-only and doesn't enforce code signing, so it would hide the
-  biggest problem anyway.
+  ATL already runs there. ART with `-Xint` reproduces the iPhone's no-JIT situation. Drawing
+  sits behind a backend slot: GSK on Linux, CoreGraphics on iOS.
+- **Device-only work:** the UIKit and CoreGraphics backends, the platform bridges, and the
+  code-signing limits. The iOS Simulator is macOS-only and doesn't enforce code signing, so it
+  would hide the biggest problem anyway.
 - **Tooling:**
   - **xtool** (Swift package → signed iOS app → install). Gaps: you supply Xcode.xip yourself,
     no debugger launch, no asset catalogs or Interface Builder, app targets only, no App Store
@@ -140,14 +140,8 @@ comes into it.
 - **Legal:** the Xcode license says Apple-branded computers only, so extracting the SDK on Linux
   is a grey area. Apple doesn't seem to pursue hobbyists for it.
 
-## Current state (2026-10-15)
+## Current state
 
-- The dev environment is set up and verified end to end. See `README.md`.
-- **Dev device:** iPhone 13 (A15), iOS 27.0.1, connected through Windows AMDS.
-- **Signing:** a free Apple ID.
-- **Proven so far:**
-  - a C++ static library cross-compiled on Linux, linked into a SwiftUI app, signed, installed,
-    launched, logged and debugged with lldb on the phone
-  - the ATL/ART stack built on Linux, running a test APK with `-Xint` under WSLg
-- **Not yet tested:** JIT on this phone and iOS version (StikDebug).
-- **Not started:** porting ART/bionic to `arm64-apple-ios`, and the UIKit/Metal backend.
+Which stage is done and which is next: the Stages table in `notes/atl-port.md`. Dev device,
+signing and connection: `CLAUDE.md` and `README.md`. JIT through StikDebug on this phone:
+[DINE-6](general-todo.md#dine-6).

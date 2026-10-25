@@ -33,30 +33,18 @@ and backend results count only while it is drawn. The nav APK's A shows a list o
 amended there): the window stays full height with no padding; apps get the side strips and the
 home indicator as insets and decide. Linux `linux smoke nav` checks the insets on every show and
 the exclusion spans; `framework` has `WindowInsetsTest`; iOS `atl-nav` checks B's insets and its
-exclusion span. Left: status-bar insets for a window that covers the whole screen; insets for
-Dialog and WindowManager roots; exclusion from dialog windows; exclusion rects follow a
-translation only at the next layout pass and aren't clipped by parents; a check on the phone that
-the recognizer ignores an excluded span (smoke checks the log line).
+exclusion span. Left: M6b (status-bar insets for a window that covers the whole screen, insets
+and exclusion for Dialog and WindowManager roots), [ATL-3](bug-tracker.md#atl-3), and M4a's check
+on the phone that the recognizer ignores an excluded span (smoke checks the log line).
 
-**Left to do** (stages in `notes/atl-port.md`):
-- Settings (M8c): the `navigation` UserDefaults store, the observable `NavigationSettings` (today a
-  constant value with the defaults, `apps/Dine/Sources/Dine/EdgeGestures.swift`), agent
-  `ui defaults`, smoke `atl-nav` steps 1, 5 and 6.
-- Process management (one app per process: M8a, with the launcher's tiles; several apps: M8e):
-  the `RunningApps` model and the real running apps list, the AtlView run buttons' states and
-  footer, an AtlView button bringing a running app to the front.
-- Immersive mode (M6b; the Dine-wide setting: M8c): `SYSTEM_UI_FLAG_HIDE_NAVIGATION` and the
-  immersive flags map to the container's `prefersHomeIndicatorAutoHidden` and
-  `preferredScreenEdgesDeferringSystemGestures` (a first swipe at a deferred edge only reveals).
-  A Dine setting forces `prefersHomeIndicatorAutoHidden` on for every app, so the indicator
-  doesn't cover apps on iPhones that keep it shown (newer iOS hides it by default); it lives in
-  the settings store below, next to the bindings. Fullscreen (`FLAG_FULLSCREEN`) only hides the
-  status bar, with the window kept below the notch (Android's default cutout mode).
-- [By hand on the phone](#by-hand-on-the-phone): the default bindings fire their actions
-  (2026-10-20); the scroll, Notification Center corner and settings checks (M8c) are still open.
-- Dialogs and Home (M8b): Dine dismisses the container before Java hears Home, so an alert shown in
-  between presents over the launcher until Java's close reaches it, and a tap whose answer reaches
-  Java after Home is dropped: the alert comes back on front.
+**Left to do:** stages in `notes/atl-port.md`: settings (M8c: the `navigation` UserDefaults
+store, the observable `NavigationSettings`, today a constant value with the defaults in
+`apps/Dine/Sources/Dine/EdgeGestures.swift`, agent `ui defaults`, smoke `atl-nav` steps 1, 5 and
+6), the running apps list and the run states on the launcher's tiles (M8a; several apps: M8e),
+[Immersive mode](#immersive-mode) (M6b; the Dine-wide setting: M8c). The by-hand default
+bindings fire their actions; the other phone checks are [DINE-7](general-todo.md#dine-7) and M8c's
+settings steps. Open elsewhere: [DINE-1](bug-tracker.md#dine-1) (Dialogs and Home),
+[DINE-9](general-todo.md#dine-9) (the AtlView run states).
 
 **Corrections from building it:**
 - The container's escape is on its view (`EscapeView`), not on the view controller: escape and
@@ -159,7 +147,8 @@ Every binding is a setting (see [Settings](#settings)).
 
 ## Settings
 
-Changes apply while Dine runs. A settings screen comes later and binds to the same model.
+Changes apply while Dine runs. A settings screen ([DINE-8](general-todo.md#dine-8)) binds to the
+same model.
 
 - **Store:** UserDefaults key `navigation`, a String holding JSON. A missing key, field or map
   entry takes its default; a value that fails to decode means all defaults and logs
@@ -245,6 +234,16 @@ androidx reads gesture insets and sets exclusion rects only at SDK 29 and above,
 `SDK_INT` is its fixed level (`ro.build.version.sdk` in `SystemProperties.java`), so no app sees
 them through androidx until the level reaches 29. At 33 or more androidx calls
 `getOnBackInvokedDispatcher`, which ATL lacks.
+
+### Immersive mode
+
+Planned: M6b, the Dine-wide setting M8c. `SYSTEM_UI_FLAG_HIDE_NAVIGATION` and the immersive flags
+map to the container's `prefersHomeIndicatorAutoHidden` and
+`preferredScreenEdgesDeferringSystemGestures` (a first swipe at a deferred edge only reveals). A
+Dine setting forces `prefersHomeIndicatorAutoHidden` on for every app, so the indicator doesn't
+cover apps on iPhones that keep it shown (newer iOS hides it by default); it lives in the
+[settings](#settings) store, next to the bindings. Fullscreen (`FLAG_FULLSCREEN`) only hides the
+status bar, with the window kept below the notch (Android's default cutout mode).
 
 ## Interfaces
 
@@ -459,18 +458,16 @@ iOS has no public touch synthesis, so the swipes themselves are checked by hand:
 
 ## Risks
 
-- No androidx app sees the insets while ATL's level is below 29 ([Reach](#reach)).
-- framework-res says 3-button navigation (`config_navBarInteractionMode` 0,
-  `config_backGestureInset` 0dp). Apps that detect gesture navigation from these resources assume
-  buttons; changing them needs `-Dregenerate_framework_res`.
-- A vertical scroll that starts within 20 pt of the left edge can fire Home; the 96 pt down commit
-  distance and app exclusion rects are the only guards.
-- Edge pans compete with Android-hosted `UIScrollView`s (M4a); unchecked by hand. If they lose,
-  intercept edge touches in `UIWindow.sendEvent` before hit-testing.
+- No androidx app sees the insets while ATL's level is below 29 ([Reach](#reach)); raising the
+  level is M6b's.
+- [ATL-4](bug-tracker.md#atl-4): framework-res says 3-button navigation.
+- [DINE-2](bug-tracker.md#dine-2): a vertical scroll near the left edge can fire Home.
+- [DINE-3](bug-tracker.md#dine-3): edge pans against Android-hosted `UIScrollView`s, unchecked by
+  hand.
 
 ## Unverified
 
-- Whether ATL keeps the left and top of every view current at the end of the root's layout on gtk,
-  which the parent-chain walk needs.
-- On the phone: iPhone safe-area values and the iOS 26+ full-content pop gesture. (The agent's
-  up-walk reaching the container and the hosting view's custom action: verified, see Status.)
+- [ATL-5](bug-tracker.md#atl-5): whether gtk keeps every view's left and top current after the
+  root's layout.
+- On the phone: [DINE-7](general-todo.md#dine-7). (The agent's up-walk reaching the container and
+  the hosting view's custom action: verified, see Status.)

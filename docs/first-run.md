@@ -199,7 +199,7 @@ tools/dine ios symbols      # phone's dyld shared cache → out/ios-symbols/<ver
 - Per iOS build: rerun after every iOS update (`ios lldb` and `dbg start-server` warn when they're
   missing).
 - `tools/libexec/lldb` builds its relocated copy in `out/lldb/` on first use, no step needed. Why that and
-  the rest exist: `notes/swift-dbg.md`.
+  the rest exist: README "Interactive lldb".
 
 ## 7. First app install
 

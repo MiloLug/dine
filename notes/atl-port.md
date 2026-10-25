@@ -3,7 +3,9 @@
 The plan for turning dine-atl (our ATL fork) into a framework that runs on any toolkit and OS
 through pluggable backends. iOS (inside Dine) is the first new target. It defers to
 `notes/meta.md` for the why and the iOS constraints, to `notes/art-findings.md` for the runtime,
-and to `tests/README.md` for the map of test suites.
+and to `tests/README.md` for the map of test suites. Defects found outside a stage's own work
+are coded in `notes/bug-tracker.md`, other work no stage owns in `notes/general-todo.md`; a stage
+links them by code.
 
 ## Stages
 
@@ -22,8 +24,8 @@ its row here changes when that block does.
 | [M4c](#m4c-text-input) | text input | done |
 | [M5a](#m5a-renderer-and-display-list) | renderer choice, display list | done |
 | [M5b](#m5b-drawing-on-the-phone) | drawing on the phone | done |
-| [M5c](#m5c-text) | text | next |
-| [M5d](#m5d-paths-nine-patch-layers-gravity-defied) | paths, nine-patch, layers; Gravity Defied | planned |
+| [M5c](#m5c-text) | text | done |
+| [M5d](#m5d-paths-nine-patch-layers-gravity-defied) | paths, nine-patch, layers; Gravity Defied | next |
 | [M6a](#m6a-triage-and-fixes) | triage and fixes | planned |
 | [M6b](#m6b-breadth) | breadth | planned |
 | [M6c](#m6c-search-ahead-of-m7) | search ahead of M7 | planned |
@@ -134,18 +136,18 @@ combinations.
   arguments and calls the slot. Backends never see `JNIEnv`.
 - **No toolkit object assumed per View:** `gtk` and `uikit` create one per view node; `headless`
   and a future single-surface backend keep records and request pixels through the draw upcall.
-- **Threads:** ui and gfx calls happen on the Android main thread; uikit's layers replay
-  coregraphics' finished display lists on UIKit's side, and list and bitmap refs drop on any
-  thread. `cfrunloop` binds to the run
-  loop of the thread that prepares it. On iOS that is an 8 MiB pthread with its own run loop, not
-  UIKit's main thread (1008 KiB stack with RLIMIT_STACK fixed at that, so ATL's Linux setrlimit
-  and 6 MiB pregrow can't grow it, and whether iOS honours LC_MAIN `-stack_size` is unverified;
-  secondary threads get 524 KiB; VM creation and `-Xint` Java would stall Dine's UI). `uikit`
-  queues UIKit changes on it and sends them to UIKit's thread in one batch per layout or draw
-  pass; text measurement waits for UIKit's thread (`dispatch_sync`), so UIKit's thread never waits
-  for the Android one. Nothing on the Android thread drains an autorelease pool, so each uikit entry point
-  that makes ObjC objects there wraps itself in `@autoreleasepool`. Bitmap canvases work on any
-  thread.
+- **Threads:** ui and gfx calls happen on the Android main thread, but gfx's text calls take any
+  thread (gsk gives each thread but the main one a Pango context of its own); uikit's layers replay
+  coregraphics' finished display lists on UIKit's side, and list and bitmap refs drop on any thread.
+  `cfrunloop` binds to the run loop of the thread that prepares it. On iOS that is an 8 MiB pthread
+  with its own run loop, not UIKit's main thread (1008 KiB stack with RLIMIT_STACK fixed at that, so
+  ATL's Linux setrlimit and 6 MiB pregrow can't grow it, and whether iOS honours LC_MAIN
+  `-stack_size` is unverified; secondary threads get 524 KiB; VM creation and `-Xint` Java would
+  stall Dine's UI). `uikit` queues UIKit changes on it and sends them to UIKit's thread in one batch
+  per layout or draw pass; a TextView's measurement waits for UIKit's thread (`dispatch_sync`), so
+  UIKit's thread never waits for the Android one, while Paint measures with CoreText on the calling
+  thread. Nothing on the Android thread drains an autorelease pool, so each uikit entry point that
+  makes ObjC objects there wraps itself in `@autoreleasepool`. Bitmap canvases work on any thread.
 - **Generic logic moves to shared code** when its slot is extracted: the per-class draw-mode
   decision, MotionEvent and KeyEvent construction, touch dispatch and intercept order,
   LayoutParams interpretation, dialog content.
@@ -208,7 +210,7 @@ is extracted:
 | `RenderNode.getGskNode` and its GskRenderNode natives | a node over a gfx display list | M9 |
 | CSS class names set from TextView (bold, italic) | typeface style passed to the ui slot (done) | M3 |
 | CSS classes for `setAllCaps`, `setTextAlignment`, Button's `ATL-no-border` | all caps in Java (AOSP's transformation), `ui_text_set_alignment`, the border from the view's background (done) | M4b |
-| `Paint.measureText` width estimate | text measurement from the gfx slot | M5c |
+| `Paint.measureText` width estimate | text measurement from the gfx slot (done) | M5c |
 | AlertDialog's three toolkit-bound Buttons | dialog content as data (see M2) | M2 |
 | `GTK_FILE_CHOOSER_ACTION_*` ints in Activity | file-picker service request kinds | M7 (file picker) |
 | Toast sent as a desktop notification | a ui-slot toast | M6b |
@@ -570,9 +572,9 @@ Gravity Defied stops at `NinePatchDrawable.nativeCreate` (M5d). As built:
   MOVE through ten levels), `run-widgets.sh` (`linux smoke widgets`), and Back on a shown list in
   `run-nav.sh`.
 - AOSP provenance: `dine-atl/doc/AOSP.md`.
-- Open: the edge pans against an Android-hosted UIScrollView and an excluded span, by hand; touches
-  on popovers on gtk; a GtkText's Tab moves GTK's focus, not Java's; lists don't scroll
-  (`ViewGroup.offsetChildrenTopAndBottom`, M6b).
+- Open: the edge pans against an Android-hosted UIScrollView ([DINE-3](bug-tracker.md#dine-3))
+  and an excluded span, by hand; touches on popovers on gtk; a GtkText's Tab moves GTK's focus,
+  not Java's; lists don't scroll (`ViewGroup.offsetChildrenTopAndBottom`, M6b).
 
 ### M4b: controls
 
@@ -710,8 +712,7 @@ keyboard, the keyboard after Home and front. As built:
   only into the field with the keyboard (no KeyListener); gtk multi-line; a Dialog's EditText
   (M6b's content-view root); ClipboardManager (M7); `onCreateInputConnection` on EditText,
   BaseInputConnection (a stub whose own `Editable` class shadows `android.text.Editable`) and
-  `onKeyPreIme`; key listeners as filters (a number field takes letters; M5c); line limits and a
-  fixed-height multi-line field's scrolling (M5c);
+  `onKeyPreIme`;
   AutoCompleteTextView's drop-down (PopupWindow, M6b); on headless a field whose activity another
   one covers keeps the keyboard (Java's next Back hides it); typing lag under `-Xint`, unmeasured.
 
@@ -883,12 +884,96 @@ pass. As built:
 - Unblocks on headless: Compose after `onResume` stops at `text.Layout.native_constructor`
   (Compose itself is M9).
 
-**Done when:** framework suite tests for `measureText`, `getTextBounds` and `getFontMetrics` pass on
-headless and gtk; M5a's view gains a `drawText`, its golden is updated, and the phone's screenshot
-shows the text.
+**Done when:** framework suite tests for `measureText`, `getTextBounds`, `getFontMetrics`, key
+listeners and line limits pass on headless and gtk; M5a's view gains a `drawText` and a Layout's
+`draw`, its golden is updated, and the phone's screenshot shows the text; on headless a letter typed
+into the widgets APK's number field is dropped, a `maxLines` 2 field keeps two lines' height, and
+Compose gets past `Layout.native_constructor`; on the phone a capped multi-line field shows the
+cursor's line.
+
+**Status: done (2026-10-25).** On headless `linux smoke draw` matches `draw.displaylist` with the
+text and Layout ops, `linux smoke text` drops the letter typed into the number field and keeps the
+capped field at two lines, and Compose passes `Layout.native_constructor` (its next stop is in
+M6a); the framework suite's `TextTest`, `KeyListenerTest` and `LineLimitTest` pass on headless and
+gtk, `InkBoundsTest` on gtk; `linux smoke` and the runtime suite pass. On the iPhone 13 `dbg smoke`
+passes, `dbg ui screenshot` shows the draw screen's bold, serif italic, centered monospace and
+stroked text and a two-line Layout, and the capped field grows to two lines (51 to 101 px) and
+shows its last lines with the cursor. As built:
+- Slot: `gfx_paint_set_typeface` (sans, serif or monospace; bold, italic), `gfx_text_font_metrics`,
+  `gfx_text_measure`, `gfx_text_carets`, `gfx_text_bounds` (ink), `gfx_text_break_lines` (a
+  paragraph's line ends), `gfx_canvas_draw_text`; positions in UTF-16 units, any thread.
+- record: fixed metrics, the one home of headless text sizes (advance 0.6·size, ascent 0.95·size,
+  descent 0.25·size), greedy breaks after the last space, else between code points. Headless
+  TextViews measure through it: UTF-16 units, word breaks, and a `\n` breaks a plain TextView's
+  line. `OP_TEXT` keeps a copy of the text; the dump prints `text "…" x,y` with the paint, `size`,
+  `serif` or `mono`, `bold`, `italic` and `align`.
+- gsk: Pango; the window's context on the main thread, a context from the thread's own default font
+  map elsewhere; ink bounds; default size 12; `Serif` and `Monospace` families, sans the context's
+  font. GSK draws text filled whatever the paint's style.
+- coregraphics: CoreText on the calling thread at the paint's size in points (px over the screen
+  scale), measured back in px. `cg_font` is the one font source, uikit's labels included: the
+  system font, Times New Roman for serif (CoreText has no public call for the system's serif
+  design), `kCTFontUIFontUserFixedPitch` for monospace. The replay draws a CTLine with the paint's
+  color, fill or stroke, and align.
+- Layout: one shared implementation (`src/shared/android_text_Layout.c`), a line array: paragraphs
+  at `\n`, the backend breaks each, every line one `FontMetricsInt` height, horizontal positions
+  from the carets, `draw` one text op per line. Ellipsize (start, middle, end) keeps each paragraph
+  on one line, as Pango's does.
+- Paint: `measureText`, `getTextWidths`, `getTextBounds` (rounded outward), `getFontMetrics`,
+  `getFontMetricsInt` (Skia's rounding), `ascent`, `descent`, `breakText`. Typeface keeps a family
+  and a style, Paint keeps its Typeface. TextView's TextPaint starts at the toolkit's size
+  (`ui_text_get_size`) and follows `setTextSize` and `setTypeface`; `getTextSize` and
+  `getLineHeight` read it.
+- Key listeners: AOSP's `NumberKeyListener` (its filter), `DigitsKeyListener` and
+  `DialerKeyListener` (`dine-atl/doc/AOSP.md`). EditText makes one from a number or phone input
+  type or from `digits`, and puts it after the app's filters on the Editable only: a typed letter
+  is dropped and `setText` keeps it, as on Android. In AOSP's order the pin field's `1a2345` passes
+  LengthFilter(4) as `1a23`, then the digits filter: `123`. Text fields get no key listener (no
+  TextKeyListener).
+- Line limits: TextView's `maxLines`, `lines`, `minLines`, `maxHeight`, `minHeight`, `height` and
+  `singleLine`, one maximum and one minimum mode as in AOSP. Line counts go to the toolkit
+  (`ui_text_set_lines`), pixels clamp in `TextView.onMeasure`. headless caps and pads its line
+  count; gtk caps the measured height at the line's Pango position and clips the box (GtkLabel's
+  own line limit counts per paragraph) and pads through the label's height request; uikit sets the
+  ATLLabel's `numberOfLines` with word wrapping (no ellipsis, as Android clips) and caps the
+  measure; a multi-line UITextView scrolls, so a capped or fixed-height field follows the cursor.
+- Metrics on the iPhone 13 (480 dpi) from DrawStayActivity's `widgets metric` lines: Paint's
+  `ceil(measureText)` and line spacing beside a one-line TextView's measured size, and Roboto
+  3.016's advances (no kerning) and hhea line spacing, px:
+
+  | Text | Size | Roboto | Paint (CoreText) | TextView (UILabel) |
+  |---|---|---|---|---|
+  | Hello world | 14 sp | 211, 49.2 | 218, 50.1 | 218 × 51 |
+  | The quick brown fox | 14 sp | 379 | 392 | 392 |
+  | 0123456789 | 14 sp | 237 | 250 | 250 |
+  | WWWWW iiiii | 14 sp | 248 | 262 | 262 |
+  | Hello world | 18 sp | 271, 63.3 | 270, 64.4 | 270 × 65 |
+  | The quick brown fox | 18 sp | 487 | 487 | 487 |
+  | 0123456789 | 18 sp | 304 | 313 | 313 |
+  | WWWWW iiiii | 18 sp | 319 | 328 | 328 |
+
+  Paint and the labels agree to the pixel. Against Roboto, iOS text is 3 to 6 % wider at 14 sp and
+  0 to 3 % at 18 sp, and its lines 2 % taller: a layout sized in dp around Roboto text can wrap or
+  cut a word on the phone.
+- Tests: the framework suite's `graphics` `TextTest` (relations only: each build has its own fonts)
+  and `InkBoundsTest` (expected to fail on headless), `text` `KeyListenerTest` and
+  `LineLimitTest`; DrawActivity's text and Layout ops in `draw.displaylist`; `run-text.sh`'s pin
+  letter and capped field.
+- Open: the CTFont cache on iOS, first ([ATL-18](general-todo.md#atl-18)); gtk labels take px as
+  points ([ATL-8](bug-tracker.md#atl-8)); stroked text on gtk ([ATL-9](bug-tracker.md#atl-9));
+  line separators besides `\n` ([ATL-10](bug-tracker.md#atl-10)); gtk measuring off the main
+  thread ([ATL-11](bug-tracker.md#atl-11)); gtk's line cap width
+  ([ATL-12](bug-tracker.md#atl-12)); `setKeyListener` then `setInputType`
+  ([ATL-13](bug-tracker.md#atl-13)); a capped field in a scroll view on iOS
+  ([ATL-14](bug-tracker.md#atl-14)); TextView's font family ([ATL-15](bug-tracker.md#atl-15));
+  `getLayout()` per call ([ATL-16](bug-tracker.md#atl-16)); Layout's spans and Builder (M9,
+  [ATL-17](bug-tracker.md#atl-17)); iOS serif ([ATL-19](general-todo.md#atl-19)); Roboto widths
+  on iOS ([ATL-20](general-todo.md#atl-20)); TextKeyListener ([ATL-21](general-todo.md#atl-21));
+  CoreText off UIKit's thread ([ATL-22](general-todo.md#atl-22)).
 
 #### M5d: paths, nine-patch, layers; Gravity Defied
 
+- First: the CTFont cache on iOS ([ATL-18](general-todo.md#atl-18)).
 - Path (CGPath with CoreGraphics), `drawArc`, shaders, `saveLayer`.
 - Nine-patch loading, when NinePatch joins `gfx`:
   - `nativeCreate(String)` leaks its texture on every early return;
@@ -917,7 +1002,8 @@ starts with it.
 A cycle like the [pre-M4 batch](#pre-m4-batch-2026-10-21): a headless triage runs each
 `atl_test_apks` APK outside M9 (Compose, GL) to its first stop. M6a fixes the stops before an
 app's first input that fit the existing slots, and the findings below; every other one moves to
-the stage that owns it (M6b, M7, M9) or to Not staged; a stop an M6b item names stays there. The
+the stage that owns it (M6b, M7, M9) or, owned by none, to a code in `notes/bug-tracker.md` (a
+defect) or `notes/general-todo.md`; a stop an M6b item names stays there. The
 triage then runs again; the cycle ends when a triage finds only stops owned elsewhere.
 
 Findings from M4b and M5 (M5's stages add and update them):
@@ -950,9 +1036,13 @@ Findings from M4b and M5 (M5's stages add and update them):
   ImageView's `setColorFilter`/`setImageTintList` paths keep nothing, and coregraphics draws a
   bitmap with its paint's alpha only.
 - `Canvas.clipRect` returns whether the rect itself is non-empty, not the resulting clip.
+- Compose (`compose_demo_app.apk -l com/bicubictwice/composedemoapp/ui/MainActivity` on headless)
+  draws a VectorPainter after `onResume` into `new Canvas(Bitmap)` and stops at
+  `Bitmap.native_create_snapshot`: `Canvas(Bitmap)` is gtk-only.
 
 **Done when:** the last triage's table (APK, stop before, stop after) is in this section, and each
-stop and finding is fixed, named in a later stage or under Not staged.
+stop and finding is fixed, named in a later stage or coded in `notes/bug-tracker.md` or
+`notes/general-todo.md`.
 
 ### M6b: breadth
 
@@ -976,8 +1066,8 @@ stop and finding is fixed, named in a later stage or under Not staged.
   `Window.setSoftInputMode` does nothing, the manifest's is parsed) and the keyboard's frame from
   Dine.
 - Immersive mode and status-bar insets for a window that covers the whole screen
-  (`notes/nav-gestures.md` Status). The Dine setting that hides the home indicator for every app is
-  [M8c](#m8c-navigation-settings-store)'s.
+  (`notes/nav-gestures.md` Immersive mode). The Dine setting that hides the home indicator for
+  every app is [M8c](#m8c-navigation-settings-store)'s.
 - Screen brightness (`WindowManager.LayoutParams.screenBrightness`): window state of the shown
   activity, sent through the host slot as keep-screen-on is. Linux sets it through GNOME's power
   settings over D-Bus, else `/sys/class/backlight` (`android_view_Window.c`, gtk-only); iOS through
@@ -985,8 +1075,8 @@ stop and finding is fixed, named in a later stage or under Not staged.
 - Styled text on iOS, with real Spanned support: ATL's `Html.fromHtml` keeps the HTML tags in the
   string; gtk renders them as Pango markup (`ui_text_set_markup`), uikit shows them literally.
 - `SDK_INT` above 21 as `android.*` catches up: androidx reads gesture insets and exclusion rects
-  only from 29, and from 33 calls `getOnBackInvokedDispatcher`, which ATL lacks; framework-res
-  says 3-button navigation (`notes/nav-gestures.md` Reach, Risks).
+  only from 29, and from 33 calls `getOnBackInvokedDispatcher`, which ATL lacks
+  (`notes/nav-gestures.md` Reach); [ATL-4](bug-tracker.md#atl-4).
 
 ### M6c: search ahead of M7
 
@@ -994,7 +1084,8 @@ A search that fixes nothing: it finds what M7 and later stages will hit. The tri
 M9 run past their M6 stops on headless, with `-c` input where a stop needs it, and a dexdump read
 of each APK lists the services it calls and the methods that call them. Each finding goes, with
 how to reproduce it, to the stage that needs it fixed (an item of `notes/service-impl.md`, an M8
-stage, M9); one that blocks nothing goes under Not staged. A service's findings also go into its
+stage, M9); one that blocks nothing gets a code in `notes/bug-tracker.md` (a defect) or
+`notes/general-todo.md`. A service's findings also go into its
 item in `notes/service-impl.md`.
 
 Known from static reads, not run:
@@ -1004,7 +1095,7 @@ Known from static reads, not run:
   AlarmManager alarm in `GDActivity.doRestartApp` (jobs).
 
 **Done when:** the table (APK, what it hits, owner) is in this section, and each entry is named in
-a later stage or under Not staged.
+a later stage or coded in `notes/bug-tracker.md` or `notes/general-todo.md`.
 
 ### M7: services
 
@@ -1017,8 +1108,8 @@ downloads and jobs items wait for parts of [M8a](#m8a-apk-import-and-launch),
 
 The launcher installs and starts APKs; iOS foreground and background drive the Activity
 lifecycle (what runs once Dine is backgrounded: `notes/background-processes.md`); Back, Home and
-the running apps list are in `notes/nav-gestures.md`, whose Status lists what is left of them. The
-Dine-only stages M8b to M8d are left for later ([Milestones](#milestones)).
+the running apps list are in `notes/nav-gestures.md`; what is left of them is in the stages
+below. The Dine-only stages M8b to M8d are left for later ([Milestones](#milestones)).
 
 #### M8a: APK import and launch
 
@@ -1064,7 +1155,7 @@ imports `demo_app.apk` and shows both strings (by hand).
   onStop, then onRestart, onStart and onResume, the paths `run-nav.sh` grades on headless. The
   container stays presented, a background task (`beginBackgroundTask`) keeps Dine running until
   the Android thread has run them, and Dine remembers whether the app was in front.
-- The Dialogs and Home race (`notes/nav-gestures.md` Status).
+- The Dialogs and Home race: [DINE-1](bug-tracker.md#dine-1).
 - A pause without a stop (`willResignActive`: Control Center, the app switcher) would be new task
   state in `src/shared/activity.c`, with a cli `-c` command and a `run-nav.sh` step: decided here.
 - Phone check known so far: the nav APK's lifecycle lines around an iOS background and foreground.
@@ -1073,9 +1164,9 @@ imports `demo_app.apk` and shows both strings (by hand).
 
 #### M8c: navigation settings store
 
-- `notes/nav-gestures.md` Settings, with the open settings items of that note's Status: the store,
-  its model, the agent command, and the Dine setting that hides the home indicator for every app
-  over M6b's immersive mode.
+- `notes/nav-gestures.md` Settings: the `navigation` store, the observable `NavigationSettings`
+  model, agent `ui defaults`, smoke `atl-nav` steps 1, 5 and 6, and the Dine setting that hides
+  the home indicator for every app over M6b's immersive mode.
 - Phone check known so far: the settings steps of smoke `atl-nav` (`notes/nav-gestures.md` Tests).
 
 #### M8d: background probes
@@ -1101,7 +1192,8 @@ Compose (`compose_demo_app.apk`), SurfaceView and GLES, GL apps, and WebView: a 
 by a webkitgtk widget (`android_webkit_WebView.c`, gtk-only), a ui node kind on WKWebView for iOS.
 RenderNode on the records backends: its natives build GskRenderNodes and are gtk-only;
 a node would record into a display list that an op of its parent's list draws, with its
-transform, alpha and clip ([Java](#java)).
+transform, alpha and clip ([Java](#java)). Layout's spans, line spacing and `StaticLayout.Builder`
+setters, which Compose's text needs: [ATL-17](bug-tracker.md#atl-17).
 
 ## Tests
 
@@ -1132,16 +1224,3 @@ transform, alpha and clip ([Java](#java)).
   - after a crash the harness relaunches Dine and resumes at the next test; Dine also restarts
     every N tests, because tests change VM-wide state;
   - a smoke tier for each change and a full tier run by hand.
-
-## Not staged
-
-- gtk startup critical: views-gtk runs print `gdk_monitor_get_geometry: assertion
-  'GDK_IS_MONITOR (monitor)' failed`; cause not traced.
-- TLS on iOS: app trust managers that call the default one's `checkServerTrusted` aren't
-  covered, because wolfSSL's CertManager has no SecTrust path.
-- Runtime work (dine-art) has its own list: `notes/art-findings.md`, Follow-ups.
-- Apps that are keyboards (`InputMethodService` over the Wayland input-method protocol, gtk-only):
-  after M9, if ever.
-- Draw cost under `-Xint`, after M5d's frame-time measurement: a `Matrix` allocated per
-  `ATLCanvas.save()` (the current matrix could live in C), Canvas ops batched into one JNI call per
-  draw, JIT through StikDebug where the phone has it (`notes/meta.md`).

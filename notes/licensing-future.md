@@ -22,7 +22,7 @@ Text read from https://developer.apple.com/app-store/review/guidelines/ on 2026-
 |---|---|
 | 2.5.2: no downloading or executing code "which introduces or changes features" | Bundled dex is fine. A dex update that changes features breaks it; a bug-fix update falls under the Developer Program License Agreement's interpreted-code clause, which CodePush and Expo Updates rely on (from memory). |
 | 4.7, 4.7.2, 3.2.2 | Don't apply: 4.7 covers software not embedded in the binary, 3.2.2 an in-app store. |
-| 2.5.1: public APIs only | Dine's Swift and `native/` use no `MAP_JIT` and declare no entitlements. The one private API is in the dev-only debug agent (`native/dev/dbgagent` reads `UIAlertAction`'s `handler` through KVC), which release builds don't link. ATL's `uikit` backend wasn't checked. The heap reservation above 4 GB needs no `extended-virtual-addressing` (`art-findings.md`, "Phone probe"). |
+| 2.5.1: public APIs only | Dine's Swift and `native/` use no `MAP_JIT` and declare no entitlements. The one private API is in the dev-only debug agent (`native/dev/dbgagent` reads `UIAlertAction`'s `handler` through KVC), which release builds don't link. ATL's `uikit` backend wasn't checked ([DINE-10](general-todo.md#dine-10)). The heap reservation above 4 GB needs no `extended-virtual-addressing` (`art-findings.md`, "Phone probe"). |
 | 2.1, and the intro of section 4 (Design): "degraded experience" | ART runs only the C++ interpreter (no JIT, no AOT), so a heavy app is sluggish, and reviewers reject on that. Depends on the app. |
 | 2.3.10: no names, icons or imagery of other mobile platforms | No Android name, robot icon or Play references in the app or its metadata. A packaged app drops the launcher, the apps list and the Recent apps action. Back on an edge swipe is fine; Material styling is fine (Google's own iOS apps use it). |
 | 2.5.6: web browsing must use WebKit | An Android `WebView` must map to `WKWebView`. |
@@ -95,7 +95,7 @@ New code we write is ours, under any license, as long as it copies no ATL code.
 - Code moved out of ATL files stays theirs: `src/shared` and the `gtk`, `glib` and `gsk`
   backends. The backends written for Dine (`uikit`, `cfrunloop`, `embedded`, `headless`, `cli`,
   `poll`, `record`, `records`) have only our commits and none on upstream `master`; whether any
-  of them carries code moved from ATL files wasn't checked.
+  of them carries code moved from ATL files wasn't checked ([DINE-10](general-todo.md#dine-10)).
 
 Size of ATL. An **AOSP header** here means an AOSP or Apache license notice in a file's first
 20 lines:
@@ -164,8 +164,8 @@ source offer.
 - ICU's notice is its whole `LICENSE` file, appended third-party licenses included.
 - Where it goes: Dine already bundles `out/ios/assets/Dine/licenses` (`xtool.yml`), which holds
   the icon pack's license. A combined notice file generated at build time belongs there, with
-  dine-atl's `NOTICE-AOSP.txt` and `LICENSE-APACHE-2.0.txt`. `dine-atl/doc/AOSP.md` lists this as
-  open: Dine's bundle carries `api-impl.jar` without them.
+  dine-atl's `NOTICE-AOSP.txt` and `LICENSE-APACHE-2.0.txt`. Dine's bundle carries
+  `api-impl.jar` without them: [DINE-5](bug-tracker.md#dine-5).
 - Visible without in-app UI: a `Settings.bundle` with an Acknowledgements page, shown in the iOS
   Settings app under the app. It is a resource folder, so xtool can bundle it. Or an "Open source
   licenses" row on the packaged app's about screen.
@@ -182,8 +182,4 @@ source offer.
 
 ## Not checked
 
-- The last ~14k characters of the guidelines page; the page shows no update date.
-- A private-API scan of the linked binary beyond the grep and the required-reason symbols.
-- How many of the 505 Java files without an AOSP header are AOSP copies with the headers
-  stripped; those would be Apache 2.0 and shrink a rewrite.
-- Uploading without a Mac, and the Xcode license (`meta.md` has the license question).
+[DINE-10](general-todo.md#dine-10).

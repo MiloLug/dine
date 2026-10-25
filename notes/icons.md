@@ -34,7 +34,8 @@ How Dine gets its icons. The commands are in CLAUDE.md.
 ## Rendering
 
 - Imagesets are template SVGs, but accord stores the template intent only on the rasters, not on
-  the vector rendition. Tint in code: `.renderingMode(.template)` with `.foregroundStyle(...)`.
+  the vector rendition ([TOOL-3](bug-tracker.md#tool-3)). Tint in code:
+  `.renderingMode(.template)` with `.foregroundStyle(...)`.
 - Use `Image(decorative:)`. A plain `Image("Role")` adds the asset name to the accessibility label,
   and the debug agent's taps match labels.
 - Pick the pack's largest size that fits. accord rasterizes at 1x, 2x and 3x the SVG's own size, so
@@ -45,4 +46,4 @@ How Dine gets its icons. The commands are in CLAUDE.md.
 ## Default app icon
 
 `AppIconView` draws `DefaultApp` (`app_generic_48_filled`) in white on a gradient whose hue comes
-from the app's name. Every app uses it until the launcher reads icons from APKs.
+from the app's name. Every app uses it until the launcher reads icons from APKs (M8a).
