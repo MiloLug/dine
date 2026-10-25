@@ -21,8 +21,8 @@ its row here changes when that block does.
 | [M4b](#m4b-controls) | controls | done |
 | [M4c](#m4c-text-input) | text input | done |
 | [M5a](#m5a-renderer-and-display-list) | renderer choice, display list | done |
-| [M5b](#m5b-drawing-on-the-phone) | drawing on the phone | next |
-| [M5c](#m5c-text) | text | planned |
+| [M5b](#m5b-drawing-on-the-phone) | drawing on the phone | done |
+| [M5c](#m5c-text) | text | next |
 | [M5d](#m5d-paths-nine-patch-layers-gravity-defied) | paths, nine-patch, layers; Gravity Defied | planned |
 | [M6a](#m6a-triage-and-fixes) | triage and fixes | planned |
 | [M6b](#m6b-breadth) | breadth | planned |
@@ -116,11 +116,10 @@ A build selects one backend per slot with a meson option.
 |---|---|---|---|---|---|---|
 | Linux desktop | `gtk` | `glib` | `gtk` | `gsk` | `desktop-linux` | `bionic` |
 | Linux headless (tests) | `cli` | `poll` | `headless` | `record` | `none` | `none` |
-| iOS bring-up | `embedded` | `cfrunloop` | `headless` | `record` | `none` | `none` |
 | iOS | `embedded` | `cfrunloop` | `uikit` | `coregraphics` | `ios` | `none` |
 
-A gfx backend draws into what the ui backend hands it: `gsk` needs `gtk`, `coregraphics` needs a
-ui backend that provides a CGContext (`uikit`), `record` works with any. meson rejects invalid
+A gfx backend draws into what the ui backend hands it: `gsk` goes with `gtk` and `coregraphics`
+with `uikit`, which provides the CGContext; `record` goes with `headless`. meson rejects other
 combinations.
 
 ### Interface rules
@@ -135,14 +134,16 @@ combinations.
   arguments and calls the slot. Backends never see `JNIEnv`.
 - **No toolkit object assumed per View:** `gtk` and `uikit` create one per view node; `headless`
   and a future single-surface backend keep records and request pixels through the draw upcall.
-- **Threads:** ui and gfx calls happen on the Android main thread. `cfrunloop` binds to the run
+- **Threads:** ui and gfx calls happen on the Android main thread; uikit's layers replay
+  coregraphics' finished display lists on UIKit's side, and list and bitmap refs drop on any
+  thread. `cfrunloop` binds to the run
   loop of the thread that prepares it. On iOS that is an 8 MiB pthread with its own run loop, not
   UIKit's main thread (1008 KiB stack with RLIMIT_STACK fixed at that, so ATL's Linux setrlimit
   and 6 MiB pregrow can't grow it, and whether iOS honours LC_MAIN `-stack_size` is unverified;
   secondary threads get 524 KiB; VM creation and `-Xint` Java would stall Dine's UI). `uikit`
-  queues UIKit changes on it and sends them to UIKit's thread in one batch per layout pass; text
-  measurement waits for UIKit's thread (`dispatch_sync`), so UIKit's thread never waits for the
-  Android one. Nothing on the Android thread drains an autorelease pool, so each uikit entry point
+  queues UIKit changes on it and sends them to UIKit's thread in one batch per layout or draw
+  pass; text measurement waits for UIKit's thread (`dispatch_sync`), so UIKit's thread never waits
+  for the Android one. Nothing on the Android thread drains an autorelease pool, so each uikit entry point
   that makes ObjC objects there wraps itself in `@autoreleasepool`. Bitmap canvases work on any
   thread.
 - **Generic logic moves to shared code** when its slot is extracted: the per-class draw-mode
@@ -203,7 +204,8 @@ is extracted:
 |---|---|---|
 | `GskCanvas` as the Canvas implementation class | `android.atl.ATLCanvas` over a `struct gfx_canvas` (done) | M5a |
 | `Window.remove_gtk_background` | `Window.clear_background`, calling `ui_window_clear_background` (done) | M1 |
-| `GDK_MEMORY_*` pixel formats in Bitmap | Android `Bitmap.Config` values; the backend maps them | M5b |
+| `GDK_MEMORY_*` pixel formats in Bitmap | Android `Bitmap.Config` values; the backend maps them (done) | M5b |
+| `RenderNode.getGskNode` and its GskRenderNode natives | a node over a gfx display list | M9 |
 | CSS class names set from TextView (bold, italic) | typeface style passed to the ui slot (done) | M3 |
 | CSS classes for `setAllCaps`, `setTextAlignment`, Button's `ATL-no-border` | all caps in Java (AOSP's transformation), `ui_text_set_alignment`, the border from the view's background (done) | M4b |
 | `Paint.measureText` width estimate | text measurement from the gfx slot | M5c |
@@ -787,8 +789,9 @@ graphics suite's Matrix and Paint tests pass on headless and on gtk (`tools/dine
 
 #### M5b: drawing on the phone
 
-- The chosen backend draws each drawing view node's display list; RenderNode. Where the list
-  rasterizes: UIKit's thread in the layer's draw, or the Android thread into a CGBitmapContext.
+- The chosen backend draws each drawing view node's display list. Where the list rasterizes:
+  UIKit's thread in the layer's draw, or the Android thread into a CGBitmapContext. RenderNode is
+  M9's (nothing in api-impl draws one; Compose does).
 - Redraws paced to the display: at most one draw pass per frame (CADisplayLink on uikit), so an
   `onDraw` that invalidates itself doesn't spin the Android thread; headless stays unpaced.
 - `clipRect` and its restore behind the gfx slot (ATLCanvas's `push_history` is gtk's way).
@@ -810,6 +813,55 @@ graphics suite's Matrix and Paint tests pass on headless and on gtk (`tools/dine
 Bitmap decoded from a PNG resource, and its selector background; on headless, a press on one of
 two widgets APK views that share a selector resource changes only its own selected child (a log
 line).
+
+**Status: done (2026-10-25).** On the iPhone 13 `dbg ui screenshot` shows M5a's view with two clips
+and a PNG, and the widgets screen's ImageView PNG and selector rows; `dbg smoke` passes with the new
+`atl-draw`. On headless `linux smoke widgets` presses one of two rows that share
+`@drawable/shared_selector` and only its own background changes (`widgets shared a=ff00c000
+b=ff808080`), and `linux smoke draw` matches the new `draw.displaylist`; the graphics suite's
+`BitmapTest` and `DrawableStateTest` pass on headless and gtk; `linux smoke` and the runtime suite
+pass. As built:
+- Raster on CA's side: the `coregraphics` gfx backend is record's display list
+  (`src/backends/gfx/record/`) plus `coregraphics/draw.c` (a list's replay into a CGContext) and
+  `bitmap.c` (ImageIO, decoded at once on the Android thread). uikit gives a drawing node an
+  `ATLDrawLayer` (`drawsAsynchronously`, under the subviews by `zPosition`, no implicit actions, at
+  the bounds' origin so it scrolls with the content, `contentsScale` the window density's); an
+  ATLLabel replays in `drawRect:` under its text. The Android thread only records. Lists are
+  refcounted, any thread drops them, and they hold only plain ops and bitmap refs: Java draws
+  backgrounds, an ImageView's drawable and a container's selected child into them. Rasterizing on
+  the Android thread into a CGBitmapContext was the alternative: simpler lifetimes, but the
+  Android thread would pay the raster and a full-size image copy per frame.
+- Views that draw on records: a class that draws, a background drawable, an image node's drawable.
+  `ui_view_draw_background` and `_content` return whether the toolkit drew (gtk does); otherwise
+  Java draws AOSP's `drawBackground` (a ColorDrawable stays the toolkit's color) and ImageView's
+  `configureBounds` and `onDraw`. `setImageBitmap` wraps a BitmapDrawable.
+- Pacing: `records_draw_wanted` (headless posts the pass; uikit unpauses a CADisplayLink on UIKit's
+  run loop whose tick posts it, skipped while a flushed batch hasn't run there), `records_view_drawn`,
+  `records_draw_done` (uikit flushes). `DrawStayActivity`'s self-invalidating bar draws 121 times in
+  2000 ms on the iPhone 13 (60 Hz); with the pass posted at once instead, 319612 times, and
+  `atl-draw` fails.
+- Bitmaps: `gfx_bitmap` (gsk: the GdkTexture; record: RGBA from libpng, PNGs only; coregraphics: a
+  CGImage), with `Bitmap.Config.nativeInt` (AOSP's) as its config. BitmapFactory reads the
+  stream into a byte[] for `gfx_bitmap_decode`. `drawBitmap` records `OP_BITMAP` with its paint's
+  alpha; BitmapDrawable's paintable is `gfx_bitmap_drawable_new`.
+- `clipRect` is `gfx_canvas_clip_rect` (INTERSECT and DIFFERENCE; Region's other ops intersect, as
+  before): record keeps `clip` and `unclip` ops, gsk counts each save level's pushes on the
+  snapshot (`clipPath` too), coregraphics saves a gstate per clip.
+- Drawables: AOSP 10's container constant states (a copy builds its own children from theirs,
+  lazily), StateListState's `newDrawable`, ColorDrawable's and BitmapDrawable's states, a null base
+  `getConstantState`, LayerState sharing a child without a state (`dine-atl/doc/AOSP.md`).
+- Tests: `tests/harness/apk.py` compiles an optional `res/` (`aapt2 compile`, `link --java`); the
+  widgets APK's resources, shared rows (`run-widgets.sh`) and DrawActivity's clips, bitmap and
+  scrolled background (`draw.displaylist`); `run-draw.sh` fails gtk on unbalanced snapshot pushes;
+  smoke `atl-draw`; the graphics suite's `res/` and tests.
+- RenderNode is [M9](#m9-heavy)'s.
+- Open: findings in [M6a](#m6a-triage-and-fixes) (themed GradientDrawable backgrounds stop at Path,
+  `level-list` and `animation-list` XML, bitmap color filters, `clipRect`'s return value); a clip
+  under a perspective matrix on coregraphics; Choreographer stays timer-based (10 ms frames);
+  views redraw whole, without dirty rects; `Canvas(Bitmap)` and Bitmap's pixel natives stay
+  gtk-only; a background's offset while UIKit drives a scroll waits for Java's scroll report and
+  redraw; the display link on the Android thread's own run loop (saves a hop, unverified on iOS
+  27); a press on a selector row on the phone and gtk is unchecked by hand.
 
 #### M5c: text
 
@@ -883,6 +935,21 @@ Findings from M4b and M5 (M5's stages add and update them):
 - uikit's `keys.m` sends a hardware keyboard's keypad Enter as `KEYCODE_NUMPAD_ENTER` (160), which
   no Java Enter reader takes (EditText's Enter keys, `isConfirmKey`, touch mode, lists); gtk sends
   it as `KEYCODE_ENTER`. Whether Android 10's readers take 160 like Enter decides the fix.
+- A themed background drawn through GradientDrawable (RippleDrawable, InsetDrawable) stops at
+  `Path.native_reset` on records, its stack trace printed on every redraw, and `View.draw` stops
+  there: the view's own `onDraw` (an ImageButton's image) never runs. The widgets APK's ImageButton
+  (`ControlsActivity`) shows it on headless and the phone. Path joins the gfx slot in M5d.
+- Drawables without a constant state of their own get the base `getConstantState`'s null:
+  NinePatchDrawable, InsetDrawable, ScaleDrawable, ClipDrawable (DrawableWrapper's is commented
+  out), AnimatedVectorDrawable, ColorStateListDrawable, PictureDrawable. An app's
+  `getConstantState().newDrawable()` on one throws, and Resources reloads them (a `.9.png` decodes
+  on every load). AOSP 10 gives each a state.
+- `Drawable.createFromXml` has no `level-list` case (null), and AnimationDrawable's `inflate` is
+  commented out (an `animation-list` resource has no frames).
+- Color filters and tints never reach a bitmap's paint: `BitmapDrawable.setColorFilter` and
+  ImageView's `setColorFilter`/`setImageTintList` paths keep nothing, and coregraphics draws a
+  bitmap with its paint's alpha only.
+- `Canvas.clipRect` returns whether the rect itself is non-empty, not the resulting clip.
 
 **Done when:** the last triage's table (APK, stop before, stop after) is in this section, and each
 stop and finding is fixed, named in a later stage or under Not staged.
@@ -1032,6 +1099,9 @@ The stages after the choice take the letters after M8e.
 
 Compose (`compose_demo_app.apk`), SurfaceView and GLES, GL apps, and WebView: a `ViewGroup` backed
 by a webkitgtk widget (`android_webkit_WebView.c`, gtk-only), a ui node kind on WKWebView for iOS.
+RenderNode on the records backends: its natives build GskRenderNodes and are gtk-only;
+a node would record into a display list that an op of its parent's list draws, with its
+transform, alpha and clip ([Java](#java)).
 
 ## Tests
 

@@ -53,7 +53,7 @@ endian = 'little'
 EOF
 
 options=(--prefix="$OUT" --libdir=lib --buildtype=debugoptimized
-         -Dhost=embedded -Dloop=cfrunloop -Dui=uikit -Dgfx=record -Dtest_hooks=$hooks)
+         -Dhost=embedded -Dloop=cfrunloop -Dui=uikit -Dgfx=coregraphics -Dtest_hooks=$hooks)
 if [[ ! -f $BUILD/build.ninja ]]; then
   mv "$cross.new" "$cross"
   meson setup "$BUILD" "$ROOT/dine-atl" --cross-file "$cross" "${options[@]}"

@@ -36,6 +36,9 @@ module CArtBridge [system] {
     link "wolfssl"
     link "c++"
     link framework "CoreFoundation"
+    link framework "CoreGraphics"
+    link framework "ImageIO"
+    link framework "QuartzCore"
     link framework "Security"
     link framework "UIKit"
     export *

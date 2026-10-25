@@ -105,6 +105,22 @@ def _demo_viewtree(since: int) -> str | None:
     return viewtree_problem(resp["text"], (paths.ROOT / "dine-atl/tests/headless/demo_app.viewtree").read_text())
 
 
+_SPIN = re.compile(r"widgets spin (\d+) in (\d+) ms")
+
+
+# DrawStayActivity's self-invalidating bar: at most one draw pass per frame of the 60 Hz display
+def _spin_paced(since: int) -> str | None:
+    resp = client.call("log", {"op": "grep", "pattern": "widgets spin", "since": since, "src": ["syslog"],
+                               "text": True, "n": 5})
+    m = _SPIN.search(resp["text"])
+    if not m:
+        return "no \"widgets spin\" line"
+    draws, ms = int(m[1]), int(m[2])
+    if draws * 1000 > 65 * ms:
+        return f"{draws} draws in {ms} ms: more than one per frame"
+    return None
+
+
 # The app's own log line that says it started; checked after every relaunch.
 STARTUP = {"Dine": r"loaded \d+ apps"}
 ART_FAIL = ("art main threw", "a run is still active")
@@ -151,6 +167,12 @@ SCENARIOS = {
                  fail=ATL_FAIL),
             Step("Home", action="Home", ok=("nav: launcher root",)),
         ], uses_vm=True, needs_clean=True, alive=True),
+        Scenario("atl-draw", [
+            Step("atl", tap="atl"),
+            Step("run draw", tap="draw", ok=("widgets draw 3", "widgets draw done"), fail=ATL_FAIL, timeout=120),
+            Step("spin", ok=(r"widgets spin \d+ in \d+ ms",), fail=ATL_FAIL),
+            Step("Home", action="Home", ok=("nav: launcher root",)),
+        ], uses_vm=True, needs_clean=True, alive=True, check=_spin_paced),
         Scenario("atl-dialog", [
             Step("atl", tap="atl"),
             Step("run dialog", tap="dialog", ok=("dialog: presented",), fail=ATL_FAIL, timeout=120),

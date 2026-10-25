@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Builds an authored test APK: tests/harness/apk.py <src dir> <out.apk> [--classpath JAR]...
 
-<src dir> holds AndroidManifest.xml and src/**/*.java, compiled against ATL's android.* classes
-and any --classpath jars (not dexed into the APK).
+<src dir> holds AndroidManifest.xml, src/**/*.java and an optional res/; the Java, with the link's
+R.java, compiles against ATL's android.* classes and any --classpath jars (not dexed into the APK).
 """
 
 import argparse
@@ -27,15 +27,20 @@ def build(src: Path, out: Path, classpath: tuple[Path, ...] = ()) -> None:
         tmp = Path(tmp)
         classes = tmp / "classes"
         classes.mkdir()
-        sources = sorted((src / "src").rglob("*.java"))
+        gen = tmp / "gen"
+        base = tmp / "base.apk"
+        link = ["aapt2", "link", "-o", base, "--manifest", src / "AndroidManifest.xml", "-I", FRAMEWORK_RES]
+        if (src / "res").is_dir():
+            compiled = tmp / "res.zip"
+            subprocess.run(["aapt2", "compile", "--dir", src / "res", "-o", compiled], check=True)
+            link += ["--java", gen, compiled]
+        subprocess.run(link, check=True)
+        sources = sorted((src / "src").rglob("*.java")) + sorted(gen.rglob("*.java"))
         subprocess.run(["javac", "-g", "-Xlint:-options", "-source", "1.8", "-target", "1.8",
                         "-bootclasspath", CORE_JAR, "-cp", cp, "-d", classes, *sources], check=True)
         subprocess.run([D8, "--min-api", "27", "--lib", CORE_JAR,
                         *(a for f in (HAX_JAR, *classpath) for a in ("--classpath", f)),
                         "--output", tmp, *sorted(classes.rglob("*.class"))], check=True)
-        base = tmp / "base.apk"
-        subprocess.run(["aapt2", "link", "-o", base, "--manifest", src / "AndroidManifest.xml",
-                        "-I", FRAMEWORK_RES], check=True)
         # stored and 4-byte aligned, so ART maps the dex instead of inflating a copy
         with zipfile.ZipFile(base, "a") as apk:
             apk.write(tmp / "classes.dex", "classes.dex", compress_type=zipfile.ZIP_STORED)

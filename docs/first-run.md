@@ -286,10 +286,11 @@ tools/dine ios build-atl              # dine-atl uikit → out/ios/lib, its jars
   system roots and installed profiles). An app's own keystore never gets those roots.
 - dine-art's iOS build includes androidfw, libutils and libcutils for ATL's resource natives,
   without aapt2's PNG code (the SDK has no libpng) and libutils' epoll `Looper`.
-- dine-atl builds for iOS as a meson cross build (`-Dhost=embedded -Dloop=cfrunloop
-  -Dui=uikit -Dgfx=record`, build dir `out/ios/build/dine-atl`). It compiles no Java: the jars
-  and the JNI headers in `src/api-impl-jni/generated_headers` come from the Linux build, so
-  `tools/dine linux build atl` runs first.
+- dine-atl builds for iOS as a meson cross build (`-Dhost=embedded -Dloop=cfrunloop -Dui=uikit
+  -Dgfx=coregraphics`, build dir `out/ios/build/dine-atl`). It compiles no Java: the jars and the
+  JNI headers in `src/api-impl-jni/generated_headers` come from the Linux build, so
+  `tools/dine linux build atl` runs first. Bitmaps decode with ImageIO there; the headless build's
+  `record` backend decodes PNGs with the system libpng.
 - ICU's data is built into `libicudata.a` (`--with-data-packaging=static`, ~33 MB), as in Linux's
   system ICU; libcore never opens a data file.
 - iOS links use xtool's `ld64.lld` (`DINE_IOS_TOOLSET_BIN` in `env.sh`): the system one rejects

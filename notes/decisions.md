@@ -14,13 +14,28 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   `ATL_DBG_AGENT`, started from `main.c`'s window-ready poll) and `input_tap` in gtk `input.c`.
 - Upstream's `android.atl.GskCanvas` is `android.atl.ATLCanvas`; its `snapshot` field is `handle`,
   a `struct gfx_canvas` (gsk: the GtkSnapshot). Save, restore, the transforms, rect, round rect and
-  lines are shared natives behind `gfx_canvas_*` (`src/shared/android_atl_ATLCanvas.c`; gsk's
-  bodies in `src/backends/gfx/gsk/canvas.c`); bitmaps, paths, text, clips and RenderNode stay in
-  upstream's file, renamed `android_atl_ATLCanvas.c` (gtk). Port upstream GskCanvas edits there.
+  lines, `drawBitmap` and `clipRect` are shared natives behind `gfx_canvas_*`
+  (`src/shared/android_atl_ATLCanvas.c`; gsk's bodies in `src/backends/gfx/gsk/canvas.c`, which
+  counts each save level's pushes instead of Java's `push_history`); paths, text, `clipPath` and
+  RenderNode stay in upstream's file, renamed `android_atl_ATLCanvas.c` (gtk). Port upstream
+  GskCanvas edits there.
+- Bitmap's handle is a `gfx_bitmap` (gsk: the GdkTexture, `src/backends/gfx/gsk/bitmap.c`):
+  creation, size, ref, recycle and BitmapFactory's decode (Java reads the stream into a byte[]) are
+  shared; snapshots and pixel access stay in upstream's Bitmap natives. `Config.gdk_memory_format`
+  is `nativeInt` (AOSP's), mapped by `gsk/memory_format.h`. BitmapDrawable's paintable is
+  `gfx_bitmap_drawable_new`.
 - View's and ViewGroup's draw natives (`native_drawBackground`, `native_drawContent`,
   `native_drawChildren`, `native_drawChild`) and `Drawable.native_draw` are shared behind
   `ui_view_draw_*` and `gfx_canvas_draw_drawable`; gtk's bodies are in
-  `src/backends/ui/gtk/view.c` and `src/backends/gfx/gsk/canvas.c`.
+  `src/backends/ui/gtk/view.c` and `src/backends/gfx/gsk/canvas.c`. `native_drawBackground` and
+  `native_drawContent` return whether the toolkit drew: on records Java draws the background
+  (AOSP's `drawBackground`) and ImageView its drawable (AOSP's `configureBounds`).
+- Drawables follow AOSP's constant states: the base `getConstantState` is null, a container's copy
+  makes its own children from theirs, ColorDrawable and BitmapDrawable have states. Port upstream
+  drawable code onto that; `LayerState` shares a child without a state.
+- The `coregraphics` gfx backend (iOS) is record's display list (`src/backends/gfx/record/`) plus a
+  CoreGraphics replay and ImageIO bitmaps; uikit replays each view's list in a layer and paces
+  draw passes with a CADisplayLink.
 - The records ui backends run a draw pass upstream has no counterpart for (`records/ui.c`): a
   drawing view's `draw()` records into its display list through `View.atlDraw`.
 - EditText's text is Java's Editable (AOSP's TextView setText, ChangeWatcher and listener list, in

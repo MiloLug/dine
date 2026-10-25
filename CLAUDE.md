@@ -102,7 +102,7 @@ the rest `dine-atl/tests/headless/run-*.sh`; the gtk checks run on a hidden disp
   **Never build the two Linux ones at once:** both write `src/api-impl-jni/generated_headers`.
 - In Dine, artbridge owns the one VM; the Android main thread is an 8 MiB pthread with its own
   CFRunLoop. uikit queues UIKit changes on it and sends them to UIKit's thread once per layout
-  pass; UIKit's thread must never wait for the Android one.
+  or draw pass; UIKit's thread must never wait for the Android one.
 - dine-art builds with its own make build and gcc, in-tree (`dine-art/out`, ~2 GB);
   `____TARGET=ios` cross-compiles. Make doesn't track flag changes: after editing cflags in an
   `.mk`, delete the module's `out/host/*/obj` **and** `out/host/*/gen` intermediates (stale
