@@ -31,6 +31,27 @@ Facts come from the findings files (`findings-runtime.md`, `findings-framework.m
 - On PC, no running system service unless the alternatives are worse.
 - The VM uses threads wherever the platform allows.
 - Works on all backends: iOS uikit, Linux gtk, Linux headless.
+- Apps see SDK level 21, but the layer may follow a later Android version's behaviour where that
+  is easier or saner (decided; the user: "We don't aim to fully follow sdk 21 - we could use
+  features from later sdk if they are easier or more sane").
+- All Android data of one install lives under one prefix, as in Wine
+  ([Prefix](#prefix-decided)).
+
+## Platform mechanisms (decided)
+
+Each backend uses the real mechanism its OS has for a system feature (alarms, background work,
+start at boot, notifications, on-demand start): an iOS alarm where iOS has one, systemd or D-Bus
+where Linux has a standard service. Where the OS has none, the feature is off and nothing breaks.
+A separate Linux service for what systemd and D-Bus lack is optional, planned on its own at the
+lowest priority ([ATL-29](../general-todo.md#atl-29)). The per-service mappings are
+`notes/service-impl.md` and `notes/background-processes.md`.
+
+Starting apps at login or when Dine starts, and enabling or stopping them as services, is service
+management: a separate proposal, `notes/service-management/proposal.md`
+([ATL-30](../general-todo.md#atl-30)). In the multi-app stages an app starts when it is opened or
+called. The user: "this autostart and all will be completely separate from multi-apps changes. On
+the multi-app stage "done" for services is when you can manually start microG and start an app
+that requires it, and they will work".
 
 ## Two platform shapes
 
@@ -148,14 +169,18 @@ picks what to drop, and checks that a drop freed it:
 - Binder objects inside a Parcel travel as handles; each side keeps a handle table.
 - Identity: every call carries the caller's package and virtual uid; `Binder.getCallingUid` and
   `getCallingPid` return them. A package's uid is assigned at install and kept in the registry.
-- microG: `FLAG_SYSTEM` and a spoofed signature for GmsCore come from the registry; its caller
-  checks get real per-call identity.
+- No package gets special treatment; the user: "no special treatment for microG (system flags or
+  whatever)". microG's clients accept a target with a Google or microG signature
+  (`findings-apps.md`), so no system flag is needed. Proposed: signature spoofing becomes the
+  generic Android mechanism (an app that asks for `android.permission.FAKE_PACKAGE_SIGNATURE` gets
+  the signature it declares; how it declares it is unchecked here) in place of ATL's list of GMS
+  package names (`ATLLoadedApp.play_services`). Caller checks get real per-call identity.
 
 ## Registry (all backends, proposed)
 
-- One SQLite database plus an APK store: `<data>/dine/registry.db` (WAL: many readers, one
-  writer) and `<data>/dine/apks/<pkg>/base.apk`. A row per package: uid, signatures, components,
-  intent filters, provider authorities, metadata, features, label, icon, a system flag.
+- One SQLite database plus an APK store in the prefix (WAL: many readers, one writer). A row per
+  package: uid, signatures, components,
+  intent filters, provider authorities, metadata, features, label, icon.
 - Any app's `PackageInstaller` session, `ACTION_INSTALL_PACKAGE`, or the CLI's `--install` parses
   the APK and writes its row in one transaction. Every app's `PackageManager` reads from it:
   `getInstalledPackages` with flags, `getPackageArchiveInfo`, intent resolution across packages,
@@ -165,10 +190,29 @@ picks what to drop, and checks that a drop freed it:
   its own `apps` table.
 - An APK without a launcher activity installs (extensions); M8a's rule that rejects it goes.
 
-## Linux: the static model (proposed, awaiting review)
+## Prefix (decided)
 
-No Dine service runs. The fixed places are the registry above and a runtime dir:
-- A running app listens on `$XDG_RUNTIME_DIR/dine/<pkg>.sock` and holds `<pkg>.lock` for its whole
+The user's words: "we need a prefix for all of the android data, like wine does, so we don't
+spread it all over the host and can make it simpler in iOS too". The registry, the APK store, every
+app's data, caches (today `/tmp/atl_cache/<pkg>`) and shared storage live under it.
+- Layout (proposed): Android's paths inside the prefix (`data/app/<pkg>/`, `data/data/<pkg>/`,
+  `storage/emulated/0/`), so the paths apps hardcode (`/data/data/<pkg>`, `/sdcard`) map into it
+  the way `libc_bio_path_overrides.c` already maps `/storage/emulated/0/`.
+- Sockets and locks (proposed): in a runtime dir named after the prefix's device and inode, as
+  wineserver names its socket dir, under `$XDG_RUNTIME_DIR`, else `/tmp`; a socket can't live on
+  every filesystem a prefix may sit on.
+- Linux: the prefix is today's data base (`$ANDROID_APP_DATA_DIR`, else
+  `$XDG_DATA_HOME/android_translation_layer`). iOS: it can't stay in Caches, which iOS may purge
+  (`findings-hosting.md`).
+- Shared storage (decided): one per prefix that every app sees, as Android's `/sdcard`; today each
+  app's external storage is a folder in its own data dir. On iOS only the shared storage is visible
+  to the host (the Files app, other iOS apps); app data stays private. The user: "only shared seen
+  to host (at least on iOS, on linux of course I can go the dine's root and list all files)".
+
+## Linux: the static model (proposed, holes reviewed)
+
+No Dine service runs. The fixed places are the registry above and the prefix's runtime dir:
+- A running app listens on `<runtime dir>/<pkg>.sock` and holds `<pkg>.lock` for its whole
   life. The kernel releases the lock when the process dies, so a dead app leaves no stale entry.
 - To reach app X: connect to `X.sock`; if X's lock is free, exec `android-translation-layer
   --package X` under a spawn lock, then connect. `startActivity` (and its result), `bindService`,
@@ -181,12 +225,56 @@ No Dine service runs. The fixed places are the registry above and a runtime dir:
   per lock file in each process.
 - Package events: each running app watches the registry with inotify and delivers
   `PACKAGE_ADDED/REMOVED` to its own receivers. Implicit broadcasts go to every live socket; apps
-  that aren't running get only explicit ones, by being started.
+  that aren't running get only explicit ones, by being started (decided for every backend, as
+  Android 8 and later do: "starting all apps on some event is not a good idea, especially on
+  desktop").
 - Desktop: a `.desktop` entry runs `android-translation-layer --package <pkg>`; a second launch
   connects to the running app instead of booting a second VM.
 - Costs against a server: nothing runs while no app runs, so alarms and jobs of a closed app need
   the OS scheduler (systemd user timers) or wait; closed apps miss implicit broadcasts; every app
   exports reference-counted objects for binders passed through Parcels (the biggest unknown).
+
+### Holes in the static model (2026-11-01)
+
+The user answered "ok" to lifetime, start race, activities across apps and binders, which are
+**decided**; the rest stay proposed.
+- Lifetime (decided): closing the window ends the process today (`atl_exit`), the cli build ends
+  with its last activity, and an app without a launcher activity exits (`findings-hosting.md`). A
+  process started for `bindService` (microG) has no activity. A process lives while it has an
+  activity, a started or foreground service, or a bound client, and exits after a short idle grace
+  period.
+- Start race (decided): two clients, or a client and a desktop launch, can both find X's lock free
+  and exec X. X takes `X.lock` before it listens; a second X that finds the lock held forwards its
+  intent to the first and exits. The spawn lock only saves the double exec. A client that finds the
+  lock held but no socket yet retries until a deadline.
+- Lock kind: POSIX locks drop on any close of the file; OFD locks (`F_OFD_SETLK`) don't, but
+  `F_OFD_GETLK` reports no pid. Lean: an OFD lock for liveness, the holder's pid written into the
+  lock file for the `SO_PEERCRED` check.
+- Runtime dir: it follows the prefix ([Prefix](#prefix-decided)), so a test run with a temporary
+  prefix doesn't reach the user's running apps. A unix socket path holds at most 108 bytes: a short
+  hash of the package as the socket name when the path is too long.
+- State that system_server keeps across process death: a PendingIntent (a notification, a callback
+  held by microG) must fire after its owner exits. Lean: such records are rows in the registry
+  database (owner, intent, flags, a generation); `send()` reads the row, starts the owner if needed
+  and delivers; cancel deletes the row. What wakes a closed app at a time or at login follows
+  [Platform mechanisms](#platform-mechanisms-decided).
+- Descriptors in Parcels: `ParcelFileDescriptor` (FileProvider shares, F-Droid's install URI,
+  `ContentProvider.openFile`) and `CursorWindow` need descriptors passed with `SCM_RIGHTS`;
+  `CursorWindow` on a memfd.
+- Binders in Parcels (decided): handles are relative to the connection, so a callback passed to
+  the peer needs no new connection. Only a binder owned by a third app needs a connection to its
+  owner and a transfer step that keeps a reference until the receiver claims it. The owner keeps
+  an object alive while any peer holds a handle and drops a peer's handles when its connection
+  closes.
+- Activities across apps (decided): a task can't span processes, so an activity of B started by A
+  (`startActivityForResult`, a share target) opens in B's own window, transient for A's window
+  where the desktop allows it. The result goes back over the connection; it is lost if A's process
+  has exited.
+- A service app that dies: clients bound with `BIND_AUTO_CREATE` start it again with a backoff and
+  reconnect, as Android restarts a bound service.
+- An APK replaced while its app runs: the process ends, as on Android, and the new version starts
+  on next use. The APK is written under a versioned name and fsynced before the registry row points
+  at it; the old file goes after the commit.
 
 ## Slots (proposed)
 
@@ -233,15 +321,53 @@ Reaching other apps on Linux:
 
 - Where saved Bundles live on one-VM backends: a system record in the VM plus a file per app in its
   data dir (my lean).
-- Whether Linux keeps saved state across process death (proposed: no; the desktop doesn't kill apps
-  for memory).
+- Whether Linux keeps saved state across process death, asked, not answered. The ends of a Linux
+  app process: the user closes the window (activities finish; Android drops their state), a crash
+  or a logout (Android starts fresh after a crash and after a reboot), or a kill from outside (the
+  kernel's OOM killer, systemd-oomd), after which Android reopens an app where it was (Android
+  knowledge, unsourced here). Lean, changed from no to yes: the one-VM code that writes each
+  activity's Bundle to a file runs on Linux too; a clean end (close, crash, SIGTERM at logout)
+  deletes the file, and a start that finds it restores from it. The cost is that deletion, and the
+  gtk build then runs the restore path iOS depends on.
 - Who writes the registry on iOS when no app runs: the VM can start just to install, so M8a's
   VM-free APK reader may only be needed for labels and icons, or not at all if the rows hold them.
 - Cost of an Android main thread per app (8 MiB virtual stack each today).
-- Implicit broadcasts to apps that aren't running: SDK 21 apps may expect manifest receivers to
-  fire.
-- The gtk D-Bus intent API: keep it as an adapter for desktop callers or remove it.
+- The gtk D-Bus intent API, proposed: keep it. Under
+  [Platform mechanisms](#platform-mechanisms-decided) D-Bus activation is how the Linux desktop
+  starts an app from its notification or launcher entry, so it becomes the gtk build's entry into
+  the same delivery the sockets use. Not answered yet.
 - A per-app okhttp pool, and which other shared caches must be split.
 - JIT with an APK's own `.so`: native code of one app can write anywhere, and the
   [Native faults](#native-faults-one-vm-decided) bar no longer holds (`findings-native-faults.md`
   problem 16).
+
+Found on 2026-11-01, proposed leans:
+- Shared finite resources (one-VM): the Java heap, the JNI global table (51,200 entries) and the
+  descriptor table are shared, and the next caller fails when one is full, which may be another
+  app (`findings-runtime.md` Memory). Lean: a budget per app for each; the app over its budget is
+  the one that fails or is dropped. `Runtime.maxMemory` and `getMemoryClass` report the app's heap
+  budget, since apps size their caches from them. Needs the live heap per app (a probe).
+- Background CPU (one-VM): interpreted on the phone, background apps that keep running take CPU
+  from the one on screen. Android 14 freezes cached apps 10 s after they become cached
+  (`findings-apps.md`). Open: freeze only under memory pressure (the current call), or freeze
+  background apps after a delay unless they play audio, run a foreground service or serve a running
+  app.
+- No timeout on sync calls between apps (decided; the user: "ok, no limit"). Calls that
+  legitimately take long: some microG calls do network work before they return (a sign-in token,
+  from memory), and opening a file from a cloud documents provider may block for the download
+  (from memory). Tachiyomi's extensions make no calls between apps: their code runs inside
+  Tachiyomi. When an app's main thread waits on another app past the hang limit, the waited-on app
+  is the one marked as not responding; ending it fails the call and the waiting app goes on. A
+  background thread waits as long as the target lives. Android's limits on a service's start, a
+  broadcast receiver and a provider's publish stay, as hangs of the target. A call to a frozen app
+  thaws it; a call to a dropped or dead app fails with `DeadObjectException`.
+- Nested calls: a call back into a thread that waits for a reply runs on that thread, as binder
+  does, so a callback that needs a monitor the caller holds doesn't deadlock.
+- Activities across apps (one-VM): an activity of B started by A sits in A's task and window, as
+  on Android; UIKit upcalls take the record of the activity's app, not the window's.
+- `android:process` is ignored: every component of a package runs in its one app record or
+  process, as ATL does today.
+- Trust, to confirm with the user: apps are trusted. Containment protects apps from each other's
+  bugs, not from a malicious app (reflection reaches shared statics; one sandbox on iOS).
+- After iOS ends Dine: the apps that were running show as dropped and are restored from their
+  Bundles when opened, not all at start.

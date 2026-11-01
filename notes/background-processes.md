@@ -83,6 +83,7 @@ These points are iOS-knowledge-level for Android as well; none was verified agai
 | Foreground service, user-initiated job | `BGContinuedProcessingTask`, or a keep-alive mode | possible; untested |
 | App's own downloader on threads (OkHttp, a manga downloader) | foreground only by default | stops about 30 s after backgrounding unless one of the rows above or a keep-alive applies |
 | `AlarmManager` exact times | scheduled local notification at that time | the notification shows; app code does not run at that time |
+| `AlarmManager.setAlarmClock` (an alarm clock app) | AlarmKit (iOS 26 and later, recalled from WWDC25, unverified): a system alarm that rings like the Clock app's | possible; question 9 |
 | FCM push | none | needs APNs, a relay from FCM to APNs and Play Services stubs |
 
 ## Complex downloaders
@@ -118,6 +119,8 @@ download freezes until Dine is in front again.
    do in Dine (start a continued task, start a keep-alive, or nothing)?
 8. A keep-alive keeps every Android app in the shared process alive, not only the one that asked.
    Is that acceptable, and is it per-app opt-in?
+9. Does AlarmKit exist on iOS 27 and work for a free-account sideloaded app, and can an alarm's
+   action start the Android app's PendingIntent?
 
 ## Options
 

@@ -122,10 +122,15 @@ Each stays open until a task in `todo.md` B1 settles it.
    under the gfx backend, CoreFoundation, libdispatch); ICU's own mutex. sqlite takes its mutexes
    through a replaceable layer (`SQLITE_CONFIG_MUTEX`, U). For a fault inside code whose locks are
    unknown, the only safe outcome is ending Dine, so a framework fault on bad app input (a font, an
-   image) ends Dine.
+   image) ends Dine. ART's own mutexes are visible: release builds record each one a thread holds,
+   one slot per lock level, readable with `Thread::GetHeldMutex(level)` (`SetHeldMutex` outside
+   the `kDebugLocking` block, `art/runtime/base/mutex-inl.h:101-165`; `thread.h:1075,1747`).
+   Monitors are not recorded there (`mutex-inl.h:160-163`). C
 6. Java monitors: a thread that entered `synchronized` on an object other apps also use, then
-   faulted in a native, keeps that monitor. Whether ART 10 can list a thread's held monitors from
-   the handler's side is U, and no record says which objects are shared.
+   faulted in a native, keeps that monitor. `Monitor::VisitLocks` lists the monitors one Java frame
+   holds (`art/runtime/monitor.cc:1423`), but it runs from a stack walk, so not inside the handler.
+   C. Walking a parked thread's Java frames from a normal Dine thread afterwards: U. No record says
+   which objects are shared.
 7. Misattribution: memory corrupted earlier through app A can fault later on app B's thread. B is
    dropped and A keeps running. The handler can't tell the two apart. Corruption that never faults
    isn't caught at all.

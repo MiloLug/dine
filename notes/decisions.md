@@ -156,7 +156,9 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   (`EarlyPackageParser`, `-DBuild.VERSION.SDK_INT`, `--sdk-int` and `create_vm`'s `sdk_int` in
   `main.c`, now `startup.c`) is gone; a minSdk above it logs and runs (`PackageParser`). Drop
   upstream SDK_INT edits there. bionic_translation's native `ro.build.version.sdk` (`libc.c`, Linux
-  only) also says 21; raising ours past it needs a local patch of that plain clone.
+  only) also says 21; raising ours past it needs a local patch of that plain clone. Behaviour may
+  follow a later Android version where that is easier or saner (implicit broadcasts reach running
+  apps only, as on Android 8 and later).
 - `Window` keeps the system bar state (`styleBars`, `updateFrame`, real `addFlags`/`setFlags`);
   `activity_focus` and the `set_frame` native send the shown activity's frame to
   `ui_window_set_frame` (gtk: header bar CSS). `View.setSystemUiVisibility` calls the gtk-only

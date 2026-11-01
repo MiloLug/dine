@@ -62,7 +62,7 @@ theme, running services, `:38-45`); `ContextImpl.atl_loaded_app` (`app/ContextIm
 | `getInstalledPackages(flags, user)`, `getInstalledApplications` | null | 1850, 2134 |
 | `getPackageInfo` | primary generated with the flags; others through the gate; GET_META_DATA, GET_SIGNATURES (v1 only, `PackageParser.java:454,614-640`) and reqFeatures (`:326-329`) honoured | 1395-1412 |
 | `getApplicationInfo` | the primary's cached info whatever the flags | 1606-1616 |
-| `getLaunchIntentForPackage` | first LAUNCHER activity of the primary or a visible package | 1452-1468 |
+| `getLaunchIntentForPackage` | first LAUNCHER activity of the primary or a visible package, an `ACTION_MAIN` intent without `FLAG_ACTIVITY_NEW_TASK` (AOSP's sets it, unchecked here) | 1452-1468 |
 | `resolveActivity`, `queryIntentActivities` | the primary only, action match only; http(s) VIEW returns a fake `atl.browser` | 2232-2330 |
 | `queryIntentServices` | `intent.getPackage()` through the gate, else the primary | 2475-2500 |
 | `resolveService` | null | 2456 |
@@ -125,3 +125,5 @@ Nothing is implemented. C:
   (`View.java:2697`).
 - A configuration change updates `sys_config` in place; no `onConfigurationChanged` dispatch or
   activity recreation was found.
+- `ActivityManager.getMemoryClass()` returns 20 and `getLargeMemoryClass()` 60, fixed
+  (`app/ActivityManager.java:98-99`).

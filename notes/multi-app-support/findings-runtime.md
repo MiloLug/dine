@@ -134,6 +134,9 @@ inference, unchecked. The one-runtime rule and the second-VM options are in
 - No `-Xmx` is passed (`artbridge.cpp:115-118`, `dine-atl/src/shared/startup.c:179-196`): the VM
   gets ART's defaults, 2 MB initial and 256 MB maximum for all apps together
   (`art/runtime/gc/heap.h:131-132`), growth limit equal to the maximum. C
+- `Runtime.maxMemory()` is `JVM_MaxMemory()`, the VM's limit (`libcore/ojluni/src/main/native/
+  Runtime.c:59-61`). An allocation that fails after the GCs throws `OutOfMemoryError` on the
+  allocating thread (`art/runtime/gc/heap.cc:1783-1785`), whichever app filled the heap. C
 - No per-app accounting. Per-thread cumulative allocation counts exist only with allocation stats
   on (`heap-inl.h:173-179`). Live heap per app needs a stop-the-world walk with `VisitObjects` or
   `CountInstances` (`heap.h:272,370`), grouped by class loader. C (the API exists)

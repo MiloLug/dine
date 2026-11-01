@@ -81,6 +81,19 @@ either shader fills in its color (Canvas's `drawRoundRect` special case draws a 
 bitmap at 0,0). AdaptiveIconDrawable's `draw()` (commented out) and rounded image views use
 BitmapShader. Owner: M6b's drawables.
 
+### ATL-29
+
+**An optional Linux service for alarms and background work of apps that aren't running**, only
+where systemd or D-Bus have no standard mechanism for it. Planned on its own; without it nothing
+breaks and those alarms don't fire. Lowest priority. Context: `notes/multi-app-support/design.md`
+"Platform mechanisms".
+
+### ATL-30
+
+**Service management:** a slot that lets the user enable, start and stop apps as services (systemd
+user units on Linux, an internal manager in Dine on iOS) with a UI for it. A proposal, separate
+from multi-app support: `notes/service-management/proposal.md`.
+
 ## DINE
 
 ### DINE-6

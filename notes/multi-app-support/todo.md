@@ -102,7 +102,9 @@ found are in `findings-native-faults.md`.
 ## MA1: registry and install
 
 - `[ ]` Registry schema (SQLite, WAL) and APK store, written in one transaction per install; uid
-  per package at install; a system flag (microG).
+  per package at install.
+- `[ ]` Signature spoofing through `FAKE_PACKAGE_SIGNATURE` for any app that asks, in place of the
+  GMS package-name list.
 - `[ ]` `PackageInstaller` sessions (`createSession`, `openWrite`, `fsync`, `commit` with a
   PendingIntent, `STATUS_PENDING_USER_ACTION`), `ACTION_INSTALL_PACKAGE` with
   `EXTRA_RETURN_RESULT`, `ACTION_UNINSTALL_PACKAGE`; the CLI's `--install` writes the same rows.
@@ -170,6 +172,7 @@ found are in `findings-native-faults.md`.
   and `restoreHierarchyState`, `onRestoreInstanceState`, a Bundle to `onCreate`.
 - `[ ]` Bundles held outside the app and on disk (one-VM backends); restore after a drop and after
   iOS ends Dine.
+- `[?]` Linux: restore after a kill from outside the app (`design.md` "Open design points").
 - `[ ]` `onTrimMemory` (`TRIM_MEMORY_UI_HIDDEN`, `TRIM_MEMORY_BACKGROUND`), `onLowMemory`,
   `registerComponentCallbacks`.
 - `[ ]` Configuration changes: `onConfigurationChanged` or recreation with saved state.
@@ -194,8 +197,9 @@ found are in `findings-native-faults.md`.
 - `[ ]` `getCallingUid`, `getCallingPid`, `getRunningAppProcesses` from the transport.
 - `[ ]` `startActivity` and `startActivityForResult` into another package; `bindService`,
   `unbindService`, `onServiceDisconnected`; providers across apps (CursorWindow over shared
-  memory); broadcasts across apps.
-- `[?]` The gtk D-Bus intent API: adapter or removal.
+  memory); broadcasts across apps (implicit ones only to running apps; an explicit one starts its
+  target).
+- `[?]` The gtk D-Bus intent API: kept as the desktop's entry point (proposed, `design.md`).
 - Done when: a client APK binds a service APK and queries its provider in both the headless test
   mode and two headless processes, with the same results.
 
@@ -211,7 +215,9 @@ found are in `findings-native-faults.md`.
 
 - `[ ]` F-Droid: install an app and open it in a new window.
 - `[ ]` Mihon or TachiyomiSY: install extensions from a repo and load them in-process.
-- `[ ]` microG shared by two apps: `FLAG_SYSTEM`, a spoofed signature, caller checks.
+- `[ ]` microG started by hand, then an app that needs it: both work (bind, calls, caller checks).
+  Starting apps at login or with Dine is [ATL-30](../general-todo.md#atl-30), not a multi-app
+  stage.
 - `[ ]` An app that opens a second window of itself through `NEW_DOCUMENT` or `MULTIPLE_TASK`.
 
 ## Docs to update
