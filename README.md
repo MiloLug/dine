@@ -3,6 +3,8 @@
 Goal: run Android apps on iPhone via ATL + ART. Most work happens on Linux (ATL/ART,
 `-Xint` reproduces the no-JIT iPhone situation); only iOS-specific parts need the device.
 
+<img src="docs/assets/launcher-preview.gif" alt="Dine launcher on iPhone: ATL test apps" width="240">
+
 ```sh
 source env.sh          # for direct tool use; tools/dine sources it itself
 tools/dine --help      # the single entry point: ios, linux, test, dbg
