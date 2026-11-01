@@ -48,6 +48,7 @@ tools/dine linux build [bionic|art|opensles|atl|atl-headless ...]   # default: a
 tools/dine linux smoke [check...] [--list]
 tools/dine test runtime [fetch|build|run|all] [-f REGEX] [--network] [--update-expectations]
 tools/dine test framework [-f REGEX] [--gtk] [--update-expectations]
+tools/dine test apps [-f REGEX] [--gtk] [--update-expectations]       # real APKs to their log markers
 tools/dine test unit                     # harness + tools/py unit tests
 tools/dine dbg start-server [--target gtk --app <apk>] | smoke [--network] [--list] | stop-server
 ```
@@ -78,6 +79,9 @@ Test suites live in the repo that owns the code (`tests/README.md` has the map);
 framework suite (`dine-atl/tests/framework/`, JUnit 3 APKs for `android.*`) are graded against
 their `expectations/` (exit 1 = regression). After a fix makes tests pass, rerun with
 `--update-expectations`; the file changes inside the fork that owns the suite. No linters yet.
+
+**Never commit a third-party APK** (an app we didn't write) to any repo: they live in gitignored
+`third_party/apks/` under the names in `docs/first-run.md` §8, and a new one gets a row there.
 
 Smoke tests: iOS `tools/dine dbg smoke` (dev build, after `dbg start-server`; `--network` adds
 **run https**), Linux `tools/dine linux smoke` (after `linux build`; gd runs the gtk build,

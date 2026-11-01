@@ -7,6 +7,18 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - Our delta: `git diff upstream/master...dine`. Local `master` lags upstream.
 - Upstream isn't merged: read its commits since the last merge and reimplement the wanted ones
   by hand.
+- Vibrator: upstream's gudev natives build only with gtk; headless and uikit take no-op natives
+  (`src/shared/android_os_Vibrator.c`) until M7's services slot. Port upstream Vibrator edits into
+  the gtk file.
+- Path is ours: a `struct gfx_path` of verbs and points (`src/shared/path.c`, arcs and round
+  rects as cubics) behind `android.graphics.Path`'s one handle; upstream's GskPath natives and
+  `getGskPath()` are gone (gsk builds a GskPath per draw, `gsk_path_from_gfx`). Port upstream Path
+  fixes into the shared code.
+- Shaders are ours: Linear, Radial and SweepGradient keep their fields and make a
+  `struct gfx_shader` (`src/shared/shader.c`) on first use; `Shader.TileMode` is AOSP's order.
+- Nine-patches load as AOSP 10's: BitmapFactory reads `npTc` into `Bitmap.getNinePatchChunk`
+  (`src/shared/ninepatch.c`) and Drawable makes the NinePatchDrawable from the chunk; upstream's
+  file-path NinePatchDrawable and `Drawable.native_paintable_from_path` are gone.
 - `src/api-impl/build.xml` (the ant path) runs `<depend closure="true">`: javac `-h` rewrites only
   the headers of classes it compiles, and a header holds inherited constants. Its gap:
   [ATL-1](bug-tracker.md#atl-1).
@@ -16,9 +28,9 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   a `struct gfx_canvas` (gsk: the GtkSnapshot). Save, restore, the transforms, rect, round rect and
   lines, `drawBitmap` and `clipRect` are shared natives behind `gfx_canvas_*`
   (`src/shared/android_atl_ATLCanvas.c`; gsk's bodies in `src/backends/gfx/gsk/canvas.c`, which
-  counts each save level's pushes instead of Java's `push_history`), and so is `drawText`; paths,
-  `clipPath` and RenderNode stay in upstream's file, renamed `android_atl_ATLCanvas.c` (gtk). Port
-  upstream GskCanvas edits there.
+  counts each save level's pushes instead of Java's `push_history`), and so are `drawText`,
+  `drawPath`, `clipPath`, `drawArc` and `saveLayer`; RenderNode stays in upstream's file, renamed
+  `android_atl_ATLCanvas.c` (gtk). Port upstream GskCanvas edits there.
 - Text is shared over `gfx_text_*`, in UTF-16 units: Paint's text natives
   (`src/shared/android_graphics_Paint.c`) and `android.text.Layout`, a C line array whose lines the
   backend breaks (`src/shared/android_text_Layout.c`); gsk's Pango is `src/backends/gfx/gsk/text.c`.
@@ -100,8 +112,9 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - Paintable ownership: a native that makes one hands over its ref; Java takes it with
   `adoptPaintable` (NinePatchDrawable, `Drawable(long)`), `setPaintable` refs a borrowed one
   (BitmapDrawable). DrawableContainer has no constructor: `Drawable()` calls its
-  `native_constructor`. ContainerPaintable refs its child; NinePatchPaintable frees its texture
-  and chunk. Port upstream drawable constructors that way.
+  `native_constructor`. ContainerPaintable refs its child; gsk's NinePatchPaintable
+  (`src/backends/gfx/gsk/ninepatch.c`) frees its texture and nine-patch. Port upstream drawable
+  constructors that way.
 - C code that a post, a GTK callback or host startup runs is in the Android thread's base JNI
   frame, which never pops: `task_move`, `activity_close_all`, `atl_upcall_display_changed` and
   WrapperWidget's `get_property` push a local frame, other spots delete their refs.

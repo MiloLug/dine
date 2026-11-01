@@ -1,0 +1,6 @@
+{
+  "adaptive-icon": {
+    "expect": "fail",
+    "reason": "Region.nativeConstructor in its constructor: Region is gtk-only (M6a)"
+  }
+}

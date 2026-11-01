@@ -1,8 +1,4 @@
-import os
-import tempfile
-import time
 import unittest
-from pathlib import Path
 from unittest import mock
 
 from dine import linux
@@ -47,43 +43,3 @@ class LinuxSmokeTest(unittest.TestCase):
         with mock.patch.object(linux, "CHECKS", [linux.Check("a", "a", lambda: None)]):
             self.assertEqual(linux.smoke([], out=lines.append), 0)
         self.assertTrue(lines[-1].startswith("smoke passed: a ("))
-
-
-class GdTest(unittest.TestCase):
-    """_gd against a stub ATL that records its pid, which is also its process group."""
-
-    def gd(self, body: str) -> tuple[str | None, int]:
-        with tempfile.TemporaryDirectory() as tmp:
-            stub = Path(tmp, "atl")
-            stub.write_text(f"#!/bin/sh\necho $$ > {tmp}/pid\n{body}\n")
-            stub.chmod(0o755)
-            with mock.patch.object(linux, "_gtk_env", lambda: dict(os.environ)), \
-                    mock.patch.object(linux.shutil, "which", lambda _: str(stub)), \
-                    mock.patch.object(linux, "LOG_DIR", Path(tmp)), mock.patch.object(linux, "GD_TIMEOUT", 1):
-                problem = linux._gd()
-            return problem, int(Path(tmp, "pid").read_text())
-
-    def assertGroupGone(self, pgid: int):
-        # the killed background child lingers as a zombie until init reaps it
-        deadline = time.monotonic() + 2
-        while time.monotonic() < deadline:
-            try:
-                os.killpg(pgid, 0)
-            except ProcessLookupError:
-                return
-            time.sleep(0.05)
-        self.fail(f"process group {pgid} still alive")
-
-    def test_on_resume_passes_and_kills_the_group(self):
-        problem, pgid = self.gd("echo '- onResume - yay!' >&2\nsleep 30 & sleep 30")
-        self.assertIsNone(problem)
-        self.assertGroupGone(pgid)
-
-    def test_timeout_kills_the_group(self):
-        problem, pgid = self.gd("sleep 30 & sleep 30")
-        self.assertRegex(problem, r"^no onResume in 1 s; log: ")
-        self.assertGroupGone(pgid)
-
-    def test_exit_before_on_resume(self):
-        problem, _ = self.gd("exit 3")
-        self.assertRegex(problem, r"^exit status 3 before onResume")

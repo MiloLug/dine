@@ -2,12 +2,9 @@
 widgets APK's drawing, on a hidden display (display.py); the headless build runs demo_app and the
 looper, dialog, nav, views and widgets APKs. Needs a prior `tools/dine linux build`."""
 
-import os
-import shutil
 import signal
 import subprocess
 import sys
-import tempfile
 import time
 from dataclasses import dataclass
 from typing import Callable
@@ -15,18 +12,15 @@ from typing import Callable
 from . import display, paths
 from .paths import DineError
 
-ON_RESUME = b"- onResume - yay!"
 GTK_BUILD = paths.ATL_GTK_BUILD
 HEADLESS_BUILD = paths.ATL_HEADLESS_BUILD
 HEADLESS_TESTS = paths.ROOT / "dine-atl/tests/headless"
-APKS = paths.ROOT / "third_party/atl_test_apks"
+APKS = paths.ROOT / "third_party/apks"
 LOOPER_APK = paths.OUT / "tests/apks/looper.apk"
 DIALOG_APK = paths.OUT / "tests/apks/dialog.apk"
 NAV_APK = paths.OUT / "tests/apks/nav.apk"
 VIEWS_APK = paths.OUT / "tests/apks/views.apk"
 WIDGETS_APK = paths.OUT / "tests/apks/widgets.apk"
-LOG_DIR = paths.OUT / "linux/smoke"
-GD_TIMEOUT = 120
 
 
 @dataclass(frozen=True)
@@ -49,41 +43,12 @@ def _gtk_env() -> dict[str, str]:
 
 
 def _gd() -> str | None:
-    atl = shutil.which("android-translation-layer")
-    if not atl:
-        raise DineError("no android-translation-layer on PATH: run tools/dine linux build atl")
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
-    log = LOG_DIR / "gd.log"
-    with tempfile.TemporaryDirectory(prefix="dine-gd-") as data, open(log, "wb") as out:
-        proc = subprocess.Popen([atl, str(APKS / "org.happysanta.gd_29.apk"), "-l", "org/happysanta/gd/GDActivity",
-                                 "-X", "-Xint"], env={**_gtk_env(), "ANDROID_APP_DATA_DIR": data},
-                                stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
-        try:
-            deadline = time.monotonic() + GD_TIMEOUT
-            while time.monotonic() < deadline:
-                exited = proc.poll() is not None
-                # bytes: ATL's output needn't be UTF-8
-                if ON_RESUME in log.read_bytes():
-                    return None
-                if exited:
-                    return f"exit status {proc.returncode} before onResume; log: {log}"
-                time.sleep(0.2)
-            return f"no onResume in {GD_TIMEOUT} s; log: {log}"
-        finally:
-            _kill_group(proc)
-
-
-def _kill_group(proc: subprocess.Popen) -> None:
-    # the whole group even when its leader is gone: ATL's children may still run
-    for sig in (signal.SIGTERM, signal.SIGKILL):
-        try:
-            os.killpg(proc.pid, sig)
-        except ProcessLookupError:
-            return
-        try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            pass
+    if not GTK_BUILD.is_dir():
+        raise DineError(f"no {GTK_BUILD}: run tools/dine linux build atl")
+    proc = subprocess.run([sys.executable, str(paths.ROOT / "tests/harness/apps.py"), "--gtk", "-f", "^gd$"],
+                          env=_gtk_env(), capture_output=True, text=True)
+    # its pass, not an expected failure
+    return None if proc.returncode == 0 and "apps (gtk): 1/1 pass" in proc.stdout else (proc.stdout + proc.stderr).strip()
 
 
 def _script(label: str, *args, env: dict[str, str] | None = None) -> str | None:
@@ -198,7 +163,7 @@ CHECKS = [
     Check("widgets", "headless: widgets.apk takes taps, a hold, Tab, Enter, a drag and keys from cli -c; a press shows only in its own copy of a shared selector resource", _widgets),
     Check("controls", "headless: widgets.apk's buttons, checkboxes, radios, switch, toggle and image button take taps and keys from cli -c", _controls),
     Check("text", "headless: widgets.apk's text fields take cli -c text lines through filters, watchers, a composition, a held report, focus moves and Back", _text),
-    Check("draw", "headless: widgets.apk's Canvas view redraws on invalidate, not on a same-size layout; display lists (clips, a PNG bitmap, a scrolled background) match the golden", _draw),
+    Check("draw", "headless: widgets.apk's Canvas view redraws on invalidate, not on a same-size layout; display lists (clips, a PNG bitmap, a scrolled background, text, paths, arcs, gradients, a layer, nine-patches) match the golden", _draw),
     Check("draw-gtk", "gtk: the same view draws through gsk", _draw_gtk),
 ]
 

@@ -49,15 +49,6 @@ JNI call per draw, JIT through StikDebug where the phone has it ([DINE-6](#dine-
 **Apps that are keyboards:** `InputMethodService` over the Wayland input-method protocol, gtk-only.
 After M9, if ever.
 
-### ATL-18
-
-**Priority: a CTFont cache on iOS, before the rest of M5d.** Every `gfx_text_*` call, every
-replayed text op and every label font builds its CTFont with `cg_font`
-(`dine-atl/src/backends/gfx/coregraphics/text.c`), next to a CFString, an attributed string and a
-CTLine. A cache per size, family and style, shared by every thread (text calls take any thread),
-keeps the fonts. A timed `measureText` loop on the phone gives the Android thread's cost before and
-after.
-
 ### ATL-19
 
 **The system serif design on iOS.** Serif text is Times New Roman: CoreText has no public call
@@ -82,6 +73,13 @@ capitalization) finds none.
 **Check CoreText off UIKit's thread.** gfx measures and lays out text with CoreText on the Android
 thread and on workers, on Apple's word that its objects are thread-safe; no run has stressed it
 on iOS 27.
+
+### ATL-23
+
+**BitmapShader and ComposeShader don't shade.** M5d's shaders are the gradients; a paint with
+either shader fills in its color (Canvas's `drawRoundRect` special case draws a BitmapShader's
+bitmap at 0,0). AdaptiveIconDrawable's `draw()` (commented out) and rounded image views use
+BitmapShader. Owner: M6b's drawables.
 
 ## DINE
 
@@ -156,3 +154,9 @@ needs `hprof-conv`, `141-class-unload` and `150-loadlibrary` need upstream's nat
 `libarttest` (which 100 skipped tests need too). `071-dexfile-map-clean`, `677-fsi` and
 `707-checker-invalid-profile` need dex2oat, which dine-art never runs: they stay expected
 failures. Reasons per test: `dine-art/tests/runtime/expectations/linux-x86_64.json`.
+
+## Done
+
+### ATL-18
+
+**A CTFont cache on iOS.** 2026-11-01, dine-atl 4fd8005c.

@@ -1,0 +1,14 @@
+# The apps suite's table (tools/dine test apps): each app is third_party/apks/<apk>
+# started at <activity>; it passes when each marker shows in its log, no fatal line does, and it
+# is still running a few seconds after the last marker.
+
+[gd]
+apk = "org.happysanta.gd_29.apk"
+activity = "org/happysanta/gd/GDActivity"
+markers = ["- onResume - yay!"]
+headless_markers = ["atl frames "] # the records draw pass's stats: the GameView keeps drawing
+
+[adaptive-icon]
+apk = "AdaptiveIconDemo.apk"
+activity = "com/example/adaptiveicondemo/MainActivity"
+markers = ["- onResume - yay!"]

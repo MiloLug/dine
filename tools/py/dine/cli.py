@@ -163,13 +163,17 @@ def _test(sub):
                    passthrough="all")
     t = s.add_parser("framework", help="android.* JUnit suites in-VM on the headless build, --gtk on the gtk one on a "
                                        "hidden display (after linux build); args go to tests/harness/framework.py")
-    t.set_defaults(func=_test_framework, passthrough="all")
+    t.set_defaults(func=lambda a: _test_harness("framework.py", a), passthrough="all")
+    t = s.add_parser("apps", help="real APKs (tests/android-compat/apps) to their log markers on the headless build, "
+                                  "--gtk on the gtk one on a hidden display (after linux build); args go to "
+                                  "tests/harness/apps.py")
+    t.set_defaults(func=lambda a: _test_harness("apps.py", a), passthrough="all")
     t = s.add_parser("unit", help="unit tests: tests/harness and tools/py")
     t.set_defaults(func=_test_unit)
 
 
-def _test_framework(a):
-    cmd = [sys.executable, str(paths.ROOT / "tests/harness/framework.py"), *a.extra]
+def _test_harness(script, a):
+    cmd = [sys.executable, str(paths.ROOT / "tests/harness" / script), *a.extra]
     if "--gtk" not in a.extra:
         return subprocess.run(cmd).returncode
     with display.headless() as d:

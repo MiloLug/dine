@@ -30,7 +30,7 @@ symbols, ATL build, and a verification checklist.
 | `native/dev/` | libs only dev builds link: the debug agent, `hello` (C++ static lib smoke test), `runtimetests` |
 | `apps/Dine` | xtool SwiftUI app: launcher grid (SQLite); dev builds add `Sources/Dine/Dev/`: a hello++ screen linking `native/dev/hello`, a probe screen for the asset catalogs (`Resources/`: `AppIcon.icon`, `Assets.xcassets`, `Icons.xcassets` from the icon pack, dev-only `Dev.xcassets`), art and atl run screens |
 | `../dine-accord` | sibling repo where accord is worked on: Dine's `actool`, which compiles `apps/<App>/Resources` into `Assets.car` + icon plist keys. Dine runs the `accord` command, cargo-installed from its GitHub repo |
-| `third_party/` | upstream clones (gitignored): bionic_translation, libopensles, atl_test_apks (Linux); lz4, xz, icu, wolfssl (iOS deps); fluentui-system-icons (the icon pack) |
+| `third_party/` | upstream clones (gitignored): bionic_translation, libopensles (Linux); lz4, xz, icu, wolfssl (iOS deps); fluentui-system-icons (the icon pack); `apks/`, the third-party test APKs |
 | `dine-art/` | submodule: our fork of art_standalone (ART + libcore), branch `dine` |
 | `dine-atl/` | submodule: our fork of android_translation_layer, branch `dine` |
 | `tools/bin/d8` | build-tools d8 on JDK 21 (on `PATH` via `env.sh`), used by the ART/ATL build and the tests |
@@ -57,6 +57,7 @@ symbols, ATL build, and a verification checklist.
 | `tools/dine linux smoke [check…] [--list]` | gtk ATL runs Gravity Defied to `onResume`, the dialog and views APKs and the widgets APK's Canvas view; headless ATL runs demo_app (also at 480 dpi) and the looper, dialog, nav, views and widgets APKs, the last one also through its controls, text and draw activities (after `linux build`) |
 | `tools/dine test runtime [fetch\|build\|run\|all] [-f REGEX] [--update-expectations]` | ART run-tests on the local `dalvikvm -Xint` (suite `dine-art/tests/runtime`, engine `tests/harness`); `tools/dine test runtime -- --help` lists every option |
 | `tools/dine test framework [-f REGEX] [--gtk] [--update-expectations]` | `android.*` JUnit suites in-VM on the headless ATL build, or the gtk one with `--gtk` (suite `dine-atl/tests/framework`, after `linux build`) |
+| `tools/dine test apps [-f REGEX] [--gtk] [--update-expectations]` | real APKs (`tests/android-compat/apps/apps.toml`: Gravity Defied, AdaptiveIconDemo) to their log markers on the headless ATL build, or the gtk one with `--gtk` (after `linux build`) |
 | `tools/dine test unit` | unit tests of `tests/harness` and `tools/py` |
 
 ## Device connection
@@ -251,11 +252,11 @@ tools/dine linux build                  # all stages; or: bionic art opensles at
 tools/dine linux smoke                  # gd, demo, demo-480, looper, dialog, dialog-gtk, nav, views, views-gtk, widgets, controls, text, draw, draw-gtk: one line each
 source env.sh                           # PATH + LD_LIBRARY_PATH for out/linux/prefix
 ANDROID_APP_DATA_DIR=$PWD/out/linux/appdata \
-  android-translation-layer third_party/atl_test_apks/org.happysanta.gd_29.apk \
+  android-translation-layer third_party/apks/org.happysanta.gd_29.apk \
   -l org/happysanta/gd/GDActivity -X -Xint     # -X passes straight to ART; -Xint = interpreter only
 ```
 
-Test APKs: `third_party/atl_test_apks` (gitlab.com/android_translation_layer/atl_test_apks).
+Third-party test APKs: `third_party/apks`, never committed (`docs/first-run.md` lists them).
 
 Run by hand, ATL's gtk build opens its window on WSLg (Wayland). `linux smoke`, `test framework
 --gtk` and the [gtk debug target](#gtk-target) run it on a hidden display instead: a headless sway

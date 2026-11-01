@@ -25,6 +25,7 @@ struct AtlView: View {
                 tile("widgets", activity: "dev/dine/widgets/ControlsActivity", title: "controls")
                 tile("widgets", activity: "dev/dine/widgets/TextActivity", title: "text")
                 tile("widgets", activity: "dev/dine/widgets/DrawStayActivity", title: "draw")
+                tile("org.happysanta.gd_29", activity: "org/happysanta/gd/GDActivity", title: "gravity")
             }
             .padding()
         }

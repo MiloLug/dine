@@ -68,8 +68,13 @@ Native paths below are under `dine-atl/src/api-impl-jni/`.
 
 ## 3. Vibrator
 
-- Today: `android_os_Vibrator.c` finds a vibra device through gudev (feedbackd's
-  `FEEDBACKD_TYPE=vibra`) and plays evdev force feedback. `Vibrator.hasVibrator` is hardcoded true.
+- Today: on gtk `src/api-impl-jni/android_os_Vibrator.c` finds a vibra device through gudev
+  (feedbackd's `FEEDBACKD_TYPE=vibra`) and plays evdev force feedback; the headless and iOS
+  builds take a no-op stub, `src/shared/android_os_Vibrator.c` (Gravity Defied's keypad calls
+  `View.performHapticFeedback`, which creates a Vibrator; a missing native threw out of its touch
+  listener). `Vibrator.hasVibrator` is hardcoded true.
+- Rework both completely if needed: the stub goes, and where `View.performHapticFeedback` goes
+  (today `vibrate(10)`) is decided here; it draws nothing, so not the ui slot.
 - `none`: `hasVibrator` false; `vibrate` does nothing.
 - `ios`: haptics, Core Haptics for durations and patterns.
 - Reach: multitouch references Vibrator and asks for the VIBRATE permission (static read).

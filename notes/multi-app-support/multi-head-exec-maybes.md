@@ -1,9 +1,9 @@
 # Multiple apps per launch: maybes
 
 Why Dine runs one ATL app per launch, and what running a second app after it, or two apps in
-parallel, would take. Several apps in one process is stage M8e in `notes/atl-port.md`, which
-needs design first; this note holds the findings for that design. The one-process constraint is
-in `notes/meta.md`.
+parallel, would take. The first findings for multi-app support: the roadmap is `todo.md` in this
+directory, the design `design.md`, later findings the `findings-*.md` files. The one-process
+constraint is in `notes/meta.md`.
 
 ## Why ATL runs once per launch
 
@@ -11,6 +11,8 @@ in `notes/meta.md`.
   - ATL already ran: `atl already ran in this process: relaunch Dine`;
   - any VM exists, for example after the art screen ran: `atl needs a process without a VM:
     relaunch Dine`.
+- ATL refuses a second start on its own too (`started` in the embedded host's
+  `atl_embedded_vm_options`), and the cfrunloop main loop's quit flag is never cleared.
 - ATL binds the app to the VM through statics. `ATLLoadedApp.getPrimaryApplication()` reads
   `atl.app.class.path` once and caches the app in `primary_application`, and `Context`'s static
   initializer configures that app. Both last as long as the VM, so a different app needs a
@@ -53,8 +55,9 @@ Upstream ATL has groundwork:
 - "api-impl: Put applications into their own class loader": `ATLLoadedApp.loadFromPath` gives
   each APK its own `PathClassLoader`, `AssetManager` and `Resources`.
 - "api-impl: Implement extra package loading": `ATLLoadedAppManager` loads other installed APKs
-  into the running VM as guests of the primary app (MicroG, packages the primary app calls into),
-  not as independent apps.
+  into the running VM as guests of the primary app, not as independent apps. Its visibility gate
+  lets only the microG family through (`com.google.android.gms`, `com.google.android.gsf`,
+  `com.android.vending`), so no other package can be a guest today.
 
 What blocks independent apps side by side:
 
@@ -63,9 +66,13 @@ What blocks independent apps side by side:
 | One primary app, read once from `atl.app.class.path`; package visibility and paths key on it | `ATLLoadedApp.primary_application`, `ATLLoadedAppManager` | several primary apps, each with its own paths and visibility |
 | App state in statics shared by every app | `Context.this_application` (deprecated; native code reads it in `android_content_Context.c`, `gtk_util.c`, `actions.c`), `Context.package_manager`, `Context.receiverMap` (broadcast receivers) | per-app context |
 | One main thread | `Looper.sMainLooper` | a main thread per app, or accepting that a slow app freezes the other |
-| One main window (M8e's list) | ATL globals | a window per app |
+| One main window | ATL globals | a window per app |
 | One app per host run | `atl_embedded_main` runs one app until its last activity finishes; `dine_atl_run` refuses a second call | an artbridge call that loads another app into the running VM |
 | ART opens a native library from one class loader only: `Shared library "<path>" already opened by ClassLoader …; can't open in ClassLoader …` | ART's per-VM library table | two apps can't both load a library of the same name; artbridge's `gLoaders` works around this for its own reruns |
+
+More blockers (the layout inflater cache, preferences, the shared data dir and `Configuration`,
+the Binder stub, guests without `Application.onCreate`, one task stack) are in
+`findings-framework.md`.
 
 Risks no ATL change removes:
 - Crash isolation is as `notes/meta.md` describes; `System.exit` in any app also ends Dine and

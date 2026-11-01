@@ -25,8 +25,8 @@ its row here changes when that block does.
 | [M5a](#m5a-renderer-and-display-list) | renderer choice, display list | done |
 | [M5b](#m5b-drawing-on-the-phone) | drawing on the phone | done |
 | [M5c](#m5c-text) | text | done |
-| [M5d](#m5d-paths-nine-patch-layers-gravity-defied) | paths, nine-patch, layers; Gravity Defied | next |
-| [M6a](#m6a-triage-and-fixes) | triage and fixes | planned |
+| [M5d](#m5d-paths-nine-patch-layers-gravity-defied) | paths, nine-patch, layers; Gravity Defied | done |
+| [M6a](#m6a-triage-and-fixes) | triage and fixes | next |
 | [M6b](#m6b-breadth) | breadth | planned |
 | [M6c](#m6c-search-ahead-of-m7) | search ahead of M7 | planned |
 | [M7](#m7-services) | services, items in `notes/service-impl.md` | planned |
@@ -959,8 +959,7 @@ shows its last lines with the cursor. As built:
   and `InkBoundsTest` (expected to fail on headless), `text` `KeyListenerTest` and
   `LineLimitTest`; DrawActivity's text and Layout ops in `draw.displaylist`; `run-text.sh`'s pin
   letter and capped field.
-- Open: the CTFont cache on iOS, first ([ATL-18](general-todo.md#atl-18)); gtk labels take px as
-  points ([ATL-8](bug-tracker.md#atl-8)); stroked text on gtk ([ATL-9](bug-tracker.md#atl-9));
+- Open: gtk labels take px as points ([ATL-8](bug-tracker.md#atl-8)); stroked text on gtk ([ATL-9](bug-tracker.md#atl-9));
   line separators besides `\n` ([ATL-10](bug-tracker.md#atl-10)); gtk measuring off the main
   thread ([ATL-11](bug-tracker.md#atl-11)); gtk's line cap width
   ([ATL-12](bug-tracker.md#atl-12)); `setKeyListener` then `setInputType`
@@ -997,6 +996,88 @@ Defied past `NinePatchDrawable.nativeCreate`, and M5a's view adds a path, an arc
 `saveLayer` to its golden; Gravity Defied runs on the phone, driven by touch. The apps suite
 starts with it.
 
+**Status: done (2026-11-01).** On the iPhone 13 Gravity Defied runs from the AtlView tile and a
+level plays by touch on its keypad; `dbg smoke` passes with `atl-gd`; the draw screen shows the
+path in its clip, the arcs (the 360° one without a radius line), the gradients (the sweep clockwise
+from 3 o'clock, as on Android), the layer group and the nine-patches. During play the records draw
+passes run at about 60 per second, 2.2 ms each on average (`atl frames`), the Android main thread's
+stack reaches 80 KiB of 8 MiB and `phys_footprint` 126-130 MiB (`dine_atl_probe`). On headless Gravity
+Defied reaches `onResume` and its GameView keeps drawing, and AdaptiveIconDemo gets past
+`Path.native_create_builder` to `Region.nativeConstructor` (M6a's Region finding); `linux smoke
+draw` matches `draw.displaylist` with a path under a path clip, three arcs, a mirrored linear
+gradient (then with a local matrix set after `setShader`), a sweep gradient, a `saveLayerAlpha`
+group and a nine-patch stretched and shrunk; the graphics suite's
+`PathTest`, `ShaderTest` and `NinePatchTest` pass on headless and gtk; `tools/dine test apps`
+passes on headless (AdaptiveIconDemo expected to fail) and gtk; `linux smoke`, the framework
+suites and the runtime suite pass. As built:
+- CTFont cache ([ATL-18](general-todo.md#atl-18)): `cg_font` keeps 64 fonts by point size, family
+  and style under a mutex, made outside it on a miss. DrawStayActivity's 1000 `measureText` calls
+  took 49-51 ms without it and 7-8 ms with it (three runs each).
+- Sans text on iOS uses San Francisco's tabular digits, as Roboto's are: Gravity Defied's keypad
+  cells are `wrap_content` with a weight, so proportional digits shifted each row's dividers.
+- Path: `src/shared/path.c`, verbs and points shared by every backend. Arcs, ovals, circles and
+  round rects are cubics of at most 90°, with Skia's arcTo joins and round rect radius scaling;
+  bounds are the control points' (as Android's), `contains` counts windings or crossings over 16
+  lines a curve. Java edits a path only it holds (`path_edit` copies a shared one); lists hold refs.
+  Path.java is one handle; FillType keeps `even_odd` and inverse. `gfx_canvas_draw_path` and
+  `gfx_canvas_clip_path` (INTERSECT, DIFFERENCE): record's `path` and `clip_path` ops print
+  SVG-like verbs, coregraphics builds a CGPath at replay, gsk a GskPath (`gsk_path_from_gfx`,
+  which Region's gtk natives take too). Inverse fills: [ATL-26](bug-tracker.md#atl-26).
+- `drawArc`: `gfx_canvas_draw_arc`, an `arc` op; each backend builds its shape with the shared
+  path code: a sweep of 360° or more is the whole oval, any style (Android 10's hwui; Gravity
+  Defied strokes its wheels so), else Skia's `CreateDrawArcPath` (`useCenter` adds the center and
+  closes).
+- Shaders: linear, radial and sweep gradients (`src/shared/shader.c`: stops normalized to 0..1,
+  tile mode, local matrix), made on first use from the Java fields (`Shader.getNativeInstance`, a
+  new one per local matrix) and synced into the paint before a draw (`Paint.getNativeInstance`);
+  a list's paint copies hold a ref. coregraphics clips to the shape (a stroke's outline through
+  `CGContextReplacePathWithStrokedPath`) and draws a CGGradient (conic for sweep), gsk pushes a fill
+  or stroke and appends GSK's gradient. REPEAT and MIRROR are the stops repeated over the periods
+  the shape covers (`shader_stops`). `Shader.TileMode` takes AOSP's order. BitmapShader and
+  ComposeShader: [ATL-23](general-todo.md#atl-23); text with a shader:
+  [ATL-25](bug-tracker.md#atl-25).
+- `saveLayer` and `saveLayerAlpha` (every overload, through `Canvas.atlSaveLayer`): a save level
+  whose first push is the layer. record's `layer` and `unlayer` ops; coregraphics a transparency
+  layer at the paint's alpha and PorterDuff mode, its clips and layers ended last first, at a
+  list's end too; gsk an opacity push ([ATL-27](bug-tracker.md#atl-27)).
+- Nine-patch: `src/shared/ninepatch.c` reads a PNG's `npTc` as AOSP's NinePatchPeeker does
+  (deserialized, then network to native order) into `Bitmap.getNinePatchChunk`; BitmapFactory fills
+  `outPadding`. `Drawable.createFromResourceStream` and `createFromPath` decode the stream: a valid
+  chunk makes a NinePatchDrawable, else a BitmapDrawable, no image null (the copy to external
+  storage and the String constructor are gone, and with them the five defects listed above). The
+  shared slicing (fixed parts shrink when the drawable is smaller) feeds record's bitmap and rect
+  ops, which coregraphics draws, and gsk's NinePatchPaintable (`src/backends/gfx/gsk/ninepatch.c`).
+  NinePatchDrawable has its padding, intrinsic size, a constant state sharing bitmap and chunk, and
+  a tint as a SRC_IN color filter (`gfx_drawable_set_color_filter`); an invalid chunk throws, as
+  AOSP's short one does.
+- Gravity Defied: its GameView is a plain View that invalidates itself; it draws rects, arcs,
+  lines, text and bitmaps, its buttons have nine-patch backgrounds, it keeps scores in SQLite; no
+  Path, shader, `saveLayer` or SurfaceView, and its one `new Canvas(Bitmap)` is in `loadSprites`,
+  which nothing calls. The dev payload bundles it (`build-ios-dev.sh`, dev builds only; the
+  atl_test_apks README says its APKs allow redistribution, the upstream license is unchecked),
+  AtlView has a "gravity" tile, `dbg smoke atl-gd` waits for `onResume` and an `atl frames` line.
+  Headless (unpaced) frame counts and times vary run to run and say nothing about the phone.
+- Frame stats (`test_hooks`): records' draw passes that drew a view print `atl frames <n> in <ms>
+  ms, draw avg <x> max <y> ms` every 5 s while they come at most 500 ms apart.
+- Widgets on iOS: iOS-styled. UIKit controls stay (M3, M4b; M6b fits them to the iPhone).
+  Android-styled widgets (AOSP's Java widgets drawn through Canvas, the AOSP dialog layout path)
+  stay a later option: their drawing runs in Java under `-Xint`, and they would undo M6b's UIKit
+  matching.
+- Apps suite: `tools/dine test apps [--gtk]` (`tests/harness/apps.py`, the table
+  `tests/android-compat/apps/apps.toml`, per-build expectations): an app passes when its markers
+  show, no fatal line does, and it keeps running 3 s past the last; `linux smoke gd` is its `gd`
+  entry on gtk.
+- M6a's themed backgrounds that stopped at `Path.native_reset` draw: the widgets ImageButton
+  records its round-rect background and its image on headless.
+- Gravity Defied builds a View on its own `game_thread`: uikit's queue (`uikit_enqueue`) takes any
+  thread under a lock; the rest of the records off the main thread is
+  [ATL-28](bug-tracker.md#atl-28).
+- Its keypad's touch listener calls `View.performHapticFeedback`, which makes a Vibrator: the
+  headless and iOS builds have no-op Vibrator natives (`src/shared/android_os_Vibrator.c`) until
+  M7's Vibrator item.
+- Open: resource density ([ATL-24](bug-tracker.md#atl-24)); the black bar across the top of
+  Gravity Defied's screen on the phone, not looked into.
+
 ### M6a: triage and fixes
 
 A cycle like the [pre-M4 batch](#pre-m4-batch-2026-10-21): a headless triage runs each
@@ -1012,8 +1093,9 @@ Findings from M4b and M5 (M5's stages add and update them):
   `ExceptionDescribe` after `onCreate` throws, ART's `ExceptionDescribe` leaves the exception
   pending, and the next JNI call (`_GET_BOOL_FIELD`) aborts under CheckJNI. Other spots that only
   describe may do the same.
-- flower_finder stops at `Region.nativeConstructor` (material's FloatingActionButton): Region's
-  natives are gtk-only.
+- flower_finder stops at `Region.nativeConstructor` (material's FloatingActionButton), and
+  AdaptiveIconDemo in AdaptiveIconDrawable's constructor (the apps suite expects it on headless):
+  Region's natives are gtk-only.
 - `new Canvas()` without a Bitmap throws a NullPointerException on every call (`synchronized` on
   its null bitmap); AdaptiveIconDrawable makes one.
 - A 90° rotation leaves cos at -4.37e-8 in graphene, so `rectStaysRect` is false for quarter
@@ -1021,12 +1103,8 @@ Findings from M4b and M5 (M5's stages add and update them):
 - uikit's `keys.m` sends a hardware keyboard's keypad Enter as `KEYCODE_NUMPAD_ENTER` (160), which
   no Java Enter reader takes (EditText's Enter keys, `isConfirmKey`, touch mode, lists); gtk sends
   it as `KEYCODE_ENTER`. Whether Android 10's readers take 160 like Enter decides the fix.
-- A themed background drawn through GradientDrawable (RippleDrawable, InsetDrawable) stops at
-  `Path.native_reset` on records, its stack trace printed on every redraw, and `View.draw` stops
-  there: the view's own `onDraw` (an ImageButton's image) never runs. The widgets APK's ImageButton
-  (`ControlsActivity`) shows it on headless and the phone. Path joins the gfx slot in M5d.
 - Drawables without a constant state of their own get the base `getConstantState`'s null:
-  NinePatchDrawable, InsetDrawable, ScaleDrawable, ClipDrawable (DrawableWrapper's is commented
+  InsetDrawable, ScaleDrawable, ClipDrawable (DrawableWrapper's is commented
   out), AnimatedVectorDrawable, ColorStateListDrawable, PictureDrawable. An app's
   `getConstantState().newDrawable()` on one throws, and Resources reloads them (a `.9.png` decodes
   on every load). AOSP 10 gives each a state.
@@ -1034,7 +1112,10 @@ Findings from M4b and M5 (M5's stages add and update them):
   commented out (an `animation-list` resource has no frames).
 - Color filters and tints never reach a bitmap's paint: `BitmapDrawable.setColorFilter` and
   ImageView's `setColorFilter`/`setImageTintList` paths keep nothing, and coregraphics draws a
-  bitmap with its paint's alpha only.
+  bitmap with its paint's alpha only, a nine-patch's tinted bitmap slices included (its solid
+  slices take the tint).
+- A `<nine-patch>` XML drawable draws nothing: `Drawable.createFromXml` makes an empty
+  NinePatchDrawable without reading `android:src`.
 - `Canvas.clipRect` returns whether the rect itself is non-empty, not the resulting clip.
 - Compose (`compose_demo_app.apk -l com/bicubictwice/composedemoapp/ui/MainActivity` on headless)
   draws a VectorPainter after `onResume` into `new Canvas(Bitmap)` and stops at
@@ -1048,7 +1129,8 @@ stop and finding is fixed, named in a later stage or coded in `notes/bug-tracker
 
 - ListView and RecyclerView (`views_widgets_samples_flower_finder.apk`). On uikit, lists need a
   measure cache: each measured text is one hop to UIKit's thread.
-- Drawables, themes and styles, AdaptiveIconDemo.
+- Drawables, themes and styles, AdaptiveIconDemo; BitmapShader and ComposeShader
+  ([ATL-23](general-todo.md#atl-23)).
 - PopupWindow and PopupMenu, Toast.
 - A second layout root over the container, for Dialogs with a content view (they show nothing on
   headless and uikit) and Builder's single and multi choice, `setAdapter` and `setView` content.
@@ -1180,11 +1262,9 @@ notifications, media session, downloads and jobs items of `notes/service-impl.md
 
 #### M8e: several apps
 
-Several apps in one process (`notes/meta.md`) need design first: ATL keeps one primary application,
-one system configuration and one main window as globals; the options are in
-`notes/multi-head-exec-maybes.md`. A diverger run chooses the design, written here with its reason;
-then closing apps and a running apps list with several entries (`notes/nav-gestures.md` Behaviour).
-The stages after the choice take the letters after M8e.
+Several apps at once on every backend: the roadmap is `notes/multi-app-support/todo.md`, its
+design and findings sit next to it. Its stages replace this one; M8a's import builds on its
+registry (stage MA1).
 
 ### M9: heavy
 

@@ -178,6 +178,20 @@ an oat file isn't up to date.**
 - Where: `dine-art/art/runtime/oat_file_assistant.cc` `OatFileAssistant::GetBestOatFile`.
 - Fix: never run dex2oat there either, as the open path does.
 
+### ART-24
+
+**On Apple, closing a socket doesn't wake a thread blocked reading it.**
+- State: unchecked on the phone; read in code and in the iOS SDK headers.
+- Where: `dine-art/libnativehelper/AsynchronousCloseMonitor.cpp` wakes blocked threads with
+  `__SIGRTMIN + 2`, defined there as 34 when the platform has no `__SIGRTMIN`. Darwin's `NSIG` is
+  32 (`sys/signal.h`), so signal 34 can't be installed or sent. NIO channels use SIGIO on Darwin
+  and are not affected.
+- Effect (unchecked): `Socket.close()` from another thread (OkHttp's `Call.cancel`, a timeout)
+  leaves the reader blocked until data arrives or its socket timeout fires.
+- Fix: a signal below 32 that nothing else uses, or `shutdown(fd, SHUT_RDWR)` before the close
+  (whether that wakes a blocked read on iOS is unchecked).
+- Owner: `notes/multi-app-support/todo.md` MA4 (dropping an app needs it).
+
 ## ATL
 
 ### ATL-1
@@ -336,6 +350,46 @@ from Paint, not from the toolkit's label.
 nothing: `obtain` builds the layout at once.
 - Where: `dine-atl/src/shared/android_text_Layout.c`, `src/api-impl/android/text/StaticLayout.java`.
 - Owner: M9: Compose lays out its text through `StaticLayout.Builder`.
+
+### ATL-24
+
+**Resource bitmaps and nine-patches ignore screen density.** `Bitmap.setDensity` does nothing and
+`BitmapFactory.setDensityFromOptions` is commented out, so a resource image draws at its pixel
+size: on the iPhone 13 (480 dpi) an hdpi PNG or nine-patch draws at half its dp size (Gravity
+Defied's buttons and their borders).
+- Where: `dine-atl/src/api-impl/android/graphics/BitmapFactory.java`, `Bitmap.java`.
+- Fix: AOSP 10's scaling to `inTargetDensity` (bitmaps, and a nine-patch's chunk with them).
+
+### ATL-25
+
+**Text with a shader draws in the paint's color, and coregraphics shades without the paint's color
+filter.** `gfx_canvas_draw_text` ignores `Paint.setShader`; coregraphics' `draw_shader` applies
+only the paint's alpha over the gradient.
+- Where: `dine-atl/src/backends/gfx/{coregraphics/draw.c,gsk/canvas.c}`.
+
+### ATL-26
+
+**Inverse fill types draw as their plain rule.** `drawPath` and `clipPath` take the even-odd bit
+only (`gfx_canvas_draw_path`); `Path.op` and Region (gtk) handle inverse.
+- Where: `dine-atl/src/api-impl/android/atl/ATLCanvas.java`, `src/slots/gfx.h`.
+
+### ATL-27
+
+**`saveLayer`'s paint: gsk ignores its PorterDuff mode, and no build applies its color filter.**
+`gfx_canvas_save_layer` takes alpha and mode; gsk pushes only an opacity (GSK has no layer blend
+with one child).
+- Where: `dine-atl/src/backends/gfx/gsk/canvas.c` `gfx_canvas_save_layer`, `src/api-impl/android/graphics/Canvas.java`.
+
+### ATL-28
+
+**View work off the Android main thread races the records beyond uikit's queue.** Apps build views
+on their own threads (Gravity Defied's `game_thread` builds `MenuHelmetView`); uikit's queue takes
+any thread since M5d, but `schedule_draw`/`schedule_layout` change the window's `draw_pending` and
+`layout_pending` unlocked from any view's `drawables_changed` or `requestLayout`; a view changed
+off-thread while attached (text, children) races the main thread's tree walks; and a drawable's
+last unref in `hold()` can run on an app thread.
+- State: unchecked: read from the code, not seen failing.
+- Where: `dine-atl/src/backends/ui/records/ui.c` (`schedule_draw`, `schedule_layout`, `hold`).
 
 ## DINE
 

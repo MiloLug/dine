@@ -234,9 +234,25 @@ mkdir -p third_party && cd third_party
 for r in bionic_translation libopensles-standalone; do
   git clone https://gitlab.com/android_translation_layer/$r.git
 done
-git clone --depth 1 https://gitlab.com/android_translation_layer/atl_test_apks.git
 cd .. && tools/dine linux build       # ~10 min on 16 cores; installs to out/linux/prefix (no sudo)
 ```
+
+Third-party APKs (apps we test but didn't write) go in `third_party/apks/` under these names and
+are never committed. The tools look for exactly these files:
+
+| File | Used by | From |
+|---|---|---|
+| `demo_app.apk` | `linux smoke demo` and `demo-480`, the iOS dev payload | atl_test_apks |
+| `org.happysanta.gd_29.apk` | `test apps` (and so `linux smoke gd`), the iOS dev payload | atl_test_apks |
+| `AdaptiveIconDemo.apk` | `test apps` | atl_test_apks |
+
+```sh
+git clone --depth 1 https://gitlab.com/android_translation_layer/atl_test_apks.git out/downloads/atl_test_apks
+mkdir -p third_party/apks
+cp out/downloads/atl_test_apks/{demo_app,org.happysanta.gd_29,AdaptiveIconDemo}.apk third_party/apks/
+```
+
+A new third-party APK gets a row here; the tools name it by this file name.
 
 - `dine-art/` and `dine-atl/` are submodules: our forks of
   [art_standalone](https://gitlab.com/android_translation_layer/art_standalone) and

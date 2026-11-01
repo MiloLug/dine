@@ -173,6 +173,14 @@ SCENARIOS = {
             Step("spin", ok=(r"widgets spin \d+ in \d+ ms",), fail=ATL_FAIL),
             Step("Home", action="Home", ok=("nav: launcher root",)),
         ], uses_vm=True, needs_clean=True, alive=True, check=_spin_paced),
+        Scenario("atl-gd", [
+            Step("atl", tap="atl"),
+            Step("run gravity", tap="gravity", ok=("- onResume - yay!", "nav: container shown gravity"),
+                 fail=ATL_FAIL + ("UnsatisfiedLinkError", "JNI DETECTED ERROR"), timeout=120),
+            # the GameView redraws itself: the records draw pass's stats (test_hooks)
+            Step("frames", ok=("atl frames ",), fail=ATL_FAIL + ("UnsatisfiedLinkError",), timeout=30),
+            Step("Home", action="Home", ok=("nav: launcher root",)),
+        ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-dialog", [
             Step("atl", tap="atl"),
             Step("run dialog", tap="dialog", ok=("dialog: presented",), fail=ATL_FAIL, timeout=120),
