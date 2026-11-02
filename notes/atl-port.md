@@ -107,7 +107,7 @@ A build selects one backend per slot with a meson option.
 
 | Slot | Owns | Backends |
 |---|---|---|
-| `host` | process entry, VM creation, classpath, data dirs, launching an app and an activity, the container that holds activity windows (several apps: an app handle in every call and event, multi-app MA2; a container per task, MA6) | `gtk` (today's executable), `cli` (plain C entry, no glib), `embedded` (a library API Dine calls) |
+| `host` | process entry, VM creation, classpath, data dirs, launching an app and an activity, the container that holds activity windows (an app handle in every call and event; several apps per VM, multi-app MA2b; a container per task, MA6) | `gtk` (today's executable), `cli` (plain C entry, no glib), `embedded` (a library API Dine calls) |
 | `loop` | the Android main thread's integration with the platform loop, worker-thread loops, delayed and cross-thread posts to the main thread | `glib`, `cfrunloop`, `poll` |
 | `ui` | windows (Activity, Dialog, PopupWindow, WindowManager views), view nodes (children, frame, visibility, background, padding), toolkit widgets, focus, IME, touch and key input | `gtk`, `uikit`, `headless` |
 | `gfx` | Canvas, Paint, Path, Bitmap, image decoding, text measurement and layout, fonts, NinePatch, RenderNode | `gsk` (GSK, Pango, GdkPixbuf), `coregraphics` (CoreGraphics, CoreText, ImageIO), `record` (a display list), later possibly `skia` |
@@ -321,7 +321,8 @@ screen's runs then work on the VM ATL created. As built:
   `atl_vm_start`.
 - In Dine, artbridge stays the one VM owner (states none, creating, ready, failed). `dine_atl_run`
   creates the VM with ATL's options on an 8 MiB pthread and `ANDROID_LOG_TAGS=*:i`; it refuses
-  once any VM exists, so ATL runs before the art screen in a launch (multi-app MA2 lifts this). The ATL thread detaches from
+  once any VM exists, so ATL runs before the art screen in a launch: the art screen's VM lacks
+  ATL's class and library paths, which are fixed at VM creation. The ATL thread detaches from
   the VM when `atl_embedded_main` returns: ART aborts the process when an attached thread exits.
 - TLS on iOS is wolfSSL and libwolfssljni, as on Linux (`--enable-jni`), linked into Dine.
   wolfJSSE's default trust manager, when it gets no keystore and finds no Java trust store, makes
@@ -1158,8 +1159,8 @@ As built:
 
 ### M6b: breadth
 
-Comes after multi-app MA1 and MA2 (`notes/steps.md`): app state that M6b adds goes behind MA2's
-app record (`notes/multi-app-support/design.md` "App record"), not into process-wide statics.
+Comes after multi-app MA1 and MA2a (`notes/steps.md`): app state that M6b adds goes into the app
+record (`notes/multi-app-support/design.md` "App record"), not into process-wide statics.
 
 - ListView and RecyclerView (`views_widgets_samples_flower_finder.apk`). On uikit, lists need a
   measure cache: each measured text is one hop to UIKit's thread.
@@ -1261,7 +1262,7 @@ row, its APK in `apps/<pkg>/`), and the launcher reads the registry's rows (`not
   (`Activity.createMainActivity`). With none it calls `System.exit(1)`, which would end Dine: the
   embedded host returns an error instead, until multi-app MA3 makes `System.exit` end only the
   calling app.
-- One app per launch until multi-app MA2: the running apps list (`RunningApps`) and the run states
+- One app per launch until multi-app MA2b: the running apps list (`RunningApps`) and the run states
   that `notes/nav-gestures.md` Behaviour specifies for one run per process, on the launcher's
   tiles. Several apps' list (an entry per task, each app's state, a close action) is MA8.
 - Release builds (`DINE_RELEASE=1`, `-c release`) start no app yet: only the dev atl screen calls

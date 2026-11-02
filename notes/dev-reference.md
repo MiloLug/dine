@@ -86,7 +86,7 @@ actions run on the GTK main thread, which is the Android main thread on gtk.
   GtkText takes `gtk_widget_grab_focus`, a dialog's own GtkButton or list row `gtk_widget_activate`.
 - `type` inserts at the GtkText's cursor (`gtk_editable_insert_text`), so `edit.c` reports the
   edit as it does a keyboard's.
-- `back` is `atl_nav_back`; its result is only whether ATL's main loop was up
+- `back` is `atl_nav_back`; its result is only whether the app ran and ATL's main loop was up
   ([TOOL-5](general-todo.md#tool-5)).
 - The same hook calls `prctl(PR_SET_PTRACER, PR_SET_PTRACER_ANY)`: with Yama's `ptrace_scope` 1,
   lldb in the debug server, which is ATL's sibling, could not attach otherwise.

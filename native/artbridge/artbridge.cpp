@@ -162,6 +162,7 @@ struct AtlRun {
   std::string resource_dir, atl_dir, prefix_dir, cache_dir, apk, activity;
   dine_atl_window window;
   atl_embedded_listener listener;
+  atl_app *app;
 };
 
 bool gAtlStarted = false;
@@ -187,6 +188,7 @@ void *AtlThread(void *arg) {
       .night = run->window.night,
       .surface = run->window.view,
       .listener = &run->listener,
+      .app = run->app,
   };
   int n_options;
   JavaVMOption *options = atl_embedded_vm_options(&config, &n_options);
@@ -197,7 +199,7 @@ void *AtlThread(void *arg) {
       gVmState = VmState::kNone;
     }
     DevAtlExited();
-    if (run->listener.exited) run->listener.exited(run->listener.context, -1);
+    if (run->listener.exited) run->listener.exited(run->listener.context, run->app, -1);
     return nullptr;
   }
   // *:i: ATL logs its lifecycle (onResume) at info
@@ -216,9 +218,11 @@ void *AtlThread(void *arg) {
 }  // namespace
 }  // namespace dine
 
+atl_app *dine_atl_app_new() { return atl_embedded_app_new(); }
+
 int dine_atl_run(const char *resource_dir, const char *atl_dir, const char *prefix_dir,
                  const char *cache_dir, const char *apk, const char *activity,
-                 const dine_atl_window *window, const atl_embedded_listener *listener) {
+                 const dine_atl_window *window, const atl_embedded_listener *listener, atl_app *app) {
   using namespace dine;
   std::lock_guard<std::mutex> lock(gLock);
   if (gAtlStarted) {
@@ -231,7 +235,7 @@ int dine_atl_run(const char *resource_dir, const char *atl_dir, const char *pref
   }
   if (gOutput < 0) RedirectOutput();
   auto *run = new AtlRun{resource_dir, atl_dir, prefix_dir, cache_dir, apk, activity ? activity : "", *window,
-                         listener ? *listener : atl_embedded_listener{}};
+                         listener ? *listener : atl_embedded_listener{}, app};
   if (!StartVmThread(AtlThread, run)) {
     delete run;
     return -1;

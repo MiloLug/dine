@@ -3,7 +3,8 @@
   - atl-port::M6a - done
   - multi-app::MA0 - done
 - multi-app::MA1 - done
-- multi-app::MA2 - next
-- atl-port::M6b - next
+- multi-app::MA2a - done
+- multi-app::MA2b - next
+- atl-port::M6b - next (needs only MA2a)
 
 ...

@@ -14,10 +14,8 @@ second VM from bundled ART copies is rejected ("too complicated").
     relaunch Dine`.
 - ATL refuses a second start on its own too (`started` in the embedded host's
   `atl_embedded_vm_options`), and the cfrunloop main loop's quit flag is never cleared.
-- ATL binds the app to the VM through statics. `ATLLoadedApp.getPrimaryApplication()` reads
-  `atl.app.class.path` once and caches the app in `primary_application`, and `Context`'s static
-  initializer configures that app. Both last as long as the VM, so a different app needs a
-  different VM while ATL keeps them (see the table below).
+- ATL keeps each app's state in its app record (`notes/multi-app-support/design.md` "App
+  record"); what still makes one VM run one app is the table below.
 - ART allows one runtime per process: `Runtime::Create` fails while `Runtime::instance_` is set,
   whichever thread calls it. There is no VM per thread.
 - On Linux each ATL launch is its own process, so the limit never shows. iOS apps can't spawn
@@ -48,26 +46,23 @@ second VM from bundled ART copies is rejected ("too complicated").
 
 ## Several apps in one VM
 
-A second app needs no second VM: apps can share one VM, each in its own class loader. This is
-the model `notes/meta.md` assumes. iOS doesn't block it; ATL's single primary app and one ART
-rule do.
+A second app needs no second VM: apps can share one VM, each in its own class loader and app
+record. This is the model `notes/meta.md` assumes. iOS doesn't block it; ATL's one main loop and
+ART's one runtime per process shape how (multi-app MA2b).
 
 Upstream ATL has groundwork:
 - "api-impl: Put applications into their own class loader": `ATLLoadedApp.loadFromPath` gives
   each APK its own `PathClassLoader`, `AssetManager` and `Resources`.
 - "api-impl: Implement extra package loading": `ATLLoadedAppManager` loads other installed APKs
-  into the running VM as guests of the primary app, not as independent apps. Its visibility gate
-  lets only the microG family through (`com.google.android.gms`, `com.google.android.gsf`,
-  `com.android.vending`), so no other package can be a guest today.
+  into the running VM, each as its own record; a record that no host started has no Application
+  (a package context, a service).
 
 What blocks independent apps side by side:
 
 | Blocker | Where | Needs |
 |---|---|---|
-| One primary app, read once from `atl.app.class.path`; package visibility and paths key on it | `ATLLoadedApp.primary_application`, `ATLLoadedAppManager` | an app record per app, none primary, each with its own paths and visibility |
-| App state in statics shared by every app | `Context.this_application` (deprecated; native code reads it in `android_content_Context.c`, `gtk_util.c`, `actions.c`), `Context.package_manager`, `Context.receiverMap` (broadcast receivers) | per-app context |
-| One main thread | `Looper.sMainLooper` | a main thread per app, or accepting that a slow app freezes the other |
-| One main window | ATL globals | a window per app |
+| One main loop per process | the loop slot's `loop_main_*` | a main thread and loop per app (MA2b) |
+| A second start refused | `started` in the embedded host, `dine_atl_run` | starts per app handle (MA2b) |
 | One app per host run | `atl_embedded_main` runs one app until its last activity finishes; `dine_atl_run` refuses a second call | an artbridge call that loads another app into the running VM |
 | ART opens a native library from one class loader only: `Shared library "<path>" already opened by ClassLoader …; can't open in ClassLoader …` | ART's per-VM library table | two apps can't both load a library of the same name; artbridge's `gLoaders` works around this for its own reruns |
 

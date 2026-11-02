@@ -171,7 +171,7 @@ the model and the agent command, not a screen (`notes/nav-gestures.md` "Settings
 **The AtlView dev screen's run states:** while an app runs, its button brings it to the front and
 the other run buttons are disabled with the footer "ATL runs once per process: relaunch Dine";
 after the app exits every run button is disabled (`notes/nav-gestures.md` "Behaviour", one run per
-process). M8a builds the same states on the launcher's tiles only. Multi-app MA2 lets ATL run
+process). M8a builds the same states on the launcher's tiles only. Multi-app MA2b lets ATL run
 several apps per process, and the footer goes then.
 
 ### DINE-10

@@ -467,6 +467,13 @@ whose uid falls in that range would make them refuse again.
 - State: unchecked.
 - Where: `dine-atl/src/api-impl/android/os/Process.java` `myUid`.
 
+### ATL-40
+
+**`JobScheduler.cancel` never stops a running job's service.** It looks the service up by
+`job.getService().getClass()`, which is `ComponentName.class`, while `schedule` stores it by the
+service's own class, so `onStopJob` never runs.
+- Where: `dine-atl/src/api-impl/android/app/job/JobScheduler.java` `cancel`.
+
 ## DINE
 
 ### DINE-1

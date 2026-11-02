@@ -20,7 +20,8 @@ Task markers:
 | [B1](#b1-native-fault-containment) | native fault containment (option 1) | one-VM | planned |
 | [MA0](#ma0-design-and-probes) | finish the design, run the probes | all | done 2026-11-02 |
 | [MA1](#ma1-registry-and-install) | registry and install | all | done 2026-11-02 |
-| [MA2](#ma2-app-records) | per-app state, several apps in one VM | one-VM, headless test mode | planned |
+| [MA2a](#ma2a-app-records) | app records, no primary app; one app per VM | all | done 2026-11-02 |
+| [MA2b](#ma2b-several-apps-in-one-vm) | several apps in one VM | one-VM, headless test mode | planned |
 | [MA3](#ma3-containment) | containment of every app failure | one-VM | planned |
 | [MA4](#ma4-freeze-drop-memory-ledger) | freeze, drop, memory ledger | one-VM | planned |
 | [MA5](#ma5-saved-state) | saved instance state and memory callbacks | all | planned |
@@ -29,8 +30,8 @@ Task markers:
 | [MA8](#ma8-dine-policy-and-ui) | memory policy, running apps list | iOS | planned |
 | [MA9](#ma9-scenario-apps) | scenario apps | all | planned |
 
-Order: MA1 and MA2 follow MA0; MA3 and MA4 need MA2; B1 needs MA2
-(threads tagged with their app) and MA4's drop; MA7 needs MA1 and MA2; MA9 needs everything before
+Order: MA1 and MA2a follow MA0, MA2b follows MA2a; MA3 and MA4 need MA2b; B1 needs MA2a
+(threads tagged with their app) and MA4's drop; MA7 needs MA1 and MA2b; MA9 needs everything before
 it. M8a's APK import builds on MA1's registry. The order against `notes/atl-port.md`'s stages is
 `notes/steps.md`.
 
@@ -46,9 +47,9 @@ found are in `findings-native-faults.md`.
 - `[ ]` List the native code an app thread can reach (JNI natives, libraries behind them), with
   their global state and the locks they take.
 - `[ ]` A sigchain handler for SIGSEGV and SIGBUS on one-VM backends. It maps the faulting thread
-  to its app (MA2's field on ART's `Thread`). It contains the fault only when the thread is an app's
-  thread in `kNative` with the held-shared-locks counter at zero, and re-raises anything else with
-  the default action so iOS still writes its crash report.
+  to its app (MA2a's member on ART's `Thread`, `art_thread_embedder_tag`). It contains the fault
+  only when the thread is an app's thread in `kNative` with the held-shared-locks counter at zero,
+  and re-raises anything else with the default action so iOS still writes its crash report.
 - `[ ]` Containment: park the thread with async-signal-safe calls on its alternate stack, write the
   app's crash log, then drop the app (MA4). Root visiting skips a parked thread, so the dropped
   app's class loader can unload (problem 8).
@@ -180,37 +181,71 @@ suite is `dine-atl/tests/package/` (`tools/dine test package`).
 - Done when: the package suite grades install, query and removal on headless, including an APK
   without a launcher activity and a `reqFeatures` query. Met 2026-11-02.
 
-## MA2: app records
+## MA2a: app records
 
-Before M6b of `notes/atl-port.md` (`notes/steps.md`), so M6b's breadth work adds its app state
-behind the record.
+MA2 split in two (the user, 2026-11-02): MA2a gives every app its record and deletes the primary app
+while each VM still runs one app; MA2b runs several apps in one VM. The record model is `design.md`
+"App record".
 
-- `[ ]` The app record and its thread tagging (`ThreadGroup` plus a field on ART's `Thread`;
-  attached threads; UIKit upcalls).
-- `[ ]` ATL's process-wide state into the record (`findings-framework.md` table): the app, data
-  dir, PackageManager, providers, receivers, preferences, `sys_config` copy, layout inflater
-  cache, job scheduler, dialogs, IME, display metrics, C globals.
-- `[ ]` No primary app, on every backend (`design.md` "App record"): the fields that hold the one
-  app are deleted, not wrapped in getters; code reaches its app through its Context, a handle or a
-  parameter; Android's static APIs (`ActivityThread.currentApplication()` and the like) return the
-  calling thread's app.
-- `[ ]` The notes follow the code in this stage: every note that describes ATL with a primary app
-  or with guests of one states the record model, among them `design.md`,
-  `multi-head-exec-maybes.md` and `findings-hosting.md`; `findings-framework.md` marks its rows of
-  the primary as gone.
-- `[ ]` A main thread and main Looper per app.
-- `[ ]` Every app in the VM gets `Application.onCreate`, its providers and its receivers (today only
-  the first app does).
-- `[ ]` The host API takes app handles; `dine_atl_run` and ATL's `started` stop refusing a second
-  app; cfrunloop's `main_loop.quit` per app.
+- `[x]` The app record and its thread tagging: `ATLLoadedApp` plus the C `struct atl_app`
+  (`src/shared/app.h`); a `ThreadGroup` per app whose `embedderTag` ART copies to a member of each
+  thread that starts or attaches in it (`art_embedder.h`); the host thread that runs the app joins
+  its group; threads attached without a group take the host's app on gtk and headless (the user:
+  "Host's app on PC"), none on iOS.
+- `[x]` ATL's process-wide state into the record: data dir, PackageManager, providers, dynamic
+  receivers, preferences, a `Configuration` copy, the LayoutInflater constructors (by full class
+  name), job scheduler, shown dialogs, the keyboard and input state, location listeners, the MPRIS
+  id; an AsyncTask's handler is on the main Looper of the app that made it; C: the window,
+  activity stack, insets and exclusion, APK class path, data dir, listener.
+- `[x]` No primary app: the fields `design.md` lists are deleted; code reaches its app through its
+  Context, its object or a handle; Android's static APIs read the calling thread's record.
+  `getApplicationContext()` of a package whose app isn't running is null, as Android (the user's
+  answer); `createPackageContext` of an unknown package throws.
+- `[x]` One start path per record (`ATLLoadedApp.start`): Application, providers, UnifiedPush,
+  `onCreate`.
+- `[x]` The host API takes app handles (`nav.h`, `host.h`, the embedded listener); the embedder
+  makes the handle before the start (`dine_atl_app_new`), so insets still go in before it.
+- `[x]` The notes follow the code: no note but a findings file describes a primary app.
+- Not in MA2a: the gtk host keeps its one window and app handle, and gtk's C IME context and
+  MediaSession stay per process (one app per gtk process); the screen's size and density stay
+  VM-wide until a window per task (MA6); the headless and uikit input state (touch, scroll, edit
+  target) stays per process (MA2b).
+- Done when: today's suites pass at baseline on headless and gtk, both iOS builds build, `dine-atl/src`
+  keeps none of the primary app's fields. Met 2026-11-02, and `dbg smoke` passes on the phone.
+
+## MA2b: several apps in one VM
+
+- `[ ]` A main thread and main loop per app: loop slot instances (`loop_main_*` are one per process
+  today); glib keeps its one; cli and iOS start each app's main thread in its group; the uikit
+  frame link and pending queue per main thread; the headless input state per window.
+- `[ ]` Every app in the VM gets `Application.onCreate`, its providers and its receivers through
+  `ATLLoadedApp.start` (MA2a's path), several per VM.
+- `[ ]` The embedded host and `dine_atl_run` stop refusing a second app; cfrunloop's
+  `main_loop.quit` per app; the dev screen starts a second APK over the first (one phone check
+  through `dine-peek`, not on the done line; the user's answer).
 - `[ ]` The native library table keyed by (path, loader); native lookup limited to the loader's own
   libraries on Apple.
-- `[ ]` The headless test mode: several apps in one VM.
+- `[ ]` The headless test mode: several apps in one VM; a finished instrumentation ends only its app
+  and the VM exits after the last; each app's result lines carry its package (the user's answer);
+  test hooks (`ATL_DIALOG_ANSWERS`, `ATL_DUMP_VIEWTREE`) per app.
+- `[ ]` On gtk and headless (one app per process) ART's daemons (FinalizerDaemon,
+  ReferenceQueueDaemon, the finalizer watchdog, HeapTaskDaemon) belong to the host's app, as
+  threads that attach without a group do (the user, 2026-11-03): the host tags the system group and
+  ART retags the threads already running in it, since a thread takes its tag only at start. Today
+  they have no app: static APIs in a finalizer answer null or throw, and
+  `Looper.myLooper() == Looper.getMainLooper()` is true on them (`null == null`).
+- `[ ]` A finalizer thread and a reference-queue thread per app, each in its app's group (moved
+  from MA3, the user, 2026-11-03): each app's objects are finalized and its `Cleaner`s run on its
+  own threads, which see its app.
+- `[ ]` A service of another package runs in its caller's app, but its `getApplication()` is that
+  package's Application, which no host started (no `onCreate`, no main Looper): decide what it
+  returns (MA7 settles calls between apps).
+- `[ ]` Per-app AsyncTask executors (apps cast `THREAD_POOL_EXECUTOR` to `ThreadPoolExecutor`) and
+  shared lazily created threads (ForkJoinPool's common pool, okhttp's cleanup thread), which take
+  the group of the app that made them first.
 - `[ ]` The cost of an Android main thread per app (8 MiB virtual stack each today; `design.md`
-  "Further points").
-- Done when: two test APKs run side by side in one headless VM and the framework suite passes in
-  each; `dine-atl/src` keeps none of the primary app's fields, and no note but a findings file
-  describes a primary app.
+  "Further points"): Linux RSS and VmSize per idle app first, the phone's `phys_footprint` after.
+- Done when: two framework suite APKs instrumented side by side in one headless VM each pass.
 
 ## MA3: containment
 
@@ -219,7 +254,8 @@ behind the record.
   the `shuttingDown` latch.
 - `[ ]` App-reachable ART FATALs become app kills: JNI global table overflow, the suspension
   timeout (non-fatal return), `-Xcheck:jni` errors.
-- `[ ]` A finalizer thread and watchdog per app.
+- `[ ]` The finalizer watchdog per app (MA2b's finalizer thread per app): a finalizer over its
+  limit ends that app.
 - `[ ]` A main-thread watchdog per app on one-VM backends, with Android's wait or close dialog;
   its limits measured under `-Xint` on the phone.
 - `[ ]` Native code that calls into an app (ATL's C, uikit's upcalls) checks and clears a pending

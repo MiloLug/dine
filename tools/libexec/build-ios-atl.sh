@@ -16,7 +16,7 @@ hooks=true
 [[ ${DINE_RELEASE:-} == 1 ]] && hooks=false
 
 for f in "$LINUX_JARS/api-impl.jar" "$LINUX_JARS/framework-res.apk" "$OUT/include/jni.h" \
-         "$OUT/include/androidfw/androidfw_c_api.h"; do
+         "$OUT/include/androidfw/androidfw_c_api.h" "$OUT/include/art_embedder.h"; do
   [[ -e $f ]] || { echo "missing $f: run tools/dine linux build atl and tools/dine ios build-art" >&2; exit 1; }
 done
 

@@ -70,8 +70,8 @@ struct AtlView: View {
             setenv("DINE_TEST_SCENARIO", scenario, 1)
             setenv("DINE_TEST_FIXTURES", (path as NSString).deletingLastPathComponent, 1)
         }
-        navigator.run(title) { window, listener in
-            dine_atl_run(root, atl, prefix.path, caches.path, path, activity, window, listener)
+        navigator.run(title) { window, listener, app in
+            dine_atl_run(root, atl, prefix.path, caches.path, path, activity, window, listener, app)
         }
     }
 }

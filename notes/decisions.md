@@ -7,6 +7,11 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - Our delta: `git diff upstream/master...dine`. Local `master` lags upstream.
 - Upstream isn't merged: read its commits since the last merge and reimplement the wanted ones
   by hand.
+- No primary app: every app is a record (`ATLLoadedApp` plus the C `struct atl_app`, the hosts'
+  handle); code reaches it through its Context or object, Android's static APIs through the calling
+  thread's record (`ATLLoadedApp.ofCurrentThread`). Upstream code that reads a process-wide app,
+  window or `Context` static is ported onto the record; `nav.h`, `host.h` and the embedded
+  listener take the handle.
 - Packages are ours: the registry (`ATLRegistry`, SQLite in the prefix `DINE_PREFIX`, default
   `~/.dine`) is PackageManager's only source, and `ATLInstaller` its only writer; upstream's
   `_installed_apks_`, `--install`'s copy, `ANDROID_APP_DATA_DIR` and the GMS name list are gone. A
@@ -169,8 +174,9 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - `Activity.onBackPressed` moves the task root to the back when the host allows (gtk doesn't);
   `moveTaskToBack` is public and real; `activity.c` keeps task state and an activity's `stopped`.
 - `DialogInterface.OnCancelListener.onCancel` added (upstream's is empty).
-- The one window config, task state, dialogs' task and base JNI frame above become per app and
-  per task with multi-app (MA2, MA6; `notes/multi-app-support/design.md`, approved 2026-11-02).
+- Task state and dialogs' task are per app (the app record, `struct atl_app`); the window config
+  is the VM's screen; both become per task with multi-app MA6
+  (`notes/multi-app-support/design.md`).
 - `SDK_INT` is a device level set by hand: `ro.build.version.sdk` in `SystemProperties.java` (21),
   read by `Build.VERSION`; `RESOURCES_SDK_INT` = `SDK_INT`; `CODENAME` "REL". Upstream's derivation
   (`EarlyPackageParser`, `-DBuild.VERSION.SDK_INT`, `--sdk-int` and `create_vm`'s `sdk_int` in
@@ -211,6 +217,10 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 
 ## dine-art
 
+- Thread tags for embedders: libcore's `ThreadGroup.embedderTag` (subgroups inherit it) and
+  `Thread.joinThreadGroup`; ART copies the tag into a `Thread` member at start and attach and
+  exports `art_embedder.h` (`art_thread_embedder_tag`, `art_join_thread_group`,
+  `art_set_default_attach_group`). Keep them across rebases.
 - Upstream is merged: `git merge upstream/master`.
 - `install-ios` puts ART's junit boot jars in `share/art-junit`, apart from the runtime jars:
   Dine's release builds leave them off the boot class path.

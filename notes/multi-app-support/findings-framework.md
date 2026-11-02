@@ -4,6 +4,14 @@ What in dine-atl assumes one app per process, as needed by `design.md`. A snapsh
 2026-10-31; line numbers drift. Paths are under `dine-atl/src/` unless noted. **C**: read in code.
 **U**: inference, unchecked. How apps are launched and hosted is in `findings-hosting.md`.
 
+Gone with MA2a (2026-11-02): the primary app and every row below that holds it or its window
+(`primary_application`, `Context.this_application`, `package_manager`, `sys_config` as the apps'
+shared copy, `receiverMap`, `sharedPrefs`, `Environment.app_data_dir_file`, `atl_providers`,
+`sMainLooper`, the `JobScheduler`, `LayoutInflater`, `Dialog`, `InputMethodManager` statics, the C
+`apk_path`, `app_data_dir`, `atl_window`, `atl_window_config`, the activity stack, insets,
+`the_window`); MA1 replaced the PackageManager table and the guest loading. The current model is
+`design.md` "App record".
+
 ## Process-wide state that holds an app
 
 | Symbol | Where | Holds | Tag |

@@ -47,12 +47,12 @@ which writes into `Download/`). They reach the prefix as files on the host. Isol
 Backends: `linux` (desktop and headless builds; tests set a temporary prefix) and `ios`. A mount
 namespace backend for Linux comes in the later stage (see "Later stage").
 
-Java gets every root through one native, in place of `ATLPaths.java`'s copy of the env logic and
-`Environment.native_get_app_data_dir`.
+Java gets every root through one native, in place of `ATLPaths.java`'s copy of the env logic; an
+app's data dir is its record's (`ApplicationInfo.dataDir`).
 
 The `host` slot keeps process entry, VM creation, the classpath, launching an app and the window
 container; its "data dirs" move to fs. What moves, from `findings.md`: `data_dir_base`,
-`atl_set_app`'s dirs and `get_app_data_dir` in `shared/startup.c`; `ATLPaths.java`; the path
+`atl_set_app`'s dirs and the app's data dir (`struct atl_app`) in `shared/`; `ATLPaths.java`; the path
 methods of `Context` and `Environment`, `getCacheDir`'s `/tmp/atl_cache`; artbridge's
 `ANDROID_APP_DATA_DIR`, `ANDROID_DATA`, `XDG_CACHE_HOME` and `java.io.tmpdir`, and the Caches
 argument from `AtlView`/`ArtView`; `NotificationManager.c`'s icon path; the storage rewrite of

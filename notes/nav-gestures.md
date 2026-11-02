@@ -177,12 +177,13 @@ same model.
 
 ### Host to ATL
 
-`void atl_nav_set_insets(const struct atl_window_insets *insets)` (`nav.h`) takes `float` dp for
-three edge sets (`struct atl_edges`): system gestures, mandatory system gestures and navigation bars.
-The navigation bars are also the system window insets apps read before API 30, the only ones that
-reach androidx at ATL's level. It works from any thread and also before ATL starts: shared C
-(`src/shared/insets.c`) stores the values under a mutex and posts a dispatch to the shown
-activity; every show dispatches the stored values (`Window.dispatchInsets`, from `activity_focus`).
+`void atl_nav_set_insets(struct atl_app *app, const struct atl_window_insets *insets)` (`nav.h`)
+takes `float` dp for three edge sets (`struct atl_edges`): system gestures, mandatory system
+gestures and navigation bars. The navigation bars are also the system window insets apps read
+before API 30, the only ones that reach androidx at ATL's level. It works from any thread and also
+before the app starts: shared C (`src/shared/insets.c`) stores the values in the app's record under
+a mutex and, while the app runs, posts a dispatch to its shown activity; every show dispatches the
+stored values (`Window.dispatchInsets`, from `activity_focus`).
 The decor doesn't fit system windows: only views with `fitsSystemWindows` pad (AppCompat's subdecor
 does), as on Android with edge-to-edge.
 
@@ -265,15 +266,18 @@ Shared C keeps `task_front`, true at start. It gates `activity_focus` and `activ
 `CArtBridge` module map lists it (`header "../../../../out/ios/include/atl/nav.h"`), so Swift calls
 `atl_nav_*` directly with no artbridge wrappers.
 
+Each takes the app's handle, `struct atl_app *` (the embedder makes it with `dine_atl_app_new`
+before the start; the cli and gtk hosts keep the one they run).
+
 | Function | Effect |
 |---|---|
-| `bool atl_nav_back(void)` | posts Back: the BACK key through the key chain (a shown dialog, the focused views, the current activity); no-op while in the back |
-| `bool atl_nav_home(void)` | posts task to back; no-op while in the back |
-| `bool atl_nav_front(void)` | posts task to front; no-op while in the front |
-| `void atl_nav_set_insets(...)` | stores insets, posts their dispatch ([Host to ATL](#host-to-atl)) |
+| `bool atl_nav_back(struct atl_app *)` | posts Back: the BACK key through the key chain (a shown dialog, the focused views, the current activity); no-op while in the back |
+| `bool atl_nav_home(struct atl_app *)` | posts task to back; no-op while in the back |
+| `bool atl_nav_front(struct atl_app *)` | posts task to front; no-op while in the front |
+| `void atl_nav_set_insets(struct atl_app *, ...)` | stores insets, posts their dispatch ([Host to ATL](#host-to-atl)) |
 
-The `bool` functions work from any thread and return false when the post failed because ATL isn't
-running. `atl_nav_back` replaces `current_activity_back_pressed`. The gtk header button calls it;
+The `bool` functions work from any thread and return false when the app isn't running or the post
+failed. `atl_nav_back` replaces `current_activity_back_pressed`. The gtk header button calls it;
 `back_has_target` stays only to set the button's sensitivity.
 
 `nav.h` also defines the types the host sees:
@@ -295,13 +299,14 @@ queueing early posts), and false after `loop_main_quit` in poll and cfrunloop. g
 
 ### Host slot: `src/slots/host.h`
 
-The first host slot functions. Called on the Android main thread; every host implements them.
+The first host slot functions. Called on the app's Android main thread, each with the app's
+handle as its first argument; every host implements them.
 
 | Function | gtk (`src/main-executable/`) | cli | embedded |
 |---|---|---|---|
-| `bool host_task_to_back(void)` | false | true | true |
-| `void host_task_moved(bool front, bool by_host)` | no-op | prints `host: task back app` (or `front`, `host`) | listener `task_moved` |
-| `void host_gesture_exclusion_changed(const struct atl_gesture_exclusion *)` | no-op | prints `host: exclusion left <spans> right <spans>` | listener `exclusion_changed` |
+| `bool host_task_to_back(app)` | false | true | true |
+| `void host_task_moved(app, bool front, bool by_host)` | no-op | prints `host: task back app` (or `front`, `host`) | listener `task_moved` |
+| `void host_gesture_exclusion_changed(app, const struct atl_gesture_exclusion *)` | no-op | prints `host: exclusion left <spans> right <spans>` | listener `exclusion_changed` |
 
 cli prints spans as `top-bottom` pairs separated by commas, `-` for none, rounded to whole dp.
 
@@ -326,14 +331,15 @@ true, moves the task to the back.
 ```c
 struct atl_embedded_listener {
 	void *context;
-	void (*task_moved)(void *context, bool front, bool by_host);
-	void (*exclusion_changed)(void *context, const struct atl_gesture_exclusion *exclusion);
-	void (*exited)(void *context, int status);
+	void (*task_moved)(void *context, struct atl_app *app, bool front, bool by_host);
+	void (*exited)(void *context, struct atl_app *app, int status);
+	void (*keep_screen_on)(void *context, struct atl_app *app, bool on);
+	void (*exclusion_changed)(void *context, struct atl_app *app, const struct atl_gesture_exclusion *exclusion);
 };
 ```
 
-- Defined in `nav.h`. `atl_embedded_config` gets `const struct atl_embedded_listener *listener`;
-  `dine_atl_run` takes it and passes it through.
+- Defined in `nav.h`. `atl_embedded_config` gets `const struct atl_embedded_listener *listener` and
+  the app's handle; `dine_atl_run` takes both and passes them through.
 - The callbacks run on the Android main thread. Swift copies the arguments and continues with
   `DispatchQueue.main.async`, never `sync`. The exclusion spans live on the main queue and the
   recognizer reads them there, so the UIKit thread never calls into Java.
@@ -376,7 +382,8 @@ flag, from its first `onResume`. Both log their lifecycle and register an
 
 ### Linux
 
-- **cli host option `-c`:** a reader thread takes commands on stdin and calls `atl_nav_*`: `back`,
+- **cli host option `-c`:** a reader thread takes commands on stdin for the app it runs and calls
+  `atl_nav_*`: `back`,
   `home`, `front`, and `insets` with 12 dp (system gestures, mandatory gestures, navigation bars,
   each left top right bottom); M4a's `touch` and `key` lines go to the headless backend. The loop
   slot has no fd watch, hence the thread. It is opt-in, so `run-looper.sh` and other runs that

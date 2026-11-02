@@ -12,6 +12,7 @@ final class Navigator: ObservableObject {
     @Published var path = NavigationPath()
 
     private var app: String?  // while ATL runs it
+    private var handle: OpaquePointer?  // ATL's for it (dine_atl_app_new), which nav calls take
     private var surface: (view: AppSurfaceView, size: CGSize)?  // ATL's window, while ATL runs
     private var container: AppContainerController?
     private var appsList: AppsListController?
@@ -25,15 +26,15 @@ final class Navigator: ObservableObject {
     init() {
         // the navigator lives as long as the app (DineMain's state object)
         listener.context = Unmanaged.passUnretained(self).toOpaque()
-        listener.task_moved = { context, front, byHost in
+        listener.task_moved = { context, _, front, byHost in
             let navigator = Unmanaged<Navigator>.fromOpaque(context!).takeUnretainedValue()
             DispatchQueue.main.async { MainActor.assumeIsolated { navigator.taskMoved(front: front, byHost: byHost) } }
         }
-        listener.exited = { context, _ in
+        listener.exited = { context, _, _ in
             let navigator = Unmanaged<Navigator>.fromOpaque(context!).takeUnretainedValue()
             DispatchQueue.main.async { MainActor.assumeIsolated { navigator.exited() } }
         }
-        listener.exclusion_changed = { context, exclusion in
+        listener.exclusion_changed = { context, _, exclusion in
             let navigator = Unmanaged<Navigator>.fromOpaque(context!).takeUnretainedValue()
             let spans = EdgeExclusion(exclusion!.pointee)
             DispatchQueue.main.async {
@@ -43,7 +44,7 @@ final class Navigator: ObservableObject {
                 }
             }
         }
-        listener.keep_screen_on = { context, on in
+        listener.keep_screen_on = { context, _, on in
             let navigator = Unmanaged<Navigator>.fromOpaque(context!).takeUnretainedValue()
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
@@ -56,7 +57,7 @@ final class Navigator: ObservableObject {
 
     /// `start` runs ATL with the app's window and the listener; on success the app's container
     /// comes up.
-    func run(_ app: String, start: (UnsafePointer<dine_atl_window>, UnsafePointer<atl_embedded_listener>) -> Int32) {
+    func run(_ app: String, start: (UnsafePointer<dine_atl_window>, UnsafePointer<atl_embedded_listener>, OpaquePointer) -> Int32) {
         guard let keyWindow = rootController?.view.window else {
             return log.error("atl: no key window to size the app's window from")
         }
@@ -71,37 +72,46 @@ final class Navigator: ObservableObject {
         case .light: 0x10
         default: 0
         }
+        let handle = dine_atl_app_new()!
+        self.handle = handle
+        insetsSent = []
         sendInsets(safeArea: keyWindow.safeAreaInsets)
         let window = dine_atl_window(view: Unmanaged.passUnretained(view).toOpaque(),
                                      width: Int32((size.width * scale).rounded(.down)),
                                      height: Int32((size.height * scale).rounded(.down)),
                                      density_dpi: Int32((160 * scale).rounded()), night: night)
         let started = withUnsafePointer(to: window) { window in
-            withUnsafePointer(to: listener) { start(window, $0) }
+            withUnsafePointer(to: listener) { start(window, $0, handle) }
         }
-        guard started == 0 else { return }
+        guard started == 0 else {
+            self.handle = nil
+            return
+        }
         self.app = app
         surface = (view, CGSize(width: CGFloat(window.width) / scale, height: CGFloat(window.height) / scale))
         showContainer()
     }
 
     func back() {
-        _ = atl_nav_back()
+        guard let handle else { return }
+        _ = atl_nav_back(handle)
     }
 
     func home() {
         guard container != nil else { return }
         dismissContainer("home")
         popToRoot()
-        _ = atl_nav_home()
+        if let handle {
+            _ = atl_nav_home(handle)
+        }
     }
 
     /// From the app it moves the app to the back; dismissing the list brings it back.
     func openAppsList() {
         guard appsList == nil else { return }
         listReturnsToApp = container != nil
-        if listReturnsToApp {
-            _ = atl_nav_home()
+        if listReturnsToApp, let handle {
+            _ = atl_nav_home(handle)
         }
         let list = AppsListController(navigator: self, appRuns: app != nil)
         appsList = list
@@ -160,8 +170,8 @@ final class Navigator: ObservableObject {
     }
 
     private func front() {
-        guard app != nil else { return }
-        _ = atl_nav_front()
+        guard app != nil, let handle else { return }
+        _ = atl_nav_front(handle)
         showContainer()
     }
 
@@ -222,6 +232,7 @@ final class Navigator: ObservableObject {
 
     private func exited() {
         app = nil
+        handle = nil
         surface = nil
         keepScreenOn = false
         dismissContainer("exit")
@@ -233,6 +244,7 @@ final class Navigator: ObservableObject {
 
     /// notes/nav-gestures.md, pt as dp; the window starts below the status bar: nothing at its top
     func sendInsets(safeArea: UIEdgeInsets) {
+        guard let handle else { return }
         let settings = NavigationSettings.current
         func strip(_ edge: String, _ width: CGFloat) -> Float {
             let bound = ["inward", "down"].contains { (settings.bindings["\(edge).\($0)"] ?? .none) != .none }
@@ -246,7 +258,7 @@ final class Navigator: ObservableObject {
         insets.system_gestures = atl_edges(left: left, top: 0, right: right, bottom: bottom)
         insets.mandatory_gestures = atl_edges(left: 0, top: 0, right: 0, bottom: bottom)
         insets.navigation_bars = atl_edges(left: 0, top: 0, right: 0, bottom: bottom)
-        atl_nav_set_insets(&insets)
+        atl_nav_set_insets(handle, &insets)
     }
 }
 

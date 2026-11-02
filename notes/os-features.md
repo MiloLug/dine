@@ -168,7 +168,7 @@ Native paths below are under `dine-atl/src/api-impl-jni/`.
 - Today: `security/android_security_keystore_AndroidKeyStore.c` keeps keys in libsecret; Context's
   static block registers the `AndroidKeyStore` provider.
 - `none`: keys in memory for the life of the process. With several apps in one process the keys
-  need to be per app (multi-app MA2's app record).
+  need to be per app (multi-app's app record).
 - `ios`: the Keychain.
 - Done when: headless generates an AES key and encrypts and decrypts with it; on the phone the key
   survives a relaunch.
@@ -283,7 +283,8 @@ Native paths below are under `dine-atl/src/api-impl-jni/`.
 ## 21. Jobs and foreground services (JobScheduler, WorkManager, AlarmManager, Service)
 
 - Today: `Service.startForeground` logs and keeps the id. AlarmManager and `JobScheduler.schedule`
-  post to the main Looper (each app's own after multi-app MA2) with `postDelayed` (a job's service starts after its minimum latency),
+  post to the app's main Looper with `postDelayed` (a job's service starts after its minimum
+  latency),
   so alarms and jobs run only while Dine runs; `JobScheduler.enqueue` is a stub.
 - `desktop-linux` and `none`: in-process, as today.
 - `ios`: BGProcessingTask for jobs, BGContinuedProcessingTask for foreground services, and the

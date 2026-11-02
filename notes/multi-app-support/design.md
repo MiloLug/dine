@@ -69,39 +69,69 @@ fast loop (CLAUDE.md: Linux is the reference for the iOS port).
 
 ## App record (one-VM)
 
-Every app has a record that all its threads carry: a `ThreadGroup` of its own plus a field on ART's
-`Thread`. Threads inherit it from their creator; native threads attached through JNI get it from
-`JavaVMAttachArgs.group` or from the window or callback they serve. UIKit-thread upcalls attach
-with the record of the window's app.
+Every app has a record: `ATLLoadedApp` in Java and its C half, `struct atl_app` (`src/shared/app.h`
+in dine-atl), which the host makes and keeps for the process's life and passes as the app's handle.
+The record's `ThreadGroup` carries an opaque tag, the C struct (libcore's `ThreadGroup.embedderTag`,
+which subgroups inherit). ART copies a thread's tag into a member of its C++ `Thread` when the
+thread starts or attaches, from the group it starts in or attaches to, so a thread's Java group and
+its native tag always agree; a signal handler can read the member (`art_embedder.h`:
+`art_thread_embedder_tag`, `art_join_thread_group`, `art_set_default_attach_group`).
+- A thread joins the group of the thread that constructs it (Java's rule); a thread pool or a lazily
+  created shared thread takes the group of the app that made it first.
+- The host thread that runs the app joins the record's group before the main Looper exists.
+- Native threads that attach through JNI without a group: on gtk and headless, one app per process,
+  the host makes its app's group the default for them (decided; the user: "Host's app on PC"); on
+  iOS they belong to no app. ATL's own attaching code names its app's group.
+- ART's daemons (finalizer, reference queue, watchdog, heap task) start before any app. On gtk and
+  headless they belong to the host's app, as unattached threads do (decided, MA2b); with several
+  apps in one VM each app has its own finalizer and reference-queue thread in its group (decided,
+  MA2b), so a finalizer sees the app whose object it finalizes.
 
-Everything that holds app state today moves into the record:
-- ATL: the app and its Application, data dir, PackageManager view, providers, receivers,
-  shared preferences, main Looper (each app gets its own Android main thread), task stack, window,
-  `sys_config` (a copy per app), `LayoutInflater`'s constructor cache (keyed by class, not name),
-  the C globals in `findings-framework.md`.
+Everything that holds app state lives in the record:
+- ATL Java: the Application, data dir, PackageManager, providers, dynamic receivers, shared
+  preferences, main Looper (each app gets its own Android main thread in MA2b), a copy of the
+  display's `Configuration`, `LayoutInflater`'s constructors (keyed by full class name), job
+  scheduler state, shown dialogs, the keyboard and input state, location listeners.
+- ATL C: the window, the activity stack and its focus, insets and gesture exclusion, the APK class
+  path and data dir, the embedding host's listener.
 - libcore: default `Locale` and `TimeZone`, the uncaught handler, `CookieHandler`, `ProxySelector`,
   `ResponseCache`, `Authenticator`, the SSL and HttpURLConnection defaults, `NetworkSecurityPolicy`,
   Security providers, the URL and socket factories, tmpdir (the `-Djava.io.tmpdir` goes), `user.dir`
-  for relative paths.
+  for relative paths (MA3).
 - ART: the native library table keyed by (path, loader), which also closes the Apple trap where
-  `dlsym` on the main image finds every `Java_*` symbol; target SDK and package name per app.
+  `dlsym` on the main image finds every `Java_*` symbol; target SDK and package name per app (MA2b).
+
+The screen (size, density, night) is the VM's: Dine shows every app in one container size, and a
+window with its own size comes with a window per task (MA6). `DisplayMetrics.DENSITY_DEVICE` is the
+device's.
 
 No primary app, on every backend (decided; the user: "it hast to stop assuming we have any kind of
 primary app. These functions are app-runtime-timed, they are not some global magic, like
 .primary_app"):
-- ATL's fields that hold the one app are deleted, not turned into getters:
-  `ATLLoadedApp.primary_application` with `getPrimaryApplication()`, `Context.this_application`,
-  `Context.package_manager`, `Environment.app_data_dir_file`, the C `apk_path`, `app_data_dir`,
-  `atl_window`, `atl_window_config`.
-- Code reaches its app through its Context, an app handle or a parameter;
-  `getApplicationContext()` returns the Context's own app.
+- Code reaches its app through the object it acts on: a Context (`get_atl_loaded_app()`), an
+  Activity, View, Dialog or Window (their natives find the record through the Context), a
+  `ui_window` or `ui_view` (records backend), a callback's user data.
 - Android's static APIs with no Context (`ActivityThread.currentApplication()`,
   `currentPackageName()`, `AppGlobals.getInitialApplication()`, `Looper.getMainLooper()`,
-  `Process.myUid()`) return the app of the calling thread's record.
+  `Process.myUid()`, `Environment`'s directories) return the app of the calling thread's record.
+  On a thread of no app (ART's daemons, a native thread attached without a group on iOS),
+  `currentApplication`, `currentPackageName` and `getMainLooper` answer null and `myUid` -1;
+  `Environment`'s directories, a new `AsyncTask`, `SoundPool`'s load without a Context,
+  `AndroidKeyStore`, `CookieManager.getInstance` and `PendingIntent.send` without a Context throw
+  `IllegalStateException`.
+- `getApplicationContext()` returns the Context's own app's Application, null for a package context
+  of an app that isn't running, as Android (decided).
+- A package context lives in its creator's process (`Context.atl_process_app`): its main Looper,
+  windows, dialogs, keyboard, input state, providers and broadcast receivers are the creator's
+  app's, and the contexts, services and activities it makes live there too; its files,
+  preferences, class loader and resources are its own package's.
+- The hosts keep the handles of the apps they run; ATL's framework code never reads a host's
+  handle. The gtk host runs one app per process: its D-Bus actions, back button and libc path
+  rewrite read that one handle.
 - A Linux process runs one record, and that record is no more primary than any other.
 
 Shared state that stays shared: interned strings, class metadata of boot classes, the okhttp
-connection pool (a per-app pool is open).
+connection pool (`Address.equals` already separates apps' TLS setups), the display configuration.
 
 ## Containment
 
@@ -430,11 +460,12 @@ My calls, stated to the user on 2026-11-02 without objection:
 - Saved Bundles on one-VM backends: a system record in the VM plus a file per app in its data dir.
 - The registry on iOS when no app runs: the VM starts just to install, so M8a's VM-free APK reader
   may only be needed for labels and icons, or not at all if the rows hold them.
-- The cost of an Android main thread per app (8 MiB virtual stack each today): measured in MA2.
+- The cost of an Android main thread per app (8 MiB virtual stack each today): measured in MA2b.
 - The gtk D-Bus intent API stays. Under [Platform mechanisms](#platform-mechanisms-decided) D-Bus
   activation is how the Linux desktop starts an app from its notification or launcher entry, so it
   becomes the gtk build's entry into the same delivery the sockets use.
-- A per-app okhttp pool, and which other shared caches must be split: settled in MA2.
+- The okhttp pool stays shared (`Address.equals` separates apps' TLS setups); the caches split are
+  the ones in [App record](#app-record-one-vm).
 - The running apps list on iOS: one entry per task, as Android's recents; each entry shows its
   app's state (running, frozen, dropped, crashed). An app with two tasks has two entries.
 - Hangs on Linux, one process per app: no watchdog; a hung app hangs like any desktop program.
