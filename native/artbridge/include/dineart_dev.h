@@ -1,7 +1,7 @@
 #ifndef DINEART_DEV_H
 #define DINEART_DEV_H
 
-// Dev builds only: artbridge's dev.cpp (CMake DINE_DEV).
+// Dev builds only: artbridge's dev sources (CMake DINE_DEV).
 
 #ifdef __cplusplus
 extern "C" {
@@ -19,6 +19,11 @@ const char *dine_art_probe(void);
 /// previous run is still active, or VM creation failed in this process.
 int dine_art_run(const char *resource_dir, const char *data_dir, const char *class_path,
                  const char *main_class);
+
+/// Starts the multi-app probe `name` (dev_multiapp.cpp) on its own thread; it logs
+/// `ma probe <name> …`. Returns 0, or -1 for an unknown name or a thread that can't start.
+/// `jetsam` runs until iOS kills Dine.
+int dine_ma_probe(const char *name);
 
 /// Logs `atl probe now: stack used N KiB …`, the ATL main thread's deepest stack use so far, and
 /// the process's physical footprint and its peak. For the debugger (`dbg call`).

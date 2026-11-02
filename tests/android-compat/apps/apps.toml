@@ -12,3 +12,18 @@ headless_markers = ["atl frames "] # the records draw pass's stats: the GameView
 apk = "AdaptiveIconDemo.apk"
 activity = "com/example/adaptiveicondemo/MainActivity"
 markers = ["- onResume - yay!"]
+
+[flower-finder]
+apk = "views_widgets_samples_flower_finder.apk"
+activity = "com/example/recyclersample/flowerList/FlowersListActivity"
+markers = ["- onResume - yay!"]
+
+[multitouch]
+apk = "com.leocardz.multitouch.test_19.apk"
+activity = "com/leocardz/multitouch/test/MultitouchTest"
+markers = ["- onResume - yay!"]
+
+[accelerometer]
+apk = "com.ashwin.example.accelerometerdemo.apk"
+activity = "com/ashwin/example/accelerometerdemo/MainActivity"
+markers = ["- onResume - yay!"]

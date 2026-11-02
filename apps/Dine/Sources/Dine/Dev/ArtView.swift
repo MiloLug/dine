@@ -18,6 +18,12 @@ struct ArtView: View {
                 Button("run https") { run("dine-0003-https") }
                 Button("run park") { run("dine-0004-park") }
             }
+            Section("Multi-app probes") {
+                ForEach(["shutdown-read", "zones", "madvise", "default-zone", "limits", "mach-threads",
+                         "jetsam-report", "jetsam"], id: \.self) { name in
+                    Button("ma \(name)") { _ = dine_ma_probe(name) }
+                }
+            }
             Section("Probe") {
                 ForEach(lines, id: \.self) { Text($0).font(.caption.monospaced()) }
             }

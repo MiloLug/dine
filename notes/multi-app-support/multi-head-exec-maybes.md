@@ -3,7 +3,8 @@
 Why Dine runs one ATL app per launch, and what running a second app after it, or two apps in
 parallel, would take. The first findings for multi-app support: the roadmap is `todo.md` in this
 directory, the design `design.md`, later findings the `findings-*.md` files. The one-process
-constraint is in `notes/meta.md`.
+constraint is in `notes/meta.md`. Outcome (2026-11-02): one VM with an app record per app; a
+second VM from bundled ART copies is rejected ("too complicated").
 
 ## Why ATL runs once per launch
 

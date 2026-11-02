@@ -159,16 +159,14 @@ Until then nothing stops code from opening any host path by absolute path.
 
 ## Depends on, and affects
 
-- Multi-app: `design.md` "Prefix" layout (Android's paths as dirs inside the prefix) is superseded
-  by this layout. Data dirs keyed by package need the package before VM start (the TODO in
+- Multi-app: `design.md` "Prefix" points to this layout (approved with the design, 2026-11-02). Data dirs keyed by package need the package before VM start (the TODO in
   `startup.c`, `findings-hosting.md`); that comes with the registry (MA1) and APK import (M8a).
   Until then fs keys an app's dir by what the host gives it.
 - `notes/os-features.md` items 1 (Info.plist keys), 7 and 8 (files handed to other apps), 9 (the
   picker), 20 (`Download/`); [ART-11](../bug-tracker.md#art-11) (`java.nio.file` on iOS), one of
   the entry points.
 - Notes to update once the stage is planned: the slot table and build table in
-  `notes/atl-port.md` (the `host` row, a new `fs` row), `design.md` "Prefix",
-  `findings-hosting.md` "Storage on iOS", and the env var's readers listed in `findings.md`.
+  `notes/atl-port.md` (the `host` row, a new `fs` row), `findings-hosting.md` "Storage on iOS", and the env var's readers listed in `findings.md`.
 
 My calls, not asked: the slot name `fs`; `DINE_PREFIX` in place of `ANDROID_APP_DATA_DIR`, since it
 names the whole prefix; `~/.dine` as the default; the shared dirs created with the prefix;

@@ -22,6 +22,10 @@ class VerdictTest(unittest.TestCase):
         self.assertEqual("fatal: java.lang.UnsatisfiedLinkError: No implementation found for x",
                          verdict(log, WANTED, running=True))
 
+    def test_uncaught_handler_line_fails(self):
+        log = RESUMED + b"hacky_uncaught_exception_handler: Thread: main, Exception: \njava.lang.IllegalStateException: x\n"
+        self.assertEqual("fatal: java.lang.IllegalStateException: x", verdict(log, WANTED, running=False))
+
     def test_exit_fails(self):
         self.assertEqual("exited before 'atl frames '", verdict(RESUMED, WANTED, running=False))
         self.assertEqual("exited", verdict(RESUMED + b"atl frames 1\n", WANTED, running=False))

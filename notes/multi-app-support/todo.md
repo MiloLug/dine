@@ -1,12 +1,11 @@
 # Multi-app support: roadmap
 
 Stages for running several Android apps at once on every backend. It replaces stage M8e of
-`notes/atl-port.md`. The design behind it is `design.md` (preliminary); facts are in the findings
-files; how to resume the design work is `handoff.md`. Defects found on the way get codes in
-`notes/bug-tracker.md`, other work in `notes/general-todo.md`, as for every stage.
-
-The roadmap is preliminary: stages, their order and their content follow the design, which is not
-approved.
+`notes/atl-port.md`. The design behind it is `design.md`; facts are in the findings files; the
+design work's record is `handoff.md`. Defects found on the way get codes in `notes/bug-tracker.md`,
+other work in `notes/general-todo.md`, as for every stage. The user approved the design and this
+roadmap on 2026-11-02. Each stage starts with its plan (superpowers:writing-plans with the
+consilium).
 
 Task markers:
 - `[ ]` open;
@@ -19,7 +18,7 @@ Task markers:
 | Stage | Scope | Backends | State |
 |---|---|---|---|
 | [B1](#b1-native-fault-containment) | native fault containment (option 1) | one-VM | planned |
-| [MA0](#ma0-design-and-probes) | finish the design, run the probes | all | next |
+| [MA0](#ma0-design-and-probes) | finish the design, run the probes | all | done 2026-11-02 |
 | [MA1](#ma1-registry-and-install) | registry and install | all | planned |
 | [MA2](#ma2-app-records) | per-app state, several apps in one VM | one-VM, headless test mode | planned |
 | [MA3](#ma3-containment) | containment of every app failure | one-VM | planned |
@@ -30,7 +29,7 @@ Task markers:
 | [MA8](#ma8-dine-policy-and-ui) | memory policy, running apps list | iOS | planned |
 | [MA9](#ma9-scenario-apps) | scenario apps | all | planned |
 
-Order: MA1 and MA2 can start once MA0 settles the design; MA3 and MA4 need MA2; B1 needs MA2
+Order: MA1 and MA2 follow MA0; MA3 and MA4 need MA2; B1 needs MA2
 (threads tagged with their app) and MA4's drop; MA7 needs MA1 and MA2; MA9 needs everything before
 it. M8a's APK import builds on MA1's registry. The order against `notes/atl-port.md`'s stages is
 `notes/steps.md`.
@@ -89,28 +88,52 @@ found are in `findings-native-faults.md`.
 
 Runs beside M6a of `notes/atl-port.md` (`notes/steps.md`): the design and probes, no product code.
 
-- `[?]` The user's review of `design.md`, the static Linux model first; then the open design points
-  listed there.
+- `[x]` The user's review of `design.md` with the probe results: approved 2026-11-02 ("Approve
+  all"). `notes/filesystem/proposal.md`'s layout replaces `design.md` "Prefix"; several ART copies
+  are rejected ("too complicated").
+- `[x]` For the review: where the drop may inject. Decided 2026-11-02: in app code only, in shared
+  code only as the throw of a blocking call, never in a class initializer (`design.md` "Freeze and
+  drop"). On host ART an injection inside a boot class's
+  `<clinit>` left that class erroneous VM-wide (15 to 34% of injections into a loop over boot
+  classes), one into a lock, try, finally-unlock loop left a shared `ReentrantLock` held (43 to 46
+  of 50), and in 3 of 37 such loops the VM-wide `System.getProperties()` monitor stayed held, its
+  owner an id no thread had (`findings-runtime.md` "Stopping one app's threads").
 - `[x]` Builder check of the design (brainstorming), 2026-11-02.
-- `[ ]` A plan per stage (writing-plans).
-- `[?]` Probe, Linux headless: two apps in one VM through artbridge-like C, an async exception into
+- `[x]` Probe, Linux headless: two apps in one VM through artbridge-like C, an async exception into
   threads parked in `Object.wait`, `LockSupport.park`, `Thread.sleep` and a socket read; check
-  `ThreadList` and monitors afterwards.
-- `[?]` Probe, Linux headless: drop an app and check that its class loader and objects are
-  collected (heap before and after, `CountInstances` by loader).
-- `[?]` Probe, phone: does `shutdown(fd, SHUT_RDWR)` wake a thread blocked in `read` on iOS
-  ([ART-24](../bug-tracker.md#art-24)).
-- `[?]` Probe, phone: `malloc_create_zone` per app and `malloc_destroy_zone`, and what each does to
-  `phys_footprint`; does ART's memset plus `MADV_DONTNEED` lower it.
-- `[?]` Probe, phone: `os_proc_available_memory()` and memory warnings on iOS 27; Dine's jetsam
+  `ThreadList` and monitors afterwards. 2026-11-02, `tests/probes/multi-app/`: all stop, with
+  `Unpark` in the closure and the socket shut down; `ThreadList` back to its count, monitors
+  released, the other app running; a `catch (Throwable)` loop never stops; C attached threads must
+  check the exception (`findings-runtime.md` "Stopping one app's threads").
+- `[x]` Probe, Linux headless: drop an app and check that its class loader and objects are
+  collected (heap before and after, `CountInstances` by loader). 2026-11-02: collected at the first
+  GC in each of 10 cycles; RSS back to 2.5 MB over baseline, then about 60 KB per cycle; a leak
+  control keeps its loader. The app's dex stays: about 3.1 MB per cycle with a used 3 MB dex
+  (`findings-runtime.md` "Freeing one app").
+- `[x]` Probe, phone: does `shutdown(fd, SHUT_RDWR)` wake a thread blocked in `read` on iOS
+  ([ART-24](../bug-tracker.md#art-24)). 2026-11-02: yes, and so does `close()` (with `EBADF`).
+- `[x]` Probe, phone: `malloc_create_zone` per app and `malloc_destroy_zone`, and what each does to
+  `phys_footprint`; does ART's memset plus `MADV_DONTNEED` lower it. 2026-11-02: freeing a zone's
+  blocks lowers it at once; memset plus `MADV_DONTNEED` doesn't, `MADV_FREE_REUSABLE` does
+  ([ART-26](../bug-tracker.md#art-26)); the default zone's struct is writable
+  (`findings-native-faults.md` problem 14).
+- `[x]` Probe, phone: `os_proc_available_memory()` and memory warnings on iOS 27; Dine's jetsam
   limit on the iPhone 13, with and without the `increased-memory-limit` entitlement (does a free
-  account get it); `RLIMIT_NOFILE`'s soft and hard limits and raising the soft one.
-- `[?]` Probe, phone: Mach `thread_suspend` and `thread_terminate` on Dine's own threads.
+  account get it); `RLIMIT_NOFILE`'s soft and hard limits and raising the soft one. 2026-11-02:
+  2097 MB with or without the entitlement (it didn't take effect), one critical pressure event at
+  418 MB left, no jetsam report; descriptors 2560 soft, raised to 10240 (`findings-runtime.md`
+  "Memory").
+- `[x]` Probe, phone: Mach `thread_suspend` and `thread_terminate` on Dine's own threads.
+  2026-11-02: suspend and resume work; terminate on a pthread fails (`MACH_SEND_INVALID_DEST`).
 - The drop probes pass (my call) when a drop and reload of a test app returns its measured
   footprint except a few MB of what is never freed (interned strings, dex locations), and no
-  thread of an idle app stays parked for good once ART-24 is fixed.
-- `[?]` Fallback probe, only if the drop probes fail: two renamed libart dylib copies on the phone,
-  a VM in each, drop one, boot it again.
+  thread of an idle app stays parked for good once ART-24 is fixed. Linux (2026-11-02): the
+  threads part holds; the footprint part fails for any app with a real dex until MA4 frees dropped
+  dex files. Phone: the kernel wakes a blocked read on close or shutdown; the in-VM drop on the
+  phone is MA4's (below); on Apple the footprint part also needs
+  [ART-26](../bug-tracker.md#art-26).
+- Phone probes: the `ma` buttons on the Dev art screen (`dine_ma_probe`,
+  `native/artbridge/dev_multiapp.cpp`), logged as `ma probe <name> ...`.
 
 ## MA1: registry and install
 
@@ -161,6 +184,8 @@ behind the record.
 - `[ ]` The native library table keyed by (path, loader); native lookup limited to the loader's own
   libraries on Apple.
 - `[ ]` The headless test mode: several apps in one VM.
+- `[ ]` The cost of an Android main thread per app (8 MiB virtual stack each today; `design.md`
+  "Further points").
 - Done when: two test APKs run side by side in one headless VM and the framework suite passes in
   each.
 
@@ -174,6 +199,9 @@ behind the record.
 - `[ ]` A finalizer thread and watchdog per app.
 - `[ ]` A main-thread watchdog per app on one-VM backends, with Android's wait or close dialog;
   its limits measured under `-Xint` on the phone.
+- `[ ]` Native code that calls into an app (ATL's C, uikit's upcalls) checks and clears a pending
+  exception after each call: under `-Xcheck:jni` the next JNI call with one pending aborts the
+  process (MA0 probe).
 - `[ ]` libcore's VM-wide statics behind the app record (`findings-runtime.md` table); drop the
   `-Djava.io.tmpdir`.
 - Done when: in the headless test mode each failure kind in one app leaves the other app running
@@ -182,10 +210,22 @@ behind the record.
 ## MA4: freeze, drop, memory ledger
 
 - `[ ]` Freeze: stop delivery, then `SuspendThreadByPeer` per thread; resume.
-- `[ ]` Drop: async exception through artbridge (the JVMTI closure), interrupts, descriptor
-  ledger shutdown, windows closed, park-forever fallback.
+- `[ ]` Drop: async exception through artbridge (the JVMTI closure plus `Unpark`, since an
+  interrupt doesn't wake a park whose thread is already interrupted), frozen threads resumed after
+  the injection, interrupts, descriptor ledger shutdown, windows closed. MA0's Linux results:
+  `findings-runtime.md`.
+- `[ ]` The drop's delivery rule in ART's `Thread::ObserveAsyncException`: the drop's exception
+  lands only in a frame of the app's own code, or in shared code only as the throw of a blocking
+  call (wait, park, sleep), never inside a class initializer. Done when MA0's probes
+  (`tests/probes/multi-app/run.sh`: storm, juclock, the `System.getProperties()` hang) show no
+  erroneous shared class and no held shared lock with it.
+- `[ ]` A thread still running after a deadline (a `catch (Throwable)` loop) is suspended for good
+  and its GC roots skipped (shared with B1's parked threads).
+- `[ ]` [ART-26](../bug-tracker.md#art-26): release pages with `MADV_FREE_REUSABLE` on Apple, so a
+  dropped app's heap leaves the footprint iOS counts.
 - `[ ]` The per-app descriptor ledger (a choke point in libcore's `Os` or in the bionic shim) and
-  [ART-24](../bug-tracker.md#art-24).
+  [ART-24](../bug-tracker.md#art-24). The ledger closes descriptors itself: after a drop
+  `Socket.close()` can defer the close forever (MA0).
 - `[ ]` The memory ledger: heap per class loader, malloc zone per app with shared caches in a
   shared zone, stacks, descriptors, mappings.
 - `[ ]` Caps per app on the Java heap, JNI globals and descriptors; the heap cap is set at the
@@ -193,6 +233,13 @@ behind the record.
   over its cap fails. Shared limits raised:
   `kGlobalsMax` and `kWeakGlobalsMax`, the soft `RLIMIT_NOFILE` (`design.md` "Memory control").
 - `[ ]` A leak report in dev builds: what still holds a dropped app's objects.
+- `[ ]` Free a dropped app's dex files: today `closeDexFile` keeps any dex whose dex cache is still
+  registered, so every drop keeps the app's dex (MA0).
+- `[ ]` Measure the cost of per-app live-byte counting (`design.md` "Memory control"; a walk by
+  class loader sees only instances of the app's own classes, MA0) and a frozen app's footprint
+  (`design.md` "Options considered").
+- `[ ]` On the phone: probe 1's cases through `dine_art_run`, since blocked threads behave
+  differently on Apple (ART-24, os_sync park).
 - Done when: on the phone, dropping an app returns its footprint (measured) while another app keeps
   running.
 
@@ -266,5 +313,5 @@ behind the record.
 
 ## Docs to update
 
-Once the design is approved, the notes listed in `findings-hosting.md` "Notes that assume one app
-per process" change; M8a's import first (registry, no launcher-activity rule, no `System.exit(1)`).
+Done 2026-11-02: the notes listed in `findings-hosting.md` "Notes that assume one app per
+process" name the multi-app stage that changes each place; M8a now builds on MA1's registry.

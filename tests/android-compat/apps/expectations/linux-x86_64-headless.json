@@ -1,6 +1,14 @@
 {
-  "adaptive-icon": {
+  "accelerometer": {
     "expect": "fail",
-    "reason": "Region.nativeConstructor in its constructor: Region is gtk-only (M6a)"
+    "reason": "SensorManager.register_accelerometer_listener_native: no sensors on headless (M7 sensors)"
+  },
+  "flower-finder": {
+    "expect": "fail",
+    "reason": "Resources$NotFoundException for drawable/rose, only in drawable-v24: SDK_INT is 21 (M6b SDK_INT)"
+  },
+  "multitouch": {
+    "expect": "fail",
+    "reason": "NoSuchMethodError ActionBar.setHomeButtonEnabled in onCreate (M6b ActionBar)"
   }
 }

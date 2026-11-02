@@ -5,7 +5,8 @@
 A generic Android app runner for iOS, built as a translation layer ("Wine for Android") on top of
 ATL + ART, distributed by sideloading. Read `notes/meta.md` for the why, the iOS constraints (no
 JIT, code signing, one process, App Store rules) and the agreed layer architecture. Which stage is
-done and which is next: the Stages table at the top of `notes/atl-port.md`. Open defects:
+done and which is next: the Stages table at the top of `notes/atl-port.md`, the multi-app stages in
+`notes/multi-app-support/todo.md`, and `notes/steps.md` for their order. Open defects:
 `notes/bug-tracker.md`; other open work no stage owns: `notes/general-todo.md`. A defect found
 outside a stage's own work, or work no stage owns, gets a code there (`ART-n`, `ATL-n`, `DINE-n`,
 `TOOL-n`; each file's header has the rules), and other notes link the code.
@@ -58,7 +59,7 @@ tools/dine dbg start-server [--target gtk --app <apk>] | smoke [--network] [--li
 match the flag. A release build leaves out every dev and test part: the dev screens in
 `apps/Dine/Sources/Dine/Dev/` (`#if DEBUG`; xtool `-c release`), the libs in `native/dev/` (debug
 agent, hello, runtimetests; Swift imports them only from `Sources/Dine/Dev/`), artbridge's
-`dev.cpp` (ART's junit boot jars, `-Xcheck:jni`), ATL's test hooks (meson `test_hooks`),
+`dev*.cpp` (ART's junit boot jars, `-Xcheck:jni`, probes), ATL's test hooks (meson `test_hooks`),
 `Resources/Dev.xcassets`, and the test APKs, test jars and junit jars (`out/ios/dev`, bundled as
 `dev/`). `dbg ui`, `dbg fresh` and `dbg smoke` need a dev build. A release build can't start an
 app until the launcher gets APK import (M8a).

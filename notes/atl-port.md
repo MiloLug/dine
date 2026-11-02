@@ -26,7 +26,7 @@ its row here changes when that block does.
 | [M5b](#m5b-drawing-on-the-phone) | drawing on the phone | done |
 | [M5c](#m5c-text) | text | done |
 | [M5d](#m5d-paths-nine-patch-layers-gravity-defied) | paths, nine-patch, layers; Gravity Defied | done |
-| [M6a](#m6a-triage-and-fixes) | triage and fixes | next |
+| [M6a](#m6a-triage-and-fixes) | triage and fixes | done |
 | [M6b](#m6b-breadth) | breadth | planned |
 | [M6c](#m6c-search-ahead-of-m7) | search ahead of M7 | planned |
 | [M7](#m7-os-features) | OS features, items in `notes/os-features.md` | planned |
@@ -34,7 +34,7 @@ its row here changes when that block does.
 | [M8b](#m8b-ios-lifecycle) | iOS lifecycle | planned |
 | [M8c](#m8c-navigation-settings-store) | navigation settings store | planned |
 | [M8d](#m8d-background-probes) | background probes | planned |
-| [M8e](#m8e-several-apps) | several apps | planned |
+| [M8e](#m8e-several-apps) | several apps | replaced by the multi-app stages |
 | [M9](#m9-heavy) | Compose, GL, WebView | planned |
 
 ## Decisions
@@ -107,7 +107,7 @@ A build selects one backend per slot with a meson option.
 
 | Slot | Owns | Backends |
 |---|---|---|
-| `host` | process entry, VM creation, classpath, data dirs, launching an app and an activity, the container that holds activity windows | `gtk` (today's executable), `cli` (plain C entry, no glib), `embedded` (a library API Dine calls) |
+| `host` | process entry, VM creation, classpath, data dirs, launching an app and an activity, the container that holds activity windows (several apps: an app handle in every call and event, multi-app MA2; a container per task, MA6) | `gtk` (today's executable), `cli` (plain C entry, no glib), `embedded` (a library API Dine calls) |
 | `loop` | the Android main thread's integration with the platform loop, worker-thread loops, delayed and cross-thread posts to the main thread | `glib`, `cfrunloop`, `poll` |
 | `ui` | windows (Activity, Dialog, PopupWindow, WindowManager views), view nodes (children, frame, visibility, background, padding), toolkit widgets, focus, IME, touch and key input | `gtk`, `uikit`, `headless` |
 | `gfx` | Canvas, Paint, Path, Bitmap, image decoding, text measurement and layout, fonts, NinePatch, RenderNode | `gsk` (GSK, Pango, GdkPixbuf), `coregraphics` (CoreGraphics, CoreText, ImageIO), `record` (a display list), later possibly `skia` |
@@ -245,7 +245,7 @@ shows there. A milestone too big for that splits into lettered stages (M4a, M5a)
 starts; a bare number means the whole milestone. M7's stages are the numbered items of
 `notes/os-features.md`.
 
-A triage stage (M6a, M6c) is graded by its table, a design choice (M5a's renderer, M8e's design)
+A triage stage (M6a, M6c) is graded by its table, a design choice (M5a's renderer, multi-app's design)
 by the decision and its reason written into its section. The Dine-only stages M8b to M8d have no
 headless target yet: how they are graded is settled when the first one starts, and their sections
 list the checks known so far.
@@ -321,7 +321,7 @@ screen's runs then work on the VM ATL created. As built:
   `atl_vm_start`.
 - In Dine, artbridge stays the one VM owner (states none, creating, ready, failed). `dine_atl_run`
   creates the VM with ATL's options on an 8 MiB pthread and `ANDROID_LOG_TAGS=*:i`; it refuses
-  once any VM exists, so ATL runs before the art screen in a launch. The ATL thread detaches from
+  once any VM exists, so ATL runs before the art screen in a launch (multi-app MA2 lifts this). The ATL thread detaches from
   the VM when `atl_embedded_main` returns: ART aborts the process when an attached thread exits.
 - TLS on iOS is wolfSSL and libwolfssljni, as on Linux (`--enable-jni`), linked into Dine.
   wolfJSSE's default trust manager, when it gets no keystore and finds no Java trust store, makes
@@ -433,7 +433,7 @@ the Linux golden: `1170x2391` roots, TextViews `315x51` and `375x51` at y 0 and 
 - `records/` serves headless and uikit through the hooks in `records.h` (`native` per record);
   headless keeps the fixed metrics in `headless/views.c`, so its goldens are unchanged.
 - One window source: hosts pass `struct atl_window_config` (px size, density, night) to
-  `atl_vm_init`; `Display.density_dpi` feeds `DisplayMetrics.DENSITY_DEVICE` and
+  `atl_vm_init` (a `ui_window` per task with several apps: multi-app MA6); `Display.density_dpi` feeds `DisplayMetrics.DENSITY_DEVICE` and
   `AssetManager_init`; `atl_display_apply` writes dp. The cli host takes `-d DPI`;
   `run-demo.sh --density 480` and `linux smoke demo-480` cover sp, dp and px on Linux.
 - TextView: one px method `setRawTextSize` (package-private, a no-op in EditText);
@@ -856,11 +856,9 @@ pass. As built:
   scrolled background (`draw.displaylist`); `run-draw.sh` fails gtk on unbalanced snapshot pushes;
   smoke `atl-draw`; the graphics suite's `res/` and tests.
 - RenderNode is [M9](#m9-heavy)'s.
-- Open: findings in [M6a](#m6a-triage-and-fixes) (themed GradientDrawable backgrounds stop at Path,
-  `level-list` and `animation-list` XML, bitmap color filters, `clipRect`'s return value); a clip
-  under a perspective matrix on coregraphics; Choreographer stays timer-based (10 ms frames);
-  views redraw whole, without dirty rects; `Canvas(Bitmap)` and Bitmap's pixel natives stay
-  gtk-only; a background's offset while UIKit drives a scroll waits for Java's scroll report and
+- Open: a clip under a perspective matrix on coregraphics; Choreographer stays timer-based (10 ms
+  frames); views redraw whole, without dirty rects; `Canvas(Bitmap)` and Bitmap's pixel natives
+  stay gtk-only; a background's offset while UIKit drives a scroll waits for Java's scroll report and
   redraw; the display link on the Android thread's own run loop (saves a hop, unverified on iOS
   27); a press on a selector row on the phone and gtk is unchecked by hand.
 
@@ -1021,8 +1019,8 @@ suites and the runtime suite pass. As built:
   lines a curve. Java edits a path only it holds (`path_edit` copies a shared one); lists hold refs.
   Path.java is one handle; FillType keeps `even_odd` and inverse. `gfx_canvas_draw_path` and
   `gfx_canvas_clip_path` (INTERSECT, DIFFERENCE): record's `path` and `clip_path` ops print
-  SVG-like verbs, coregraphics builds a CGPath at replay, gsk a GskPath (`gsk_path_from_gfx`,
-  which Region's gtk natives take too). Inverse fills: [ATL-26](bug-tracker.md#atl-26).
+  SVG-like verbs, coregraphics builds a CGPath at replay, gsk a GskPath (`gsk_path_from_gfx`).
+  Inverse fills: [ATL-26](bug-tracker.md#atl-26).
 - `drawArc`: `gfx_canvas_draw_arc`, an `arc` op; each backend builds its shape with the shared
   path code: a sweep of 360° or more is the whole oval, any style (Android 10's hwui; Gravity
   Defied strokes its wheels so), else Skia's `CreateDrawArcPath` (`useCenter` adds the center and
@@ -1087,45 +1085,76 @@ the stage that owns it (M6b, M7, M9) or, owned by none, to a code in `notes/bug-
 defect) or `notes/general-todo.md`; a stop an M6b item names stays there. The
 triage then runs again; the cycle ends when a triage finds only stops owned elsewhere.
 
-Runs beside multi-app MA0 (`notes/steps.md`), which adds probes only, no product code.
-
-Findings from M4b and M5 (M5's stages add and update them):
-- gtk `ui_view_set_background_drawable` makes a CSS provider per call and never unrefs it.
-- A triage run shows one stop only: `activity_start` (`src/shared/activity.c`) calls
-  `ExceptionDescribe` after `onCreate` throws, ART's `ExceptionDescribe` leaves the exception
-  pending, and the next JNI call (`_GET_BOOL_FIELD`) aborts under CheckJNI. Other spots that only
-  describe may do the same.
-- flower_finder stops at `Region.nativeConstructor` (material's FloatingActionButton), and
-  AdaptiveIconDemo in AdaptiveIconDrawable's constructor (the apps suite expects it on headless):
-  Region's natives are gtk-only.
-- `new Canvas()` without a Bitmap throws a NullPointerException on every call (`synchronized` on
-  its null bitmap); AdaptiveIconDrawable makes one.
-- A 90° rotation leaves cos at -4.37e-8 in graphene, so `rectStaysRect` is false for quarter
-  turns; Skia snaps such values to 0 (unverified for Android 10's Skia).
-- uikit's `keys.m` sends a hardware keyboard's keypad Enter as `KEYCODE_NUMPAD_ENTER` (160), which
-  no Java Enter reader takes (EditText's Enter keys, `isConfirmKey`, touch mode, lists); gtk sends
-  it as `KEYCODE_ENTER`. Whether Android 10's readers take 160 like Enter decides the fix.
-- Drawables without a constant state of their own get the base `getConstantState`'s null:
-  InsetDrawable, ScaleDrawable, ClipDrawable (DrawableWrapper's is commented
-  out), AnimatedVectorDrawable, ColorStateListDrawable, PictureDrawable. An app's
-  `getConstantState().newDrawable()` on one throws, and Resources reloads them (a `.9.png` decodes
-  on every load). AOSP 10 gives each a state.
-- `Drawable.createFromXml` has no `level-list` case (null), and AnimationDrawable's `inflate` is
-  commented out (an `animation-list` resource has no frames).
-- Color filters and tints never reach a bitmap's paint: `BitmapDrawable.setColorFilter` and
-  ImageView's `setColorFilter`/`setImageTintList` paths keep nothing, and coregraphics draws a
-  bitmap with its paint's alpha only, a nine-patch's tinted bitmap slices included (its solid
-  slices take the tint).
-- A `<nine-patch>` XML drawable draws nothing: `Drawable.createFromXml` makes an empty
-  NinePatchDrawable without reading `android:src`.
-- `Canvas.clipRect` returns whether the rect itself is non-empty, not the resulting clip.
-- Compose (`compose_demo_app.apk -l com/bicubictwice/composedemoapp/ui/MainActivity` on headless)
-  draws a VectorPainter after `onResume` into `new Canvas(Bitmap)` and stops at
-  `Bitmap.native_create_snapshot`: `Canvas(Bitmap)` is gtk-only.
+Ran beside multi-app MA0 (`notes/steps.md`; MA0 done 2026-11-02, probes only, no product code).
 
 **Done when:** the last triage's table (APK, stop before, stop after) is in this section, and each
 stop and finding is fixed, named in a later stage or coded in `notes/bug-tracker.md` or
 `notes/general-todo.md`.
+
+**Status: done (2026-11-02).** The triage is `tools/dine test apps`: flower_finder, multitouch and
+accelerometerdemo are rows beside Gravity Defied and AdaptiveIconDemo (demo_app is `linux smoke
+demo`), and a failing row's expected-failure reason names its stop and its owner. The other
+`atl_test_apks` are M9's: Compose, and the GL or native-library apps (gles3jni, glmark2, both
+oculus apps, endless_tunnel, sdl2, unity). `linux smoke` (with `crash`), the framework suites on
+headless and gtk, the apps suite on both, the runtime suite, `ios build-atl` (dev and release) and
+`dbg smoke` pass. Headless triage:
+
+| APK | Stop before | Stop after (owner) |
+|---|---|---|
+| demo_app | none | none |
+| Gravity Defied | none | none |
+| AdaptiveIconDemo | `Region.nativeConstructor` in AdaptiveIconDrawable's constructor | none |
+| flower_finder | `Region.nativeConstructor` (material's FloatingActionButton) | `Resources$NotFoundException` for `drawable/rose`, which only `drawable-v24` has ([M6b](#m6b-breadth) `SDK_INT`); gtk stops there too |
+| multitouch | `NoSuchMethodError` for `ActionBar.setHomeButtonEnabled` in `onCreate`, then a CheckJNI abort | the same error, through the uncaught handler (M6b ActionBar) |
+| accelerometerdemo | `SensorManager.register_accelerometer_listener_native` | the same (M7 sensors); gtk reaches `onResume` |
+
+As built:
+- App exceptions in C: where Android's main loop would see one (lifecycle calls, app startup, the
+  main looper, the layout upcall, insets, gtk's signal callbacks and host actions),
+  `exit_on_exception` (`src/api-impl-jni/util.c`) gives it to the thread's uncaught handler, whose
+  default prints it and exits 10 (libcore's `hacky_uncaught_exception_handler`); it ends the process
+  when an app's handler returns. It runs in place inside the natives that start, finish or resume
+  an activity too: Android runs those lifecycle calls after the Java caller returns. A native whose
+  Java caller should see its exception returns it pending. `linux smoke crash` throws in
+  `onCreate`, `onResume`, a posted Runnable and a started activity's `onCreate`; the apps harness
+  counts the handler's line as fatal and reports the exception under it.
+- Region: `src/shared/region.c` on every build, y-bands of x-spans; `setPath` takes the pixels
+  whose centres the fill covers, as Skia's non-antialiased fill, over the path's bounds when no clip
+  is given (`Path.op`). The graphics suite's `RegionTest`.
+- Canvas: `new Canvas()` draws nowhere and locks no bitmap. ATLCanvas keeps each save level's clip
+  bounds in device space: `clipRect` and `clipPath` return whether any clip is left,
+  `getClipBounds` maps the bounds back and rounds them as Android does. A view's draw starts at the
+  view's size (gtk's one canvas per widget is reset before each draw), every other canvas at its
+  target's size (`new Canvas()` at 0x0); `setBitmap` resets the stack. A DIFFERENCE keeps the bounds, and clears them only when its shape is a rect
+  under a rect-keeping matrix that covers them.
+- Rotations from degrees (Matrix's rotate calls, record's canvas rotate) snap a sin or cos within
+  1/4096 of 0 to 0, as Skia's `SkScalarSinCos` (`src/shared/matrix.h`); `setSinCos` keeps its values.
+- Keys: `KeyEvent.isConfirmKey` takes SPACE and NUMPAD_ENTER (Android 10); a NUMPAD_ENTER no view
+  takes goes again as ENTER with `FLAG_FALLBACK` (Android 10's `Generic.kcm`), beside ATL's ESCAPE
+  as BACK; gtk sends keypad Enter as NUMPAD_ENTER, as uikit does. Android 10's TextView reads only
+  ENTER, so an EditText gets keypad Enter through its key listener and the keymap; unchecked, and
+  not on the phone (no hardware keyboard).
+- Drawables: DrawableWrapper's constant state (InsetDrawable, ClipDrawable, whose `mutate` takes a
+  state of its own); AnimatedVectorDrawable, ColorStateListDrawable, PictureDrawable and
+  ScaleDrawable copy through a state that makes a new one. `createFromXml` inflates `level-list`,
+  `animation-list` (frames, durations, oneshot) and `<nine-patch>` (its `src`'s chunk; AOSP's
+  XmlPullParserException without one).
+- Color filters and tints on bitmaps: BitmapDrawable and NinePatchDrawable keep a color filter, a
+  tint list and a tint mode on their native drawable (a filter wins over the tint, as AOSP's draws;
+  PorterDuff filters only). ImageView keeps its color filter (`setColorFilter(int)` is SRC_ATOP) and
+  image tint and puts them on its drawable as AOSP's `applyColorMod` and `applyImageTint`.
+  coregraphics draws a filtered bitmap in a transparency layer with the mode's blend; MULTIPLY
+  modulates, exact except at partial alpha. gsk draws a bitmap drawable through a paintable that
+  keeps its filter, a color matrix for CLEAR, SRC, DST, SRC_IN, DST_IN, SRC_OUT, DST_OUT, SRC_ATOP
+  and MULTIPLY. `linux smoke draw` has a filtered BitmapDrawable and a tinted ImageView; the phone
+  shows both tinted.
+- gtk frees a view's padding, background and text color CSS providers when it replaces them (no
+  check counts them).
+- Open: the callbacks that print an exception and go on stay so (measure, draw, input, click,
+  dialog result; the layout upcall exits): multi-app's per-app handler takes them up, and uikit's
+  input prints where gtk's signal callbacks exit. Region's `setPath` rasterizes every row of the
+  path's bounds when no clip limits them. gsk draws the PorterDuff modes a color matrix can't
+  express as SRC_IN ([ATL-33](bug-tracker.md#atl-33)).
 
 ### M6b: breadth
 
@@ -1135,7 +1164,11 @@ app record (`notes/multi-app-support/design.md` "App record"), not into process-
 - ListView and RecyclerView (`views_widgets_samples_flower_finder.apk`). On uikit, lists need a
   measure cache: each measured text is one hop to UIKit's thread.
 - Drawables, themes and styles, AdaptiveIconDemo; BitmapShader and ComposeShader
-  ([ATL-23](general-todo.md#atl-23)).
+  ([ATL-23](general-todo.md#atl-23)). `Canvas(Bitmap)` and Bitmap's pixel natives on headless and
+  iOS (AdaptiveIconDrawable's mask, `Bitmap.createBitmap` from a source bitmap, Compose's
+  VectorPainter); `RegionIterator`; `createFromXml`'s `scale`, `clip`, `rotate`, `color`,
+  `animated-selector` and `animated-rotate`; InsetDrawable's insets; ScaleDrawable's draw; color
+  filters other than PorterDuff on bitmaps; `BitmapDrawable.getPaint`, a new Paint per call.
 - PopupWindow and PopupMenu, Toast.
 - A second layout root over the container, for Dialogs with a content view (they show nothing on
   headless and uikit) and Builder's single and multi choice, `setAdapter` and `setView` content.
@@ -1163,7 +1196,8 @@ app record (`notes/multi-app-support/design.md` "App record"), not into process-
   string; gtk renders them as Pango markup (`ui_text_set_markup`), uikit shows them literally.
 - `SDK_INT` above 21 as `android.*` catches up: androidx reads gesture insets and exclusion rects
   only from 29, and from 33 calls `getOnBackInvokedDispatcher`, which ATL lacks
-  (`notes/nav-gestures.md` Reach); [ATL-4](bug-tracker.md#atl-4).
+  (`notes/nav-gestures.md` Reach); [ATL-4](bug-tracker.md#atl-4). flower_finder stops at its
+  images, which only its `drawable-v24` has.
 
 ### M6c: search ahead of M7
 
@@ -1200,27 +1234,35 @@ below. The Dine-only stages M8b to M8d are left for later ([Milestones](#milesto
 
 #### M8a: APK import and launch
 
+Runs after multi-app MA1 and builds on its registry: an import installs the APK into the registry,
+and the launcher reads the registry's rows (`notes/multi-app-support/design.md` "Registry",
+`notes/filesystem/proposal.md` "Layout").
+
 - Import from Files, with document types through the Info.plist merge (the base item of
   `notes/os-features.md`, if it isn't built yet). From the PC an APK reaches Files by a Safari
   download over the LAN (untried), or `pymobiledevice3 apps push --documents` puts it in Dine's
   Documents (needs `UIFileSharingEnabled`; unverified for a development-signed app on iOS 27).
-- Each app gets a directory in Application Support for its APK and data. Every AtlView run shares
-  Caches today, which iOS may purge (iOS knowledge).
-- `AppLibrary` gains the package, the APK path, the label and the icon; it stores `id` and `name`
-  today.
-- Label, icon, package and whether there is a MAIN/LAUNCHER activity are read without the VM,
-  since `dine_atl_run` creates the process's one VM. The reader is shared C in dine-atl over
-  androidfw's C API (already linked into Dine), its header installed like `nav.h`, so the package
-  suite grades on headless the code Dine runs. The API has no `AssetManager_delete` or
-  `ApkAssets_delete`: each parse leaks until they exist. Adaptive icons resolve to XML, so they
-  fall back to a PNG until M5d draws paths.
-- Import rejects an APK without a launcher activity, and warns about native libraries
-  (`lib/*/*.so`), which iOS won't load.
+- The APK goes to the registry's APK store and the app's data to `data/<pkg>/`, both in
+  Application Support (`notes/filesystem/proposal.md` "Layout"). Every AtlView run shares Caches
+  today, which iOS may purge (iOS knowledge).
+- The launcher reads the registry's rows (package, label, icon, launcher activity) in place of
+  `AppLibrary`'s `apps` table, which stores `id` and `name` today (multi-app MA1).
+- Install parses the APK and writes its row in one transaction (MA1). On iOS the VM starts to
+  install, so a VM-free reader is needed only if the rows can't hold labels and icons
+  (`notes/multi-app-support/design.md` "Further points"). Such a reader would be shared C in
+  dine-atl over androidfw's C API (already linked into Dine), so the package suite grades on
+  headless the code Dine runs; the API has no `AssetManager_delete` or `ApkAssets_delete`: each
+  parse leaks until they exist. Adaptive icons resolve to XML, so they fall back to a PNG until
+  M5d draws paths.
+- An APK without a launcher activity installs (an extension) and gets no tile; import warns about
+  native libraries (`lib/*/*.so`), which iOS won't load.
 - At start `dine_atl_run` passes no activity and Java picks the launcher one
   (`Activity.createMainActivity`). With none it calls `System.exit(1)`, which would end Dine: the
-  embedded host returns an error instead.
-- One app per launch: the running apps list (`RunningApps`) and the run states that
-  `notes/nav-gestures.md` Behaviour specifies for one run per process, on the launcher's tiles.
+  embedded host returns an error instead, until multi-app MA3 makes `System.exit` end only the
+  calling app.
+- One app per launch until multi-app MA2: the running apps list (`RunningApps`) and the run states
+  that `notes/nav-gestures.md` Behaviour specifies for one run per process, on the launcher's
+  tiles. Several apps' list (an entry per task, each app's state, a close action) is MA8.
 - Release builds (`DINE_RELEASE=1`, `-c release`) start no app yet: only the dev atl screen calls
   `dine_atl_run`, and such a build keeps no `Java_*` symbol (`llvm-nm` count 0). ART finds those
   with dlsym, so once the launcher starts APKs, a release build must keep them: check the count,
@@ -1231,15 +1273,17 @@ below. The Dine-only stages M8b to M8d are left for later ([Milestones](#milesto
   Whether a clean release tree, which has no `libruntimetests.a`, fails to link is unverified.
 - The package suite (`dine-atl/tests/package`) starts here.
 
-**Done when:** the package suite passes on headless (the reader's fields for the test APKs, an APK
-without a launcher, launcher resolution through the cli host without `-l`); on the phone a dev
+**Done when:** the package suite passes on headless (the registry rows for the test APKs, an APK
+without a launcher installed without a tile, launcher resolution through the cli host without
+`-l`); on the phone a dev
 screen imports from the dev payload through the same code (`dbg smoke`), and a release build
 imports `demo_app.apk` and shows both strings (by hand).
 
 #### M8b: iOS lifecycle
 
-- Dine leaving the front calls `atl_nav_home` and coming back calls `atl_nav_front`: onPause and
-  onStop, then onRestart, onStart and onResume, the paths `run-nav.sh` grades on headless. The
+- Dine leaving the front calls `atl_nav_home` and coming back calls `atl_nav_front` (for every
+  running app with several apps: multi-app MA8): onPause and onStop, then onRestart, onStart and
+  onResume, the paths `run-nav.sh` grades on headless. The
   container stays presented, a background task (`beginBackgroundTask`) keeps Dine running until
   the Android thread has run them, and Dine remembers whether the app was in front.
 - The Dialogs and Home race: [DINE-1](bug-tracker.md#dine-1).
@@ -1268,8 +1312,9 @@ notifications, media session, downloads and jobs items of `notes/os-features.md`
 #### M8e: several apps
 
 Several apps at once on every backend: the roadmap is `notes/multi-app-support/todo.md`, its
-design and findings sit next to it. Its stages replace this one; M8a's import builds on its
-registry (stage MA1).
+design (approved 2026-11-02) and findings sit next to it, and `notes/steps.md` orders its stages
+against this file's. Its stages replace this one; M8a's import builds on its registry (stage
+MA1).
 
 ### M9: heavy
 
@@ -1278,7 +1323,9 @@ by a webkitgtk widget (`android_webkit_WebView.c`, gtk-only), a ui node kind on 
 RenderNode on the records backends: its natives build GskRenderNodes and are gtk-only;
 a node would record into a display list that an op of its parent's list draws, with its
 transform, alpha and clip ([Java](#java)). Layout's spans, line spacing and `StaticLayout.Builder`
-setters, which Compose's text needs: [ATL-17](bug-tracker.md#atl-17).
+setters, which Compose's text needs: [ATL-17](bug-tracker.md#atl-17). The cli host (headless)
+doesn't unpack an APK's `lib/<arch>/`; only the gtk host does, so a native-library app's headless
+stop is that gap.
 
 ## Tests
 

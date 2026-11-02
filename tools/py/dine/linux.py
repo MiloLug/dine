@@ -21,6 +21,8 @@ DIALOG_APK = paths.OUT / "tests/apks/dialog.apk"
 NAV_APK = paths.OUT / "tests/apks/nav.apk"
 VIEWS_APK = paths.OUT / "tests/apks/views.apk"
 WIDGETS_APK = paths.OUT / "tests/apks/widgets.apk"
+# not in tests/apks: the iOS dev payload bundles every APK there
+CRASH_APK = paths.OUT / "tests/linux-apks/crash.apk"
 
 
 @dataclass(frozen=True)
@@ -101,6 +103,12 @@ def _nav() -> str | None:
             or _script("run-nav.sh", HEADLESS_TESTS / "run-nav.sh", HEADLESS_BUILD, NAV_APK))
 
 
+def _crash() -> str | None:
+    _need_headless()
+    return (_script("apk.py", sys.executable, paths.ROOT / "tests/harness/apk.py", HEADLESS_TESTS / "crash", CRASH_APK)
+            or _script("run-crash.sh", HEADLESS_TESTS / "run-crash.sh", HEADLESS_BUILD, CRASH_APK))
+
+
 def _views_apk() -> str | None:
     return _script("apk.py", sys.executable, paths.ROOT / "tests/harness/apk.py", HEADLESS_TESTS / "views", VIEWS_APK)
 
@@ -158,6 +166,7 @@ CHECKS = [
     Check("dialog", "headless: dialog.apk's alerts and list take scripted answers, an alert changes its buttons in onShow, it exits 0", _dialog),
     Check("dialog-gtk", "gtk: the same through the GTK dialog's widgets", _dialog_gtk),
     Check("nav", "headless: nav.apk's lifecycle under Back, Home and front from cli -c", _nav),
+    Check("crash", "headless: crash.apk throws in onCreate, onResume, a posted Runnable and a started activity's onCreate; each ends ATL through the uncaught handler with exit 10, no CheckJNI abort", _crash),
     Check("views", "headless: views.apk removes, re-adds and frees views, view tree matches the golden", _views),
     Check("views-gtk", "gtk: the same through GTK's widgets, and gsk frees a nine-patch and a StateListDrawable", _views_gtk),
     Check("widgets", "headless: widgets.apk takes taps, a hold, Tab, Enter, a drag and keys from cli -c; a press shows only in its own copy of a shared selector resource", _widgets),

@@ -92,7 +92,9 @@ All C.
 
 ## Notes that assume one app per process
 
-To update once the design is approved (`todo.md` "Docs to update").
+Since the design's approval (2026-11-02) each place names the multi-app stage that changes it;
+`atl-port.md` Tests keeps restarting Dine every N tests, since tests change VM-wide state that a
+drop doesn't reset.
 
 | Note | Place | Assumption |
 |---|---|---|

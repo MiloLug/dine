@@ -135,7 +135,9 @@ Native paths below are under `dine-atl/src/api-impl-jni/`.
   host's actions use them too.
 - `none`: `ActivityNotFoundException`, Android's answer when nothing handles an intent.
 - `ios`: `UIApplication.open` for links, the open-in sheet (UIDocumentInteractionController) for
-  files; another app's service stays `none`.
+  files; another app's service stays `none` until multi-app MA7 (calls between apps through the
+  `ipc` slot; on Linux its `unix` backend, with the D-Bus intent API kept as the desktop's entry,
+  `notes/multi-app-support/design.md`).
 - This item settles the Java table's "external intents sent over D-Bus" row in
   `notes/atl-port.md`.
 - Done when: headless gets the exception for an https link; on the phone Safari opens it (by hand).
@@ -165,7 +167,8 @@ Native paths below are under `dine-atl/src/api-impl-jni/`.
 
 - Today: `security/android_security_keystore_AndroidKeyStore.c` keeps keys in libsecret; Context's
   static block registers the `AndroidKeyStore` provider.
-- `none`: keys in memory for the life of the process.
+- `none`: keys in memory for the life of the process. With several apps in one process the keys
+  need to be per app (multi-app MA2's app record).
 - `ios`: the Keychain.
 - Done when: headless generates an AES key and encrypts and decrypts with it; on the phone the key
   survives a relaunch.
@@ -249,7 +252,9 @@ Native paths below are under `dine-atl/src/api-impl-jni/`.
   free account gets the permission is open (`notes/background-tasks.md`, question 5); M8d's
   answer may change this design.
 - A tap delivers the notification's PendingIntent to the running app. A tap after Dine was killed
-  has to start the app, which needs M8a.
+  has to start the app, which needs M8a. With several apps the PendingIntent is a registry row
+  that reaches its owning app (multi-app MA1, MA7), and a tap after iOS ended Dine loads only that
+  app (MA8).
 - Done when: headless notifies and cancels; on the phone the notification shows and a tap opens the
   app (by hand).
 
@@ -258,7 +263,8 @@ Native paths below are under `dine-atl/src/api-impl-jni/`.
 - Today: `media/android_media_session_MediaSession.c` exports MPRIS over D-Bus;
   `NotificationManager.c` owns the bus name, and a MediaStyle notification calls `nativeShowMPRIS`.
 - `none`: metadata and commands do nothing.
-- `ios`: the Now Playing info and remote commands (lock screen, Control Center).
+- `ios`: the Now Playing info and remote commands (lock screen, Control Center). Dine has one Now
+  Playing; which of several apps holds it is open (multi-app MA8).
 - Needs: playing on after Dine leaves the front waits for M8d's answer on background audio.
 - Done when: headless sets metadata and state; on the phone the lock screen shows them (by hand).
 
@@ -277,7 +283,7 @@ Native paths below are under `dine-atl/src/api-impl-jni/`.
 ## 21. Jobs and foreground services (JobScheduler, WorkManager, AlarmManager, Service)
 
 - Today: `Service.startForeground` logs and keeps the id. AlarmManager and `JobScheduler.schedule`
-  post to the main Looper with `postDelayed` (a job's service starts after its minimum latency),
+  post to the main Looper (each app's own after multi-app MA2) with `postDelayed` (a job's service starts after its minimum latency),
   so alarms and jobs run only while Dine runs; `JobScheduler.enqueue` is a stub.
 - `desktop-linux` and `none`: in-process, as today.
 - `ios`: BGProcessingTask for jobs, BGContinuedProcessingTask for foreground services, and the

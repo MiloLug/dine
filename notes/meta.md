@@ -41,8 +41,10 @@ nothing more.
   native code fails cleanly.
 - **No hypervisor access** for apps, so virtualizing an ARM64-on-ARM64 guest is off the table.
 - **One process:** iOS apps can't spawn processes. All Android apps share one iOS process,
-  isolated only by class loaders and separate folders. One crash or memory spike takes them all
-  down.
+  isolated only by class loaders and separate folders. The multi-app design
+  (`notes/multi-app-support/design.md`) contains one app's crash and drops frozen apps under
+  memory pressure; a fault in shared native code, or Dine passing iOS's memory limit (2097 MB on
+  the iPhone 13), still takes them all down.
 - **Background limits:** WorkManager-style long jobs stop when the app isn't in the foreground.
 - **JIT when available:**
   - Sideloaded, dev-cert-signed apps can get JIT through **StikDebug** (iOS 17.4+). This is

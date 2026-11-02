@@ -2,7 +2,7 @@
 # Cross-compile native/<lib> for arm64-apple-ios into out/ios (static libs + headers).
 # Usage: tools/dine ios build-native [lib...]   (default: every lib in native/, plus native/dev/*
 # unless DINE_RELEASE=1; a dev lib is named dev/<lib>). DINE_RELEASE=1 also builds artbridge
-# without its dev.cpp (CMake DINE_DEV).
+# without its dev sources (CMake DINE_DEV).
 # Build type: DINE_IOS_BUILD_TYPE (default RelWithDebInfo). For C++ debugging without optimized-out
 # locals: DINE_IOS_BUILD_TYPE=Debug tools/dine ios run
 set -euo pipefail

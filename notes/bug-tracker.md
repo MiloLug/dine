@@ -181,16 +181,34 @@ an oat file isn't up to date.**
 ### ART-24
 
 **On Apple, closing a socket doesn't wake a thread blocked reading it.**
-- State: unchecked on the phone; read in code and in the iOS SDK headers.
+- State: unchecked through libcore. On the phone (iOS 27, 2026-11-02, plain C in
+  `native/artbridge/dev_multiapp.cpp`) `close()` from another thread wakes a thread blocked in
+  `read()` on a TCP socket at once with `EBADF`, and `shutdown(SHUT_RDWR)` wakes it with 0, so the
+  effect below is likely absent. On Linux a plain `close()` doesn't wake it.
 - Where: `dine-art/libnativehelper/AsynchronousCloseMonitor.cpp` wakes blocked threads with
   `__SIGRTMIN + 2`, defined there as 34 when the platform has no `__SIGRTMIN`. Darwin's `NSIG` is
   32 (`sys/signal.h`), so signal 34 can't be installed or sent. NIO channels use SIGIO on Darwin
   and are not affected.
 - Effect (unchecked): `Socket.close()` from another thread (OkHttp's `Call.cancel`, a timeout)
   leaves the reader blocked until data arrives or its socket timeout fires.
-- Fix: a signal below 32 that nothing else uses, or `shutdown(fd, SHUT_RDWR)` before the close
-  (whether that wakes a blocked read on iOS is unchecked).
+- Fix: a signal below 32 that nothing else uses, or `shutdown(fd, SHUT_RDWR)` before the close.
 - Owner: `notes/multi-app-support/todo.md` MA4 (dropping an app needs it).
+
+### ART-26
+
+**On Apple, ART's page release doesn't lower the footprint iOS counts.** ART releases pages with a
+memset to zero and `MADV_DONTNEED` (`kMadviseZeroes` is false off Linux), and on the phone that
+left `phys_footprint` where it was; `MADV_FREE_REUSABLE` lowers it.
+- State: open. Measured on the phone (iOS 27, 2026-11-02) on a plain 64 MB mapping, touched: 84 MB
+  footprint before and after memset plus `MADV_DONTNEED`, 20 MB after `MADV_FREE_REUSABLE`. ART's
+  own path is the same two calls; its effect on Dine's footprint is unmeasured.
+- Where: `dine-art/art/libartbase/base/mem_map.cc:810-822` (`MadviseDontNeedAndZero`),
+  `mem_map.h:42-46`.
+- Effect (unchecked): heap trims and freed GC spaces stay counted against Dine's memory limit
+  (2097 MB on the iPhone 13), which iOS enforces by killing Dine.
+- Fix: `MADV_FREE_REUSABLE` on Apple, and `MADV_FREE_REUSE` before the pages are used again.
+- Owner: `notes/multi-app-support/todo.md` MA4 (a dropped app's heap must leave the footprint).
+- Also in: `notes/multi-app-support/findings-runtime.md` "Memory".
 
 ## ATL
 
@@ -370,7 +388,7 @@ only the paint's alpha over the gradient.
 ### ATL-26
 
 **Inverse fill types draw as their plain rule.** `drawPath` and `clipPath` take the even-odd bit
-only (`gfx_canvas_draw_path`); `Path.op` and Region (gtk) handle inverse.
+only (`gfx_canvas_draw_path`); `Path.op` and Region handle inverse.
 - Where: `dine-atl/src/api-impl/android/atl/ATLCanvas.java`, `src/slots/gfx.h`.
 
 ### ATL-27
@@ -391,6 +409,13 @@ last unref in `hold()` can run on an app thread.
 - State: unchecked: read from the code, not seen failing.
 - Where: `dine-atl/src/backends/ui/records/ui.c` (`schedule_draw`, `schedule_layout`, `hold`).
 
+### ATL-33
+
+**gsk draws some PorterDuff color filters as SRC_IN.** A paint's or bitmap drawable's color filter
+is a color matrix over unpremultiplied colors, which can't express SRC_OVER, DST_OVER, DST_ATOP,
+XOR, DARKEN, LIGHTEN, SCREEN, ADD and OVERLAY.
+- Where: `dine-atl/src/backends/gfx/gsk/paint.c` `gfx_paint_set_color_filter`.
+
 ## DINE
 
 ### DINE-1
@@ -399,7 +424,8 @@ last unref in `hold()` can run on an app thread.
 in between presents over the launcher until Java's close reaches it, and a tap whose answer
 reaches Java after Home is dropped: the alert comes back on front.
 - Where: `apps/Dine/Sources/Dine/Navigation.swift` `home()`: `dismissContainer` and `popToRoot`
-  run before `atl_nav_home`.
+  run before `atl_nav_home`. It handles one container; with several apps there is one per task
+  (multi-app MA6).
 - Owner: M8b.
 
 ### DINE-2

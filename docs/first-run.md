@@ -244,12 +244,16 @@ are never committed. The tools look for exactly these files:
 |---|---|---|
 | `demo_app.apk` | `linux smoke demo` and `demo-480`, the iOS dev payload | atl_test_apks |
 | `org.happysanta.gd_29.apk` | `test apps` (and so `linux smoke gd`), the iOS dev payload | atl_test_apks |
-| `AdaptiveIconDemo.apk` | `test apps` | atl_test_apks |
+| `AdaptiveIconDemo.apk` | `test apps`, the iOS dev payload | atl_test_apks |
+| `views_widgets_samples_flower_finder.apk` | `test apps`, the iOS dev payload | atl_test_apks |
+| `com.leocardz.multitouch.test_19.apk` | `test apps`, the iOS dev payload | atl_test_apks |
+| `com.ashwin.example.accelerometerdemo.apk` | `test apps`, the iOS dev payload | atl_test_apks |
 
 ```sh
 git clone --depth 1 https://gitlab.com/android_translation_layer/atl_test_apks.git out/downloads/atl_test_apks
 mkdir -p third_party/apks
-cp out/downloads/atl_test_apks/{demo_app,org.happysanta.gd_29,AdaptiveIconDemo}.apk third_party/apks/
+cp out/downloads/atl_test_apks/{demo_app,org.happysanta.gd_29,AdaptiveIconDemo,views_widgets_samples_flower_finder,\
+com.leocardz.multitouch.test_19,com.ashwin.example.accelerometerdemo}.apk third_party/apks/
 ```
 
 A new third-party APK gets a row here; the tools name it by this file name.

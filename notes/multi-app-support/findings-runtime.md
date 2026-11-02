@@ -3,7 +3,9 @@
 What dine-art (Android 10 ART, libcore 8.1/9) allows and blocks when several apps share one
 runtime, as needed by `design.md`. A snapshot read on 2026-10-31; line numbers drift. Paths are
 under `dine-art/` unless they start with `native/` or `dine-atl/`. **C**: read in code. **U**:
-inference, unchecked. The one-runtime rule and the second-VM options are in
+inference, unchecked. **M**: measured by MA0's probe (`tests/probes/multi-app/`, run with
+`run.sh all`) on 2026-11-02: host ART on Linux x86_64 under WSL2 with artbridge's VM flags, not the
+phone. The one-runtime rule and the second-VM options are in
 `multi-head-exec-maybes.md`.
 
 ## One runtime
@@ -92,10 +94,13 @@ inference, unchecked. The one-runtime rule and the second-VM options are in
 - A suspension that does not complete in 10 s is `LOG(FATAL)` "Thread suspension timed out"
   (`thread_list.h:50`, `thread_list.cc:974-976`). C
 - A thread in native code, a syscall, a wait or a sleep counts as suspended at once
-  (`thread.h:257-262`); its native code keeps running until it re-enters Java. C. Stopping the OS
-  thread needs Mach `thread_suspend`: U.
+  (`thread.h:257-262`); its native code keeps running until it re-enters Java. C. On the phone
+  Mach `thread_suspend` and `thread_resume` stop and restart one of Dine's own pthreads;
+  `thread_terminate` on a pthread fails with `MACH_SEND_INVALID_DEST` (0x10000003) and the thread
+  keeps running, also when it is blocked in `read()`. M (phone)
 - A suspended thread keeps its monitors. If it holds a lock other apps take (`Runtime`, `Locale`,
-  `TimeZone`, ATL statics), they block: U.
+  `TimeZone`, ATL statics), they block: U. A thread of another app waiting on a frozen thread's
+  monitor stays blocked until the frozen thread resumes and unwinds: M.
 - `Thread.stop`, `suspend`, `resume` and `destroy` throw `UnsupportedOperationException`
   (`Thread.java:877,991,1031,1056`); the `ThreadGroup` versions call them (`ThreadGroup.java:
   622-760`). Only `interrupt` works. C
@@ -106,18 +111,77 @@ inference, unchecked. The one-runtime rule and the second-VM options are in
 - Its only caller is JVMTI `StopThread` (`art/openjdkjvmti/ti_thread.cc:1075-1122`), and
   libopenjdkjvmti is not built (`Makefile:49,61`). The checkpoint closure (`ti_thread.cc:
   1099-1118`) can be copied into artbridge; its `Notify` wakes a monitor wait, not a park
-  (`thread.cc:2683-2693`). C. Whether app code can catch the exception: U.
+  (`thread.cc:2683-2693`). C. App code can catch it: a `catch (Throwable)` loop kept running
+  through 5 injections. M
 - A thread that exits while still attached is a FATAL (`thread.cc:2247-2261`). C
-- Closing a socket does not wake a thread blocked reading it on Apple:
-  [ART-24](../bug-tracker.md#art-24). NIO uses SIGIO on Darwin and is not affected
-  (`ojluni/src/main/native/NativeThread.c:50-54`). C (code and SDK); on the phone U.
+- The probe's closure (`SetAsyncException`, `Notify`, then Java `Thread.interrupt()`) stops a thread
+  in `Object.wait`, `Thread.sleep`, a busy loop, and `LockSupport.park` while the interrupt flag is
+  clear, at once; the exception reaches the app group's `uncaughtException`. M
+- A park whose thread's interrupt flag is already set is not woken: `Thread::Interrupt` returns
+  early when the flag is set (`thread.cc:2671-2679`) and `Park` ignores the flag (`thread.cc:
+  415-445`), AOSP 10's code (dine-art `f9aedbf5`). The closure must also call `Unpark()`; with it
+  the park ends.
+  M, C
+- A socket read is woken by neither the injection nor an interrupt; `Os.shutdown(SHUT_RDWR)` and
+  `Socket.close()` (signal 34 on Linux) wake it, a raw `close()` doesn't. M (Linux)
+- A thread blocked entering a monitor another app holds stays blocked; once the monitor is free it
+  enters and runs the block's body before the exception lands. M
+- A frozen thread (`SuspendThreadByPeer`) accepts the injection (the checkpoint runs on the
+  caller), unwinds after `Resume` and releases its monitors. M
+- An injection inside a `<clinit>` leaves the class erroneous for everyone: waiters and later
+  users get `NoClassDefFoundError`. In 34 complete runs that initialize 5296 boot classes in a loop
+  under 208 to 656 injections each, 66 to 98 classes per run (15 to 34% of the injections) had
+  their `<clinit>` hit, and each stayed erroneous VM-wide (`javax.crypto.JceSecurity`,
+  `libcore.icu.LocaleData`, ICU classes). M (`out/probes/multi-app/results/case-storm-*.log`; the
+  3 runs that hit the deadline below are excluded, their injection counts are inflated)
+- In 3 of those 37 runs the loop's thread blocked for good on the monitor of
+  `System.getProperties()`, a VM-wide object, so every later `System.getProperty` blocks, in any
+  app. M. The monitor names an owner id no thread had: two reads gave 23305 and 30574, while ids
+  are allocated first-free (`thread_list.cc:1545-1555`) and stay below 20 here (thread dump in
+  `case-storm-37.log`). That fits a fat monitor whose owner thread exited and was freed
+  (`Monitor::GetOwnerThreadId` reads `owner_->GetThreadId()`, `monitor.cc:1552-1560`): U. One more
+  run hung with the injected thread at 100% CPU (cause unknown, log lost). Finalizers of shared
+  objects the injection left half built fail on the shared FinalizerDaemon (`Inflater.finalize`
+  NullPointerException, 7 of 37 runs; logged, not fatal). M
+- The exception lands at invokes, gotos, monitor enter and exit and throws
+  (`interpreter_switch_impl-inl.h:758-951`, `interpreter_common.h:146`), also on the cleanup call
+  of a `finally`, which then doesn't run: a read stopped by shutdown skips `SocketInputStream`'s
+  `releaseFD()`, so `Socket.close()` defers the close forever and the descriptor leaks. M, C
+  (`AbstractPlainSocketImpl.java:628-654`). An injection into a loop of lock, try, finally-unlock
+  on a shared `ReentrantLock` left the lock held by the dead thread in 43 to 46 of 50 trials (5
+  runs); where in lock or unlock it landed is unmeasured. M
+- A thread attached from C (`JavaVMAttachArgs.group`) returns from the call with the exception
+  pending. C that clears it and detaches ends cleanly; C that makes another JNI call first aborts
+  the process under `-Xcheck:jni` ("JNI DETECTED ERROR ... called with pending exception"). M
+- libcore's wakeup signal for a socket closed under a blocked reader can't exist on Apple
+  ([ART-24](../bug-tracker.md#art-24)); NIO uses SIGIO on Darwin and is not affected
+  (`ojluni/src/main/native/NativeThread.c:50-54`). C. On the phone the kernel wakes the reader
+  anyway: `close()` from another thread ends its `read()` at once with `EBADF`, `shutdown(SHUT_RDWR)`
+  with 0. M (phone); through libcore U.
 
 ## Freeing one app
 
 - ART unloads classes. Class loaders are weak roots (`art/runtime/class_linker.cc:5785-5799`);
   `CleanupClassLoaders` frees the ClassTable and LinearAlloc of collected ones (`:9606-9630`) on
   GC reclaim (`gc/collector/mark_sweep.cc:350`; the GC is CMS, `art/build/Android.common_build.mk:
-  85`). Dex caches are weak (`class_linker.h:722-736`). C. When DexFile memory goes: U.
+  85`). Dex caches are weak (`class_linker.h:722-736`). C
+- A dropped app's dex files stay. Their finalizer fails ("Failed to close dex file in finalizer",
+  every cycle) because `closeDexFile` keeps a dex whose dex cache is still registered
+  (`art/runtime/native/dalvik_system_DexFile.cc:396-405`), and nothing frees it after
+  `CleanupClassLoaders`. With 500 classes defined from a 3.1 MB dex on the app's path (ATL's
+  `api-impl.jar` dex, deflated as in most APKs so ART extracts it to memory;
+  `api-impl-deflated.jar` from `build.sh`, passed as `DINE_PROBE_EXTRA_JAR`), RSS and VmSize grow
+  by about 3.1 MB per drop cycle (`drop-plain-extra.log`); a dex with no class defined from it is
+  freed (2 runs, logs not kept). M, C
+- Drop and reload of a test app (about 46 MB of small objects, 200 classes, 4 blocked threads) 10
+  times, with app A running throughout: the loader is collected at the first `Runtime.gc()` plus
+  `runFinalization()` every cycle; heap back to baseline plus 0.1 MB; loaded classes back to
+  baseline plus 96 (boot classes the first load initialized). RSS: 36.7 MB baseline, 85.5 MB
+  loaded, 39.2 MB after the first drop, then about 60 KB more per cycle on average, which
+  includes one leaked socket descriptor and the test app's own small dex per cycle. A control app
+  that sets `Thread.setDefaultUncaughtExceptionHandler` to its own object keeps its loader and its
+  46 MB. M
+  (Linux RSS, not iOS `phys_footprint`)
 - What keeps a loader alive (C): any live object of its classes; its live threads, and
   `contextClassLoader`, which new threads inherit (`Thread.java:177,549`); ThreadLocal values on
   shared threads (`ThreadLocal.java:308-310`); any VM-wide static above that holds an app object;
@@ -126,7 +190,8 @@ inference, unchecked. The one-runtime rule and the second-VM options are in
 - What does not (C): `SharedLibrary` (weak, `java_vm_ext.cc:92`); the ResourceBundle cache
   (`ResourceBundle.java:304,718,736`); the proxy cache, per loader (`ClassLoader.java:195`).
 - String literals and dex locations are interned strongly and never freed (`class_linker.cc:1600,
-  1658,2537,8405`), so memory grows with each drop and restart of an app. C; size U.
+  1658,2537,8405`), so memory grows with each drop and restart of an app. C; size: within the
+  60 KB per cycle above. M
 - A dropped app's pending finalizers still run its code on the shared FinalizerDaemon. U
 
 ## Memory
@@ -139,15 +204,28 @@ inference, unchecked. The one-runtime rule and the second-VM options are in
   allocating thread (`art/runtime/gc/heap.cc:1783-1785`), whichever app filled the heap. C
 - No per-app accounting. Per-thread cumulative allocation counts exist only with allocation stats
   on (`heap-inl.h:173-179`). Live heap per app needs a stop-the-world walk with `VisitObjects` or
-  `CountInstances` (`heap.h:272,370`), grouped by class loader. C (the API exists)
+  `CountInstances` (`heap.h:272,370`), grouped by class loader. C (the API exists). Grouping by
+  the loader of each object's class misses what an app holds in boot-class instances: the walk
+  found 206 objects, 2 KB, of the test app's 46 MB (`byte[]`, `ArrayList`). The walk, under a
+  shared mutator lock with no thread suspended, took 3 to 5 ms over a 47 MB heap. M
 - Java thread stacks: 1 MB plus a 16 KiB guard by default (`thread.cc:726-763`); artbridge's own
   threads are 8 MiB (`artbridge.cpp:98,147`). Only touched pages are resident. C
 - Trim hooks are push-only: `Heap::Trim`, `VMRuntime.trimHeap`, `requestConcurrentGC`,
   `clampGrowthLimit`, `-XX:LowMemoryMode` (`dalvik_system_VMRuntime.cc:729-760`,
   `runtime_options.def:73`). ART gets no OS memory-pressure signal. C
 - On Apple `kMadviseZeroes` is false, so ART releases memory with a memset then `MADV_DONTNEED`
-  (`libartbase/base/mem_map.h:42-46`, `mem_map.cc:810-822`). Whether that lowers iOS
-  `phys_footprint`: U.
+  (`libartbase/base/mem_map.h:42-46`, `mem_map.cc:810-822`). C. On the phone those two calls left
+  a touched 64 MB mapping's `phys_footprint` at 84 MB; `MADV_FREE_REUSABLE` brought it to 20 MB
+  ([ART-26](../bug-tracker.md#art-26)). M (phone)
+- Dine's memory limit on the iPhone 13 is 2097 MB: `phys_footprint` plus `limit_bytes_remaining`
+  (`TASK_VM_INFO`) gives it at every step, and `os_proc_available_memory()` equals
+  `limit_bytes_remaining` within 3 MB. Touching 32 MB steps, the one memory-pressure event (critical)
+  and UIKit's memory warning came at 1679 MB (418 MB left); iOS killed Dine after the step that
+  reached 2072 MB (25 MB left), with no JetsamEvent or crash report. With
+  `com.apple.developer.kernel.increased-memory-limit` in an `entitlementsPath` file (xtool 1.22.2,
+  free account) Dine installed without a prompt and the limit stayed 2097 MB. M (phone)
+- Descriptors: soft `RLIMIT_NOFILE` 2560, hard unlimited, `kern.maxfilesperproc` 10240; raising
+  the soft limit to 10240 works, and 10234 descriptors then opened before `EMFILE`. M (phone)
 
 ## Abort path
 

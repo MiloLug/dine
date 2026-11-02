@@ -25,7 +25,9 @@ APKS = ROOT / "third_party/apks"
 OUT = ROOT / "out/tests/apps"
 TIMEOUT = 60
 SETTLE = 3   # s the app must stay up after its last marker
-FATAL = re.compile(rb"UnsatisfiedLinkError|JNI DETECTED ERROR|Runtime aborting|FATAL EXCEPTION")
+# libcore's default uncaught handler, which exits; the exception is on the line after its own
+UNCAUGHT = b"hacky_uncaught_exception_handler"
+FATAL = re.compile(rb"UnsatisfiedLinkError|JNI DETECTED ERROR|Runtime aborting|FATAL EXCEPTION|" + UNCAUGHT)
 
 
 @dataclass(frozen=True)
@@ -50,7 +52,8 @@ def verdict(log: bytes, wanted: list[bytes], running: bool) -> str | None:
     """None while the run should go on, else pass or a problem. Bytes: ATL's output needn't be UTF-8."""
     fatal = FATAL.search(log)
     if fatal:
-        line = log[log.rfind(b"\n", 0, fatal.start()) + 1:].split(b"\n", 1)[0]
+        lines = log[log.rfind(b"\n", 0, fatal.start()) + 1:].split(b"\n", 2)
+        line = lines[1] if fatal.group() == UNCAUGHT and len(lines) > 1 else lines[0]
         return "fatal: " + line.decode(errors="replace").strip()
     missing = [m for m in wanted if m not in log]
     if not running:

@@ -10,8 +10,10 @@ agreed with the user before any code is written. The deliverable is this directo
 
 ## Current state
 
-Brainstorming (superpowers:brainstorming): the builder check ran on 2026-11-02 and its questions
-are answered; the user's approval of the design and the roadmap is asked, not given.
+MA0 is done and the design is approved (2026-11-02). The probes ran on Linux
+(`tests/probes/multi-app/`) and on the phone (the `ma` buttons on the Dev art screen); their
+results are in `findings-runtime.md`, `findings-native-faults.md` problem 14, `todo.md` MA0, ART-24
+and ART-26. The next multi-app stage is MA1, after M6a (`notes/steps.md`).
 
 ## Decisions and rules (the user's words)
 
@@ -88,17 +90,29 @@ are answered; the user's approval of the design and the roadmap is asked, not gi
 - Builder check answers: stage order "I will go with MA0 + M6a, then MA1, MA2, M6b. I already
   spelled out notes/steps.md, so you now just have to add LITTLE updates to those tasks so they
   know about each other (don't change steps)" (one-line cross-links in M6a, M6b, MA0-MA2; the
-  user's `notes/steps.md` is untouched and untracked); live apps "I think it should be dynamic...
+  user's `notes/steps.md` is untouched); live apps "I think it should be dynamic...
   Like allocation dependant?" (no fixed count); `ATLGStub` "your lean" (preinstalled registry
   rows); "on others agree" (the builder-check calls below).
+
+- K bundled ART copies, the drop's fallback: "I don't think we are going the several art copies
+  path, don't consider it - too complicated" (2026-11-02).
+- The review (2026-11-02), the user's answers: drop rule "App code only (Recommended)" (the drop's
+  exception lands only in the app's own code, or in shared code as the throw of a blocking call,
+  never in a class initializer); approval "Approve all (Recommended)"; stage plans "At each stage's
+  start (Recommended)"; ART-26 "In MA4 (Recommended)".
+- MA0 (2026-11-02), the user's answers: review "Probes first" (the review walk follows with the
+  results; the filesystem proposal's layout replaces "Prefix"); phone "Linux first, then ask" (phone
+  probes run only after the user says the phone is free); probe code "Keep in repo" (uncommitted
+  until asked); entitlement "Try once, stop at prompts".
 
 My calls in `design.md`, not contested: what counts as asking to run in the background (the list
 adds a partial `WakeLock` and a running job); a thaw for calls and delivered events;
 `InternalError` as the exception under `enable-oob-unsafe-recovery`; a headless test mode with
 several apps in one VM; a uid per package at install; APKs without a launcher activity install;
-one VM with app records on iOS, K bundled ART copies only as the fallback; `supervisor` as the
+one VM with app records on iOS; `supervisor` as the
 service-management slot's name; the D-Bus intent API kept as the gtk build's desktop entry point;
-the rest of "Open design points" (stated to the user 2026-11-02, no objection). From the builder
+the rest of "Further points", once "Open design points" (stated to the user 2026-11-02, no
+objection). From the builder
 check (2026-11-02, the user: "on others agree"): the heap cap set at an app's start from the memory
 available then; the wait or close dialog for a hung app on one-VM backends, its limits measured
 under `-Xint`, no watchdog on Linux; `OutOfMemoryError` on the app's own allocation through per-app
@@ -109,23 +123,21 @@ uncovered design items as tasks in MA1, MA7 and MA8.
 
 ## Done
 
-- `.` [main], uncommitted (the directory itself is in `da6a8bf`):
-  - `M notes/multi-app-support/design.md`, `todo.md`, `handoff.md`, `findings-framework.md`,
-    `findings-native-faults.md`, `findings-runtime.md`
-  - `notes/background-processes.md` renamed to `notes/background-tasks.md` (plain `mv`, not
-    staged), questions 7 and 8; references in 6 notes
-  - `M notes/general-todo.md` (ART-25, ATL-32)
-  - `M notes/decisions.md` (later-SDK behaviour line in the `SDK_INT` entry)
-  - `?? notes/service-management/proposal.md`
-- `?? dine-atl/subprojects/graphene/.meson-subproject-wrap-hash.txt` is not this task's.
+- The design work is committed in `d1e7581`.
+- MA0, uncommitted: `tests/probes/multi-app/` (new), `tests/README.md`,
+  `native/artbridge/dev_multiapp.cpp` (new), `native/artbridge/CMakeLists.txt`,
+  `native/artbridge/include/dineart_dev.h`, `apps/Dine/Sources/CArtDev/module.modulemap`,
+  `apps/Dine/Sources/Dine/Dev/ArtView.swift`, `tools/libexec/build-ios-native.sh`, `CLAUDE.md`
+  (`dev*.cpp`), and in this directory `findings-runtime.md`, `todo.md`, `design.md`,
+  `handoff.md`. The phone code builds (`tools/dine ios build-native artbridge`, `xtool dev
+  build`); it ran on the phone 2026-11-02. `notes/bug-tracker.md` (ART-24, ART-26). Other
+  modified files in the checkout are M6a's. The entitlement try's `apps/Dine/Entitlements.plist`
+  and `xtool.yml` line are removed; the build on the phone still carries them until the next
+  `ios run`.
 
 ## Pending
 
-1. The user's approval of `design.md` and `todo.md` (a plain yes), asked 2026-11-02.
-2. After approval: superpowers:writing-plans per stage, with the consilium inside it
-   (`~/.claude/rules/consilium.md`), MA0's probes first.
-3. After approval: update the notes in `findings-hosting.md` "Notes that assume one app per
-   process", M8a first.
+1. MA1, after M6a: its plan first (writing-plans with the consilium).
 
 ## Traps and facts found
 
@@ -148,6 +160,11 @@ uncovered design items as tasks in MA1, MA7 and MA8.
 - The cost numbers in `findings-native-faults.md` are from Linux x86_64 under WSL2, not the phone.
 - The systemd facts in `notes/service-management/proposal.md` come from the man pages of systemd
   262; nothing was run.
+- Code built against ART's headers outside libart gets its own copy of the inline
+  `mirror::gHeapReferenceBase`, stuck at 0: libart reads its copy without a relocation, so the
+  loader never unifies them. `tests/probes/multi-app/native/probe.cc` copies libart's value at load.
+- `make -n` on one libart object loses the module's target-specific flags; `build.sh` dry-runs
+  `libart.so` with `-W` on one source instead.
 
 ## How to resume
 
@@ -157,4 +174,4 @@ uncovered design items as tasks in MA1, MA7 and MA8.
 
 ## Open questions
 
-None open; approval pending (Pending 1).
+None.

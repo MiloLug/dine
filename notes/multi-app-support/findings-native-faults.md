@@ -159,7 +159,12 @@ Each stays open until a task in `todo.md` B1 settles it.
     (`findings-runtime.md`). Which of them can be contained is open: libmalloc's abort on a per-app
     zone may be, on the shared zone it isn't. U Decided in `design.md` "Native faults".
 14. Per-app malloc zones on iOS: system libraries call plain `malloc`, so routing their allocations
-    to a zone means replacing the default zone's functions. Untested; an MA0 probe. U
+    to a zone means replacing the default zone's functions. U. On the phone (iOS 27, 2026-11-02)
+    the default zone's struct (`DefaultMallocZone`, version 10) sits in a read-write region, among 5
+    registered zones. `malloc_create_zone` gave a zone of its own; 64 MB in 4 KB blocks raised
+    `phys_footprint` by 64 MB and freeing them lowered it at once, before `malloc_destroy_zone`.
+    Filling the zone again, then 64 MB from the default zone, left `phys_footprint` unchanged at
+    21 MB; why freed and reused pages don't count again: U. M
 15. Per-app instances of stateful native libraries (ICU's caches, wolfSSL's init and RNG, sqlite's
     global config) cost memory per app. Unmeasured. U
 16. APK native code: option 1's bar holds only while no APK `.so` loads into a shared process. With

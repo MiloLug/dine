@@ -40,7 +40,8 @@ on the phone that the recognizer ignores an excluded span (smoke checks the log 
 **Left to do:** stages in `notes/atl-port.md`: settings (M8c: the `navigation` UserDefaults
 store, the observable `NavigationSettings`, today a constant value with the defaults in
 `apps/Dine/Sources/Dine/EdgeGestures.swift`, agent `ui defaults`, smoke `atl-nav` steps 1, 5 and
-6), the running apps list and the run states on the launcher's tiles (M8a; several apps: M8e),
+6), the running apps list and the run states on the launcher's tiles (M8a; several apps: multi-app
+MA8, `notes/multi-app-support/todo.md`),
 [Immersive mode](#immersive-mode) (M6b; the Dine-wide setting: M8c). The by-hand default
 bindings fire their actions; the other phone checks are [DINE-7](general-todo.md#dine-7) and M8c's
 settings steps. Open elsewhere: [DINE-1](bug-tracker.md#dine-1) (Dialogs and Home),
@@ -80,7 +81,7 @@ settings steps. Open elsewhere: [DINE-1](bug-tracker.md#dine-1) (Dialogs and Hom
 | `WindowInsets` (getters zero, `Type` complete, Builder no-ops) | `dine-atl/src/api-impl/android/view/WindowInsets.java` |
 | `loop_main_post` signals with no check (crashes before prepare) | `dine-atl/src/backends/loop/cfrunloop/loop.c:60` |
 | embedded host API, installed header | `dine-atl/src/backends/host/embedded/atl_embedded.h`, `dine-atl/meson.build:270` |
-| ATL config, one run per process, `atl main returned` | `native/artbridge/artbridge.cpp:379`, `:386`, `:401`, `:452` |
+| ATL config, one run per process, `atl main returned` | `native/artbridge/artbridge.cpp:221`, `:226`, `:230`, `:211` |
 | Swift module for artbridge | `apps/Dine/Sources/CArtBridge/module.modulemap` |
 | launcher `NavigationStack` with destination links | `apps/Dine/Sources/Dine/LauncherView.swift:12`, `:31` |
 | debug agent: walk, escape, settle | `native/dbgagent/agent.mm:51`, `:92`, `:158` |
@@ -138,7 +139,8 @@ Every binding is a setting (see [Settings](#settings)).
   labelled with its name. Opening it from an app moves the app to the back. Tapping an entry brings
   that app to the front and presents its container. Dismissing the running apps list returns to the
   app that was in front, else to the launcher. It has no close action: ATL runs once per Dine
-  process, so a closed app couldn't start again (several apps: M8e in `notes/atl-port.md`).
+  process, so a closed app couldn't start again. With several apps (multi-app MA8) the list has
+  one entry per task with its app's state (running, frozen, dropped, crashed) and a close action.
 - **One run per process:** while an app runs, its AtlView button brings it to the front, and the
   other run buttons are disabled with the footer "ATL runs once per process: relaunch Dine". After
   the app exits, every run button is disabled with the same footer.
@@ -454,7 +456,7 @@ iOS has no public touch synthesis, so the swipes themselves are checked by hand:
 
 - `OnBackInvokedDispatcher` and predictive back.
 - Real window size and density on iOS (M3).
-- Closing apps from the running apps list (M8e).
+- Closing apps from the running apps list (multi-app MA8).
 
 ## Risks
 

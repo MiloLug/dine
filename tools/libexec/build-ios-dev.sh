@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Stage the dev build's bundle payload in out/ios/dev (bundled as dev/): ATL's test APKs, demo_app
-# and Gravity Defied, the runtime suite's authored jars and ART's junit boot jars. DINE_RELEASE=1
-# leaves it empty.
+# Stage the dev build's bundle payload in out/ios/dev (bundled as dev/): ATL's test APKs, the
+# third-party APKs AtlView has tiles for, the runtime suite's authored jars and ART's junit boot jars.
+# DINE_RELEASE=1 leaves it empty.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -11,7 +11,7 @@ rm -rf "$DEV"
 mkdir -p "$DEV"
 [[ ${DINE_RELEASE:-} == 1 ]] && exit 0
 
-real=("$ROOT"/third_party/apks/{demo_app,org.happysanta.gd_29}.apk)
+real=("$ROOT"/third_party/apks/{demo_app,org.happysanta.gd_29,AdaptiveIconDemo,views_widgets_samples_flower_finder,com.leocardz.multitouch.test_19,com.ashwin.example.accelerometerdemo}.apk)
 for f in "${real[@]}"; do
   [[ -f $f ]] || { echo "missing $f: docs/first-run.md lists the APKs" >&2; exit 1; }
 done

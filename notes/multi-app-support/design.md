@@ -1,9 +1,9 @@
-# Multi-app support: preliminary design
+# Multi-app support: design
 
-The design for running several Android apps at once on every backend. It is preliminary: the
-brainstorming that produces it is not finished and nothing here is approved for building.
-Requirements are the user's (their words are quoted in `handoff.md`); everything marked
-**proposed** is a recommendation awaiting their review, **decided** marks the user's choices.
+The design for running several Android apps at once on every backend, approved by the user on
+2026-11-02 after MA0's probes ("Approve all"). Requirements are the user's (their words are quoted
+in `handoff.md`); **decided** marks a choice the user made on its own, "my call" one they approved
+with the rest.
 Facts come from the findings files (`findings-runtime.md`, `findings-framework.md`,
 `findings-hosting.md`, `findings-apps.md`, `findings-native-faults.md`) and the earlier
 `multi-head-exec-maybes.md`; iOS constraints are in `notes/meta.md`; stages are in `todo.md`.
@@ -57,17 +57,17 @@ that requires it, and they will work".
 
 | | One-VM backends | Process-per-app backends |
 |---|---|---|
-| Backends | iOS (uikit); headless in a test mode (**proposed**) | Linux gtk and headless |
+| Backends | iOS (uikit); headless in a test mode | Linux gtk and headless |
 | An app is | an app record inside the shared VM | an OS process with its own VM |
 | An app fails | the layer contains it ([Containment](#containment)) | its process dies |
-| Low memory | freeze, then drop | the desktop's job, no freezing (**proposed**) |
+| Low memory | freeze, then drop | the desktop's job, no freezing |
 | Reaching another app | `ipc` slot, `inproc` backend | `ipc` slot, `unix` backend |
 | Starting another app | load it into the VM | exec `android-translation-layer` |
 
 The headless test mode runs several apps in one VM on Linux, so the iOS model is graded in the
 fast loop (CLAUDE.md: Linux is the reference for the iOS port).
 
-## App record (one-VM, proposed)
+## App record (one-VM)
 
 Every app has a record that all its threads carry: a `ThreadGroup` of its own plus a field on ART's
 `Thread`. Threads inherit it from their creator; native threads attached through JNI get it from
@@ -91,7 +91,7 @@ connection pool (a per-app pool is open).
 
 ## Containment
 
-One-VM backends (**proposed**); on process-per-app backends each row ends the process.
+One-VM backends; on process-per-app backends each row ends the process.
 
 | Failure | Handling |
 |---|---|
@@ -146,25 +146,40 @@ in `findings-native-faults.md`.
 - Measured on Linux, the checks add under 0.1% to an interpreted `Unsafe` call when the address
   hits the per-thread region cache and about 7% on a miss; under 1% for a whole app (estimate).
 
-## Freeze and drop (one-VM, proposed)
+## Freeze and drop (one-VM)
 
 - Freeze: Dine stops delivering input, messages and callbacks to the app, lets its threads go idle,
   then suspends them with `SuspendThreadByPeer`. Memory stays.
 - Drop: the app's activities have saved their state; then an async exception goes into every
-  app thread (the JVMTI StopThread closure copied into artbridge), threads are interrupted, every
-  socket and file in the app's descriptor ledger is shut down, windows close, and the GC unloads the
-  class loader. A thread that still does not stop is parked for good: no CPU, its memory leaks.
+  app thread (the JVMTI StopThread closure copied into artbridge, plus `Unpark`), frozen threads
+  resume, threads are interrupted, every socket and file in the app's descriptor ledger is shut
+  down and closed by the ledger itself, windows close, and the GC unloads the class loader and
+  frees the app's dex files (today ART keeps every dex it defined a class from; MA4).
+- Where the drop's exception lands (decided, 2026-11-02; the user took "App code only"): only
+  while the thread runs the app's own code, or in shared code only as the throw of a blocking call
+  (wait, park, sleep), never inside a class initializer. One check in ART's
+  `Thread::ObserveAsyncException` on the top frame's class loader. MA0 found that an exception at
+  an arbitrary point breaks state all apps share: boot classes left erroneous VM-wide, a shared
+  `ReentrantLock` and the `System.getProperties()` monitor left held, cleanups skipped
+  (`findings-runtime.md` "Stopping one app's threads"). Known gap: an app's own `synchronized`
+  block on a shared object.
+- A thread still running after a deadline (a `catch (Throwable)` loop) is suspended for good and
+  its GC roots skipped, so the app's memory goes; its stack and native resources leak. Mach
+  `thread_terminate` isn't an option: it fails on iOS pthreads (MA0).
 - The descriptor ledger and [ART-24](../bug-tracker.md#art-24) are on drop's critical path: idle
   apps wait in blocking socket reads (OkHttp), which closing the socket does not wake on Apple.
+- MA0 (`findings-runtime.md`): on host ART the drop stops threads in wait, park, sleep, a busy
+  loop and a shut-down socket read, and frees the app's loader and heap; on the phone a blocked
+  read wakes on `close()` or `shutdown()`.
 - Later escalation: discard a parked thread without unwinding (siglongjmp to its entry
-  trampoline, detach), or Mach `thread_suspend`/`thread_terminate`.
+  trampoline, detach).
 - Restore: a frozen app resumes its threads, then `onRestart`/`onResume`. A dropped app is loaded
   again and its activities recreated from their saved Bundles.
 - Saved state: `onSaveInstanceState` at `onStop`; the Bundle is held outside the app (as
   system_server holds it) and written to disk, so it also survives iOS ending Dine.
 - Background freeze (decided): an app freezes about 10 s after it leaves the screen, as Android 14
   freezes cached apps, unless it asks to run in the background. The user: "if an app explicitly
-  asks for background - allow it". What counts as asking (proposed): audio playing, a started or
+  asks for background - allow it". What counts as asking: audio playing, a started or
   foreground service, a held partial `WakeLock`, a running job, a client bound from a running app.
   A call or a delivered event (alarm, broadcast, notification action) thaws the app while it is
   handled.
@@ -172,14 +187,17 @@ in `findings-native-faults.md`.
   asked to run; the app on screen last. No per-app heap measuring decides the order (Android
   doesn't either).
 
-## Memory control (one-VM, proposed)
+## Memory control (one-VM)
 
 Every resource an app holds is owned by its record and counted, so Dine sees each app's footprint,
 picks what to drop, and checks that a drop freed it:
 - Java heap: live bytes counted per app in ART's allocation and sweep paths, so an app over its
   cap gets an `OutOfMemoryError` on its own allocation, as on Android (my call). A heap walk by
-  class loader is the fallback if MA0's probe finds the counting too costly, and serves the leak
-  report; per-app allocation spaces are a later option;
+  class loader was the fallback if the counting proved too costly, and serves the leak
+  report; per-app allocation spaces are a later option. MA0: such a walk sees only instances of
+  the app's own classes, 2 KB of a 46 MB test app (`findings-runtime.md` "Memory"), so it can't
+  stand in for the counting: per-app live bytes come from the counting only, and the walk serves
+  only the leak report;
 - native allocations on the app's threads: a malloc zone per app. Shared native caches (ICU, fonts)
   must allocate from a shared zone, or destroying the app's zone frees memory other apps use;
 - threads and stacks, file descriptors, memory mappings, windows and surfaces.
@@ -188,7 +206,7 @@ Caps per app (decided; the user: "your proposal is good"): the Java heap, the JN
 and the descriptor table are shared, so each gets a cap per app, and the app over its cap is the
 one that fails. `Runtime.maxMemory` and `getMemoryClass` report the app's heap cap, since apps size
 their caches from them. When a shared total runs out with no app over its cap, Dine drops apps in
-the order of [Freeze and drop](#freeze-and-drop-one-vm-proposed) before anyone fails. Needs the live
+the order of [Freeze and drop](#freeze-and-drop-one-vm) before anyone fails. Needs the live
 heap per app (a probe).
 
 No fixed number of live apps (decided; the user: "I think it should be dynamic... Like allocation
@@ -197,21 +215,22 @@ short. An app's heap cap is set when the app starts, from the memory available t
 fixed for its life, since apps read `maxMemory` and `getMemoryClass` once to size their caches (my
 call). The caps may add up to more than `-Xmx`, since the drop order handles a full shared heap.
 
-Shared limits raised (proposed; the user: "can't we also increase global cap?"):
+Shared limits raised (the user: "can't we also increase global cap?"):
 - JNI globals: `kGlobalsMax` and `kWeakGlobalsMax` (51,200, `java_vm_ext.cc:60-62`) are constants
   in our fork. The index encoding has room for more than 16 bits (`indirect_reference_table.h:
   342-348`); the ceiling is `kMaxTableSizeInBytes`, 128 MB (`indirect_reference_table.cc:39`). The
   table is mapped whole at start (`indirect_reference_table.cc:81-86`), so a larger one costs only
   the pages it touches.
 - Descriptors: Dine raises the soft `RLIMIT_NOFILE` to the hard limit at start; nothing raises it
-  today. The iOS values are a probe.
+  today. iOS 27 (MA0): soft 2560, hard unlimited, `kern.maxfilesperproc` 10240, and raising the
+  soft limit to 10240 works.
 - Java heap: `-Xmx` sized from `os_proc_available_memory()` instead of ART's 256 MB default. The
   real ceiling is Dine's iOS memory limit: past it iOS kills all of Dine, with no
   `OutOfMemoryError`. The `com.apple.developer.kernel.increased-memory-limit` entitlement raises
-  that limit (iOS knowledge); whether a free account gets it is a probe. A larger footprint also
-  gets Dine killed sooner while it is in the background.
+  that limit (iOS knowledge); with a free account it didn't (MA0: 2097 MB on the iPhone 13 with and
+  without it). A larger footprint also gets Dine killed sooner while it is in the background.
 
-## Calls between apps (all backends, proposed)
+## Calls between apps (all backends)
 
 - No Java object crosses from one app to another. A call into another app is a Parcel run on the
   target app's own binder thread, with no timeout (see "No timeout on sync calls" below); a
@@ -235,7 +254,7 @@ Shared limits raised (proposed; the user: "can't we also increase global cap?"):
   replaces them. Apps that start without microG today keep starting. Caller checks get real per-call
   identity.
 
-## Registry (all backends, proposed)
+## Registry (all backends)
 
 - One SQLite database plus an APK store in the prefix (WAL: many readers, one writer). A row per
   package: uid, signatures, components,
@@ -254,21 +273,19 @@ Shared limits raised (proposed; the user: "can't we also increase global cap?"):
 The user's words: "we need a prefix for all of the android data, like wine does, so we don't
 spread it all over the host and can make it simpler in iOS too". The registry, the APK store, every
 app's data, caches (today `/tmp/atl_cache/<pkg>`) and shared storage live under it.
-- Layout (proposed): Android's paths inside the prefix (`data/app/<pkg>/`, `data/data/<pkg>/`,
-  `storage/emulated/0/`), so the paths apps hardcode (`/data/data/<pkg>`, `/sdcard`) map into it
-  the way `libc_bio_path_overrides.c` already maps `/storage/emulated/0/`.
-- Sockets and locks (proposed): in a runtime dir named after the prefix's device and inode, as
+- Layout (decided): `notes/filesystem/proposal.md` "Layout" (`~/.dine` or `$DINE_PREFIX` on
+  Linux, Application Support and Documents on iOS), with Android's paths mapped onto it; it replaces
+  this design's earlier layout (the user, 2026-11-02).
+- Sockets and locks: in a runtime dir named after the prefix's device and inode, as
   wineserver names its socket dir, under `$XDG_RUNTIME_DIR`, else `/tmp`; a socket can't live on
   every filesystem a prefix may sit on.
-- Linux: the prefix is today's data base (`$ANDROID_APP_DATA_DIR`, else
-  `$XDG_DATA_HOME/android_translation_layer`). iOS: it can't stay in Caches, which iOS may purge
-  (`findings-hosting.md`).
+- iOS: private data can't stay in Caches, which iOS may purge (`findings-hosting.md`).
 - Shared storage (decided): one per prefix that every app sees, as Android's `/sdcard`; today each
   app's external storage is a folder in its own data dir. On iOS only the shared storage is visible
   to the host (the Files app, other iOS apps); app data stays private. The user: "only shared seen
   to host (at least on iOS, on linux of course I can go the dine's root and list all files)".
 
-## Linux: the static model (proposed, holes reviewed)
+## Linux: the static model
 
 No Dine service runs. The fixed places are the registry above and the prefix's runtime dir:
 - A running app listens on `<runtime dir>/<pkg>.sock` and holds `<pkg>.lock` for its whole
@@ -296,7 +313,7 @@ No Dine service runs. The fixed places are the registry above and the prefix's r
 ### Holes in the static model (2026-11-01)
 
 The user answered "ok" to lifetime, start race, activities across apps and binders, and "Yes" to
-saved state, which are **decided**; the rest stay proposed.
+saved state, which are **decided**; the rest was approved with the design on 2026-11-02.
 - Lifetime (decided): closing the window ends the process today (`atl_exit`), the cli build ends
   with its last activity, and an app without a launcher activity exits (`findings-hosting.md`). A
   process started for `bindService` (microG) has no activity. A process lives while it has an
@@ -339,7 +356,7 @@ saved state, which are **decided**; the rest stay proposed.
   on next use. The APK is written under a versioned name and fsynced before the registry row points
   at it; the old file goes after the commit.
 
-## Slots (proposed)
+## Slots
 
 - New `ipc` slot: `inproc` (one VM: a queue to the target app's thread; "start" loads the app) and
   `unix` (the runtime dir; "start" is exec).
@@ -354,8 +371,8 @@ Isolation on iOS:
 
 | Option | Outcome |
 |---|---|
-| One VM, app records, async-exception drop | **proposed** |
-| One VM per app from K bundled copies of ART as dylibs (own statics, heap, malloc zone; drop resets the copy) | fallback if the drop probes fail: a hard cap of about 3-4 live apps, a full VM boot and boot classes per app (no boot image), the uikit backend's Objective-C classes can't be duplicated, one address space still; the fixed count goes against the decided dynamic one |
+| One VM, app records, async-exception drop | **decided** |
+| One VM per app from K bundled copies of ART as dylibs (own statics, heap, malloc zone; drop resets the copy) | rejected (the user, 2026-11-02: "too complicated") |
 | Framework jars loaded per app class loader | rejected: ATL's cached class and method ids become per app, its C globals still need keying, libcore's statics stay shared |
 | Discard threads without unwinding (siglongjmp) | kept as the later escalation of drop |
 | File-backed per-app arenas, frozen apps hibernated to clean pages | rejected for now: a large ART heap change; the frozen-footprint question stays a probe |
@@ -367,20 +384,20 @@ Native faults on one-VM backends:
 |---|---|
 | Tiered containment plus hardening | **decided** ([Native faults](#native-faults-one-vm-decided)) |
 | The same handler without the hardening | rejected: wild `Unsafe` accesses and faults under a shared lock still end Dine |
-| A separate ART copy per app (the fallback above) | rejected for faults: still one address space, so stray writes still cross apps |
+| A separate ART copy per app (rejected above) | rejected for faults too: still one address space, so stray writes still cross apps |
 
 Reaching other apps on Linux:
 
 | Option | Outcome |
 |---|---|
-| Static: registry plus runtime dir, peer sockets | **proposed**, per the user's preference |
+| Static: registry plus runtime dir, peer sockets | **decided**, per the user's preference |
 | Central `dine-server` owning registry, tasks, saved state, broadcast delivery | fallback if the static model fails |
 | Per-backend rendezvous (D-Bus on gtk, sockets on cli) | rejected: gtk and cli drift, and headless tests only the cli path |
 | Master process that boots the VM once and forks a child per app | rejected for now: forking a booted ART is untested and the master's death ends every app; its start-up saving under `-Xint` may come back |
 | Lookup daemon plus peer sockets | its peer sockets are in the static model; lock files replace the daemon |
-| Marshal every call, even inside one VM | its rule is the one in [Calls between apps](#calls-between-apps-all-backends-proposed) |
+| Marshal every call, even inside one VM | its rule is the one in [Calls between apps](#calls-between-apps-all-backends) |
 
-## Open design points
+## Further points
 
 My calls, stated to the user on 2026-11-02 without objection:
 - Saved Bundles on one-VM backends: a system record in the VM plus a file per app in its data dir.
@@ -398,7 +415,7 @@ My calls, stated to the user on 2026-11-02 without objection:
   [Native faults](#native-faults-one-vm-decided) bar no longer holds (`findings-native-faults.md`
   problem 16). Left to the JIT work.
 
-Found on 2026-11-01, proposed leans:
+Found on 2026-11-01:
 - No timeout on sync calls between apps (decided; the user: "ok, no limit"). Calls that
   legitimately take long: some microG calls do network work before they return (a sign-in token,
   from memory), and opening a file from a cloud documents provider may block for the download
@@ -421,7 +438,7 @@ Found on 2026-11-01, proposed leans:
 - After iOS ends Dine: the apps that were running show as dropped and are restored from their
   Bundles when opened, not all at start.
 
-Found on 2026-11-02 in `notes/background-tasks.md`, proposed leans:
+Found on 2026-11-02 in `notes/background-tasks.md`:
 - iOS background wake-ups: iOS starts Dine without UI when a background `URLSession` finishes (a
   few seconds), for a `BGProcessingTask` run (minutes) and for a notification tap after Dine was
   killed. Dine loads only the app that owns the event, without UI; the other apps stay dropped.

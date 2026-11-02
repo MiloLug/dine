@@ -7,6 +7,15 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - Our delta: `git diff upstream/master...dine`. Local `master` lags upstream.
 - Upstream isn't merged: read its commits since the last merge and reimplement the wanted ones
   by hand.
+- Region is ours: y-bands of x-spans in `src/shared/region.c` on every build, `setPath` by pixel
+  centres as Skia's non-antialiased fill; upstream's cairo natives are gone. Port upstream Region
+  fixes into the shared code.
+- An app exception that reaches C where Android's main loop would see it goes to
+  `exit_on_exception` (`src/api-impl-jni/util.c`), the thread's uncaught handler; the upcalls that
+  print and clear (measure, draw, input, click, dialog result) keep doing so. In ported upstream code
+  that describes an exception and goes on, call it instead.
+- Rotations from degrees go through `matrix_init_rotate` (`src/shared/matrix.h`), Skia's snap of a
+  sin or cos near 0; upstream's graphene rotate calls in Matrix and the record canvas are gone.
 - Vibrator: upstream's gudev natives build only with gtk; headless and uikit take no-op natives
   (`src/shared/android_os_Vibrator.c`) until M7's `os` slot. Port upstream Vibrator edits into
   the gtk file.
@@ -49,8 +58,12 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   `native_drawContent` return whether the toolkit drew: on records Java draws the background
   (AOSP's `drawBackground`) and ImageView its drawable (AOSP's `configureBounds`).
 - Drawables follow AOSP's constant states: the base `getConstantState` is null, a container's copy
-  makes its own children from theirs, ColorDrawable and BitmapDrawable have states. Port upstream
-  drawable code onto that; `LayerState` shares a child without a state.
+  makes its own children from theirs, ColorDrawable, BitmapDrawable and DrawableWrapper have states,
+  and stubs copy through `StubState`. Port upstream drawable code onto that; `LayerState` shares a
+  child without a state.
+- A bitmap or nine-patch drawable's color filter and tint live on its native drawable
+  (`PaintableFilter`, `gfx_drawable_set_color_filter`); gsk's bitmap drawable is a paintable over
+  the texture that keeps the filter.
 - The `coregraphics` gfx backend (iOS) is record's display list (`src/backends/gfx/record/`) plus a
   CoreGraphics replay and ImageIO bitmaps; uikit replays each view's list in a layer and paces
   draw passes with a CADisplayLink.
@@ -151,6 +164,8 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - `Activity.onBackPressed` moves the task root to the back when the host allows (gtk doesn't);
   `moveTaskToBack` is public and real; `activity.c` keeps task state and an activity's `stopped`.
 - `DialogInterface.OnCancelListener.onCancel` added (upstream's is empty).
+- The one window config, task state, dialogs' task and base JNI frame above become per app and
+  per task with multi-app (MA2, MA6; `notes/multi-app-support/design.md`, approved 2026-11-02).
 - `SDK_INT` is a device level set by hand: `ro.build.version.sdk` in `SystemProperties.java` (21),
   read by `Build.VERSION`; `RESOURCES_SDK_INT` = `SDK_INT`; `CODENAME` "REL". Upstream's derivation
   (`EarlyPackageParser`, `-DBuild.VERSION.SDK_INT`, `--sdk-int` and `create_vm`'s `sdk_int` in
