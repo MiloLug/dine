@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Stage the dev build's bundle payload in out/ios/dev (bundled as dev/): ATL's test APKs, the
-# third-party APKs AtlView has tiles for, the runtime suite's authored jars and ART's junit boot jars.
+# third-party APKs AtlView has tiles for, the runtime suite's authored jars, ART's junit boot jars,
+# and the package suite's installer app with the APK it installs (dev/package/).
 # DINE_RELEASE=1 leaves it empty.
 set -euo pipefail
 
@@ -26,4 +27,9 @@ done
 for f in "${jars[@]}"; do
   [[ -f $f ]] || { echo "missing $f: run tools/dine test runtime build -f '^dine-'" >&2; exit 1; }
 done
+package=("$ROOT"/out/tests/package/apks/{driver,ext}.apk)
+for f in "${package[@]}"; do
+  [[ -f $f ]] || { echo "missing $f: run tools/dine test package" >&2; exit 1; }
+done
 install -m644 -t "$DEV" "${real[@]}" "${apks[@]}" "${jars[@]}"
+install -m644 -D -t "$DEV/package" "${package[@]}"

@@ -153,7 +153,8 @@ compiled out, and the 41 `OsConstants` iOS lacks keep their Java default 0.**
 
 **libcore 8.1/9 lacks Java APIs that ART 10 expects.**
 - Repro: runtime suite expected failures 710, 712, 713 (`MethodHandles` VarHandle factories), 656
-  (in-memory `DexFile`), 688 (`DelegateLastClassLoader(String, String, ClassLoader)`),
+  (in-memory `DexFile`), 688 (`DelegateLastClassLoader` with shared libraries, the 4-argument
+  constructor; the 3-argument one exists),
   `071-dexfile-get-static-size`, 100 (`String`'s declared methods), 959 (`unreflectSetter` on a
   static final field). Reasons per test: `dine-art/tests/runtime/expectations/linux-x86_64.json`.
 - Fix: libcore brought up to ART 10's level (a libcore rebase in dine-art); a later ART bump
@@ -415,6 +416,56 @@ last unref in `hold()` can run on an app thread.
 is a color matrix over unpremultiplied colors, which can't express SRC_OVER, DST_OVER, DST_ATOP,
 XOR, DARKEN, LIGHTEN, SCREEN, ADD and OVERLAY.
 - Where: `dine-atl/src/backends/gfx/gsk/paint.c` `gfx_paint_set_color_filter`.
+
+### ATL-34
+
+**Intent filters keep only the data scheme.** `PackageParser` reads only `android:scheme` of a
+`<data>` element; host, port, path, mime type and scheme-specific part are dropped, and
+`IntentFilter`'s setters for them do nothing. Resolution (`PackageManager`, broadcasts) matches the
+action, the categories and the scheme, and ignores an intent's type: a filter that only names a
+mime type takes intents of any type with no data.
+- Where: `dine-atl/src/api-impl/android/content/pm/PackageParser.java` (`<data>`),
+  `dine-atl/src/api-impl/android/content/IntentFilter.java`.
+
+### ATL-35
+
+**An APK signed only with a v2 or v3 signature block installs as unsigned.** `collectCertificates`
+reads JAR (v1) signatures only, so such a package reports no signatures, every unsigned package
+matches it in the install rules, and `checkSignatures` calls it not signed. APKs with a minimum SDK
+of 24 or more may carry no v1 signature (apksigner's default).
+- State: unchecked against a real v2-only APK.
+- Where: `dine-atl/src/api-impl/android/content/pm/PackageParser.java` `collectCertificates`.
+
+### ATL-36
+
+**Broadcasts run on the sender's thread.** `Context.sendBroadcast` calls each receiver's `onReceive`
+at once on the calling thread, registered and manifest receivers alike, instead of posting to the
+main thread or the receiver's `Handler`; `sendOrderedBroadcast` only prints.
+- Where: `dine-atl/src/api-impl/android/content/Context.java` `sendBroadcast`,
+  `dine-atl/src/api-impl/android/atl/ATLLoadedApp.java` `receiveBroadcast`.
+
+### ATL-37
+
+**Two installed packages may claim one provider authority.** Android refuses the second install
+(`INSTALL_FAILED_CONFLICTING_PROVIDER`); the registry stores both, and `resolveContentProvider`
+returns whichever row comes first.
+- Where: `dine-atl/src/api-impl/android/atl/ATLInstaller.java` `commit`.
+
+### ATL-38
+
+**An installed APK is synced with `fsync` only.** On Apple `fsync` doesn't make the data durable
+(`F_FULLFSYNC` does), so after a power loss the registry's row (written with SQLite's `fullfsync`)
+may point at an APK whose blocks never reached the disk.
+- State: unchecked.
+- Where: `dine-atl/src/api-impl/android/atl/ATLInstaller.java` (`copy`, `fsyncDir`).
+
+### ATL-39
+
+**`Process.myUid()` may equal the desktop user's own uid.** It returns the package's registry uid
+(10000 and up, never the OS uid, so that apps like WhatsApp accept their own files); a Linux user
+whose uid falls in that range would make them refuse again.
+- State: unchecked.
+- Where: `dine-atl/src/api-impl/android/os/Process.java` `myUid`.
 
 ## DINE
 

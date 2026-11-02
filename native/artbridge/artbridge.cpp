@@ -159,7 +159,7 @@ bool StartVmThread(void *(*body)(void *), void *arg) {
 namespace {
 
 struct AtlRun {
-  std::string resource_dir, atl_dir, data_dir, apk, activity;
+  std::string resource_dir, atl_dir, prefix_dir, cache_dir, apk, activity;
   dine_atl_window window;
   atl_embedded_listener listener;
 };
@@ -171,10 +171,8 @@ void *AtlThread(void *arg) {
   os_log(Log(), "atl start");
   DevAtlThreadStarted();
 
-  std::string app_data = run->data_dir + "/atl";
-  mkdir(app_data.c_str(), 0755);
-  // C and ATL's Java (ATLPaths) both read the app data dir from here
-  setenv("ANDROID_APP_DATA_DIR", app_data.c_str(), 1);
+  // startup.c opens the prefix from here
+  setenv("DINE_PREFIX", run->prefix_dir.c_str(), 1);
 
   std::string api_impl = run->atl_dir + "/api-impl.jar";
   std::string framework_res = run->atl_dir + "/framework-res.apk";
@@ -203,7 +201,7 @@ void *AtlThread(void *arg) {
     return nullptr;
   }
   // *:i: ATL logs its lifecycle (onResume) at info
-  JNIEnv *env = CreateVm(run->resource_dir, run->data_dir, "*:i", options, n_options);
+  JNIEnv *env = CreateVm(run->resource_dir, run->cache_dir, "*:i", options, n_options);
   atl_embedded_vm_options_free(options, n_options);
   DevAtlVmCreated();
 
@@ -218,9 +216,9 @@ void *AtlThread(void *arg) {
 }  // namespace
 }  // namespace dine
 
-int dine_atl_run(const char *resource_dir, const char *atl_dir, const char *data_dir,
-                 const char *apk, const char *activity, const dine_atl_window *window,
-                 const atl_embedded_listener *listener) {
+int dine_atl_run(const char *resource_dir, const char *atl_dir, const char *prefix_dir,
+                 const char *cache_dir, const char *apk, const char *activity,
+                 const dine_atl_window *window, const atl_embedded_listener *listener) {
   using namespace dine;
   std::lock_guard<std::mutex> lock(gLock);
   if (gAtlStarted) {
@@ -232,7 +230,7 @@ int dine_atl_run(const char *resource_dir, const char *atl_dir, const char *data
     return -1;
   }
   if (gOutput < 0) RedirectOutput();
-  auto *run = new AtlRun{resource_dir, atl_dir, data_dir, apk, activity ? activity : "", *window,
+  auto *run = new AtlRun{resource_dir, atl_dir, prefix_dir, cache_dir, apk, activity ? activity : "", *window,
                          listener ? *listener : atl_embedded_listener{}};
   if (!StartVmThread(AtlThread, run)) {
     delete run;

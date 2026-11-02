@@ -44,10 +44,10 @@ def _gtk_env() -> dict[str, str]:
     return _display.env()
 
 
-def _gd() -> str | None:
+def _gd(*args: str) -> str | None:
     if not GTK_BUILD.is_dir():
         raise DineError(f"no {GTK_BUILD}: run tools/dine linux build atl")
-    proc = subprocess.run([sys.executable, str(paths.ROOT / "tests/harness/apps.py"), "--gtk", "-f", "^gd$"],
+    proc = subprocess.run([sys.executable, str(paths.ROOT / "tests/harness/apps.py"), "--gtk", "-f", "^gd$", *args],
                           env=_gtk_env(), capture_output=True, text=True)
     # its pass, not an expected failure
     return None if proc.returncode == 0 and "apps (gtk): 1/1 pass" in proc.stdout else (proc.stdout + proc.stderr).strip()
@@ -160,6 +160,7 @@ def _draw_gtk() -> str | None:
 
 CHECKS = [
     Check("gd", "gtk: Gravity Defied reaches onResume under -Xint", _gd),
+    Check("gd-package", "gtk: the same, installed with --install-internal and run with --package", lambda: _gd("--by-package")),
     Check("demo", "headless: demo_app reaches onResume, view tree matches the golden", _demo),
     Check("demo-480", "headless: the same at density 480, where sp, dp and px differ", _demo_480),
     Check("looper", "headless: looper.apk goes through the loop paths and exits 0", _looper),

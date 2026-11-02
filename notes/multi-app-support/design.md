@@ -74,8 +74,8 @@ Every app has a record that all its threads carry: a `ThreadGroup` of its own pl
 `JavaVMAttachArgs.group` or from the window or callback they serve. UIKit-thread upcalls attach
 with the record of the window's app.
 
-Everything that holds app state today moves into or behind the record:
-- ATL: the primary app and its Application, data dir, PackageManager view, providers, receivers,
+Everything that holds app state today moves into the record:
+- ATL: the app and its Application, data dir, PackageManager view, providers, receivers,
   shared preferences, main Looper (each app gets its own Android main thread), task stack, window,
   `sys_config` (a copy per app), `LayoutInflater`'s constructor cache (keyed by class, not name),
   the C globals in `findings-framework.md`.
@@ -85,6 +85,20 @@ Everything that holds app state today moves into or behind the record:
   for relative paths.
 - ART: the native library table keyed by (path, loader), which also closes the Apple trap where
   `dlsym` on the main image finds every `Java_*` symbol; target SDK and package name per app.
+
+No primary app, on every backend (decided; the user: "it hast to stop assuming we have any kind of
+primary app. These functions are app-runtime-timed, they are not some global magic, like
+.primary_app"):
+- ATL's fields that hold the one app are deleted, not turned into getters:
+  `ATLLoadedApp.primary_application` with `getPrimaryApplication()`, `Context.this_application`,
+  `Context.package_manager`, `Environment.app_data_dir_file`, the C `apk_path`, `app_data_dir`,
+  `atl_window`, `atl_window_config`.
+- Code reaches its app through its Context, an app handle or a parameter;
+  `getApplicationContext()` returns the Context's own app.
+- Android's static APIs with no Context (`ActivityThread.currentApplication()`,
+  `currentPackageName()`, `AppGlobals.getInitialApplication()`, `Looper.getMainLooper()`,
+  `Process.myUid()`) return the app of the calling thread's record.
+- A Linux process runs one record, and that record is no more primary than any other.
 
 Shared state that stays shared: interned strings, class metadata of boot classes, the okhttp
 connection pool (a per-app pool is open).
@@ -256,23 +270,35 @@ Shared limits raised (the user: "can't we also increase global cap?"):
 
 ## Registry (all backends)
 
-- One SQLite database plus an APK store in the prefix (WAL: many readers, one writer). A row per
-  package: uid, signatures, components,
-  intent filters, provider authorities, metadata, features, label, icon.
-- Any app's `PackageInstaller` session, `ACTION_INSTALL_PACKAGE`, or the CLI's `--install` parses
-  the APK and writes its row in one transaction. Every app's `PackageManager` reads from it:
-  `getInstalledPackages` with flags, `getPackageArchiveInfo`, intent resolution across packages,
-  `getLaunchIntentForPackage`, `getPackagesForUid`. The microG-only visibility gate goes.
-- Data dirs are keyed by package, which aligns the three identities of an app on Linux.
-- On iOS the database is in Application Support and Dine's launcher reads the same rows instead of
-  its own `apps` table.
+- One SQLite database, `registry.sqlite` in the prefix, in WAL mode (many readers, one writer)
+  with `synchronous=FULL`, so a commit is on disk before the APK it replaced is deleted. A row per
+  package keyed by its package name holds the install settings (uid, version, the stored APKs'
+  prefix-relative paths, whether the user granted a fake signature, installer, install times) and
+  the parsed manifest as bytes: components, intent filters, provider authorities, metadata,
+  features, signatures. Index tables (component actions, provider authorities) answer lookups
+  without decoding. A row written in an older format is parsed again from its APK when read. Label
+  and icon columns come with M8a, the launcher being their reader.
+- Each package's APKs are kept in `apps/<pkg>/<versionCode>-<serial>/`: ART and the `AssetManager`
+  read them at every start, and apps read them through `sourceDir`. A start looks the row up by
+  package and opens the stored APKs in place.
+- Install runs once per package version and has one writer in the code, every caller's: any app's
+  `PackageInstaller` session, `ACTION_INSTALL_PACKAGE`, the CLI's `--install`, and a run by APK
+  path, which installs the APK unless a row holds those exact bytes. Every app's `PackageManager`
+  reads from it: `getInstalledPackages` with flags, `getPackageArchiveInfo`, intent resolution
+  across packages, `getLaunchIntentForPackage`, `getPackagesForUid`; no visibility gate.
+- The stored APK is the installed file, byte for byte. dex2oat at install:
+  [ART-27](../general-todo.md#art-27).
+- Data dirs are keyed by package, which aligns the three identities of an app on Linux; a gtk run
+  by `--package` takes the package as its app id.
+- On iOS the prefix, with the database, is `Application Support/dine`; Dine's launcher reads the
+  same rows instead of its own `apps` table (M8a).
 - An APK without a launcher activity installs (extensions); M8a's rule that rejects it goes.
 
 ## Prefix (decided)
 
 The user's words: "we need a prefix for all of the android data, like wine does, so we don't
-spread it all over the host and can make it simpler in iOS too". The registry, the APK store, every
-app's data, caches (today `/tmp/atl_cache/<pkg>`) and shared storage live under it.
+spread it all over the host and can make it simpler in iOS too". The registry, the installed APKs,
+every app's data, caches (today `/tmp/atl_cache/<pkg>`) and shared storage live under it.
 - Layout (decided): `notes/filesystem/proposal.md` "Layout" (`~/.dine` or `$DINE_PREFIX` on
   Linux, Application Support and Documents on iOS), with Android's paths mapped onto it; it replaces
   this design's earlier layout (the user, 2026-11-02).
@@ -300,10 +326,11 @@ No Dine service runs. The fixed places are the registry above and the prefix's r
   malicious app. POSIX locks drop when the process closes any descriptor of the lock file: one owner
   per lock file in each process.
 - Package events: each running app watches the registry with inotify and delivers
-  `PACKAGE_ADDED/REMOVED` to its own receivers. Implicit broadcasts go to every live socket; apps
-  that aren't running get only explicit ones, by being started (decided for every backend, as
-  Android 8 and later do: "starting all apps on some event is not a good idea, especially on
-  desktop").
+  `PACKAGE_ADDED/REMOVED` to its own receivers. Commits land in `registry.sqlite-wal` until a
+  checkpoint, so the watch is on the WAL file or a file touched after each commit. Implicit
+  broadcasts go to every live socket; apps that aren't running get only explicit ones, by being
+  started (decided for every backend, as Android 8 and later do: "starting all apps on some event
+  is not a good idea, especially on desktop").
 - Desktop: a `.desktop` entry runs `android-translation-layer --package <pkg>`; a second launch
   connects to the running app instead of booting a second VM.
 - Costs against a server: nothing runs while no app runs, so alarms and jobs of a closed app need

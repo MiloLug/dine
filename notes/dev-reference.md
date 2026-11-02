@@ -21,7 +21,7 @@ touches. Commands and setup live in `tools/dine <group> --help`, `README.md` and
 ## Running ATL by hand
 
 - gtk build (after `source env.sh`):
-  `ANDROID_APP_DATA_DIR=$PWD/out/linux/appdata android-translation-layer <apk> -l <pkg/path/Activity> -X -Xint`.
+  `DINE_PREFIX=$PWD/out/linux/appdata android-translation-layer <apk> -l <pkg/path/Activity> -X -Xint`.
 - The headless build isn't installed: run it from `out/linux/build/dine-atl-headless` with
   `RUN_FROM_BUILDDIR=1`.
 - Test hooks (meson `test_hooks`, default on; off in the iOS release build):

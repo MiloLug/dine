@@ -19,7 +19,7 @@ Task markers:
 |---|---|---|---|
 | [B1](#b1-native-fault-containment) | native fault containment (option 1) | one-VM | planned |
 | [MA0](#ma0-design-and-probes) | finish the design, run the probes | all | done 2026-11-02 |
-| [MA1](#ma1-registry-and-install) | registry and install | all | planned |
+| [MA1](#ma1-registry-and-install) | registry and install | all | done 2026-11-02 |
 | [MA2](#ma2-app-records) | per-app state, several apps in one VM | one-VM, headless test mode | planned |
 | [MA3](#ma3-containment) | containment of every app failure | one-VM | planned |
 | [MA4](#ma4-freeze-drop-memory-ledger) | freeze, drop, memory ledger | one-VM | planned |
@@ -137,35 +137,48 @@ Runs beside M6a of `notes/atl-port.md` (`notes/steps.md`): the design and probes
 
 ## MA1: registry and install
 
-After MA0 and M6a, before MA2 (`notes/steps.md`).
+After MA0 and M6a, before MA2 (`notes/steps.md`). Built 2026-11-02 on Linux (gtk and headless) and
+run on the phone. The registry's shape is `design.md` "Registry"; the
+suite is `dine-atl/tests/package/` (`tools/dine test package`).
 
-- `[ ]` Registry schema (SQLite, WAL) and APK store, written in one transaction per install; uid
-  per package at install.
-- `[ ]` Signature spoofing through `FAKE_PACKAGE_SIGNATURE`, in place of the GMS package-name list:
-  the install confirmation shows the request and grants it only if the user accepts.
-- `[ ]` `PackageInstaller` sessions (`createSession`, `openWrite`, `fsync`, `commit` with a
-  PendingIntent, `STATUS_PENDING_USER_ACTION`), `ACTION_INSTALL_PACKAGE` with
-  `EXTRA_RETURN_RESULT`, `ACTION_UNINSTALL_PACKAGE`; the CLI's `--install` writes the same rows.
-  The install confirmation UI per backend.
-- `[ ]` `PackageManager` reads the registry: `getInstalledPackages` and `getInstalledApplications`
+- `[x]` Registry schema (SQLite, WAL, `synchronous=FULL`), a row per package keyed by its package
+  name, written in one transaction per install; uid per package at install, from 10000, never
+  reused. Each package's APKs in `apps/<pkg>/<versionCode>-<serial>/`, byte for byte as installed.
+- `[x]` Signature spoofing through `FAKE_PACKAGE_SIGNATURE` plus `<application>` meta-data
+  `fake-signature` (hex), in place of the GMS package-name list: the install confirmation asks,
+  the CLI grants it with `--allow-fake-signature`. Whether current GmsCore declares the meta-data:
+  unchecked (MA9).
+- `[x]` `PackageInstaller` sessions (`createSession`, `openWrite`, `fsync`, `commit` with an
+  `IntentSender`, `STATUS_PENDING_USER_ACTION`), `ACTION_INSTALL_PACKAGE` with
+  `EXTRA_RETURN_RESULT`, `ACTION_UNINSTALL_PACKAGE` and `ACTION_DELETE`; the CLI's `--install` and
+  `--uninstall` write the same rows. The confirmation is an `AlertDialog` through the `ui` slot;
+  an app-started install keeps Android's rules (same signer, no downgrade). A session takes split
+  APKs as one package.
+- `[x]` `PackageManager` reads the registry: `getInstalledPackages` and `getInstalledApplications`
   with flags (meta-data, signatures, signing certificates, `reqFeatures`), `getPackageArchiveInfo`,
-  `getPackageInfo`, intent resolution across packages, `getLaunchIntentForPackage`,
-  `getPackagesForUid`, `getPackageUid`, `checkSignatures`. The microG-only visibility gate goes.
-- `[ ]` `PACKAGE_ADDED/REPLACED/REMOVED` with scheme `package` to running apps.
-- `[ ]` `ATLGStub` as preinstalled rows (`com.google.android.gms`, `gsf`, `vending`, with
-  `FLAG_SYSTEM` and Google's signatures, as today); an installed package of the same name
-  replaces its row.
-- `[ ]` PendingIntent records as registry rows (owner, intent, flags, a generation) on every
-  backend; MA7 sends them.
-- `[ ]` An APK replaced while its app runs: the app ends, the APK is written under a versioned name
-  and fsynced before the row points at it.
-- `[ ]` Data dirs keyed by package; the gtk app id from the package.
-- `[ ]` iOS: the registry in Application Support; Dine's launcher reads its rows (labels, icons)
-  instead of `AppLibrary`'s `apps` table.
-- `[ ]` `DelegateLastClassLoader` (Mihon uses it on newer SDKs; the level is unchecked), or confirm
-  Mihon's compat `PathClassLoader` path works at SDK 21.
+  `getPackageInfo`, intent resolution across packages (action, categories, data scheme),
+  `getLaunchIntentForPackage`, `getPackagesForUid`, `getPackageUid`, `checkSignatures`. The
+  microG-only visibility gate is gone.
+- `[x]` `PACKAGE_ADDED/REPLACED/REMOVED` with scheme `package` to the installing app's own receivers;
+  other running apps get them in MA7.
+- `[x]` `ATLGStub` as preinstalled rows (`com.google.android.gms`, `gsf`, `vending`, with
+  `FLAG_SYSTEM` and Google's signatures); an installed package of the same name replaces its row
+  and keeps its uid, and its uninstall restores the row.
+- `[x]` An APK replaced while its app runs: the new version is written and fsynced before the row
+  points at it, the old one is deleted after the commit, and an app that replaced or removed itself
+  ends. Ending the app in another process is MA7.
+- `[x]` Data dirs keyed by package (`data/<pkg>/`) under the prefix `DINE_PREFIX` (default
+  `~/.dine`); a run by APK path installs the APK unless the registry holds those exact bytes; a run
+  by `--package` starts an installed package; gtk takes the app id from `--package`.
+- `[x]` iOS: the prefix, with the registry, is `Application Support/dine`; dev-screen runs install
+  into it. On the phone (2026-11-02, through `dine-peek` and the syslog): a first demo_app run installs it, a second start installs
+  nothing; the `installer` tile's session install shows the confirmation from the Application
+  context and installs.
+- `[x]` `DelegateLastClassLoader(String, String, ClassLoader)` and a child-first `PathClassLoader`
+  (Mihon's compat order) both load an installed extension's class from its `sourceDir`. Mihon's SDK
+  threshold for the platform class: unchecked.
 - Done when: the package suite grades install, query and removal on headless, including an APK
-  without a launcher activity and a `reqFeatures` query.
+  without a launcher activity and a `reqFeatures` query. Met 2026-11-02.
 
 ## MA2: app records
 
@@ -174,11 +187,20 @@ behind the record.
 
 - `[ ]` The app record and its thread tagging (`ThreadGroup` plus a field on ART's `Thread`;
   attached threads; UIKit upcalls).
-- `[ ]` ATL's process-wide state behind the record (`findings-framework.md` table): primary app,
-  data dir, PackageManager, providers, receivers, preferences, `sys_config` copy, layout inflater
+- `[ ]` ATL's process-wide state into the record (`findings-framework.md` table): the app, data
+  dir, PackageManager, providers, receivers, preferences, `sys_config` copy, layout inflater
   cache, job scheduler, dialogs, IME, display metrics, C globals.
+- `[ ]` No primary app, on every backend (`design.md` "App record"): the fields that hold the one
+  app are deleted, not wrapped in getters; code reaches its app through its Context, a handle or a
+  parameter; Android's static APIs (`ActivityThread.currentApplication()` and the like) return the
+  calling thread's app.
+- `[ ]` The notes follow the code in this stage: every note that describes ATL with a primary app
+  or with guests of one states the record model, among them `design.md`,
+  `multi-head-exec-maybes.md` and `findings-hosting.md`; `findings-framework.md` marks its rows of
+  the primary as gone.
 - `[ ]` A main thread and main Looper per app.
-- `[ ]` Guests get `Application.onCreate`, their providers and their receivers.
+- `[ ]` Every app in the VM gets `Application.onCreate`, its providers and its receivers (today only
+  the first app does).
 - `[ ]` The host API takes app handles; `dine_atl_run` and ATL's `started` stop refusing a second
   app; cfrunloop's `main_loop.quit` per app.
 - `[ ]` The native library table keyed by (path, loader); native lookup limited to the loader's own
@@ -187,7 +209,8 @@ behind the record.
 - `[ ]` The cost of an Android main thread per app (8 MiB virtual stack each today; `design.md`
   "Further points").
 - Done when: two test APKs run side by side in one headless VM and the framework suite passes in
-  each.
+  each; `dine-atl/src` keeps none of the primary app's fields, and no note but a findings file
+  describes a primary app.
 
 ## MA3: containment
 
@@ -282,7 +305,12 @@ behind the record.
 - `[ ]` A bound service app that dies is started again with a backoff for `BIND_AUTO_CREATE`
   clients, which reconnect.
 - `[ ]` `unix`: a second launch of a running app forwards its intent to it and exits.
+- `[ ]` PendingIntent records as registry rows (owner, intent, flags, a generation) on every
+  backend, from MA1; they need `Intent` in Parcels, which ATL lacks.
 - `[ ]` `PendingIntent.send` from the registry rows: starts the owner if needed and delivers.
+- `[ ]` `PACKAGE_ADDED/REPLACED/REMOVED` to apps in other processes, from MA1; what to watch:
+  `design.md` "Linux: the static model".
+- `[ ]` An app whose APK another process replaced or removed ends, from MA1.
 - `[ ]` The gtk D-Bus intent API kept as the desktop's entry point into the same delivery
   (`design.md`).
 - Done when: a client APK binds a service APK and queries its provider in both the headless test

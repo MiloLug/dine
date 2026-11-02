@@ -96,7 +96,7 @@ class GtkTarget(AgentUi, LldbCommands, Target):
         if self._running():
             raise CmdError(f"ATL runs already (pid {self.proc.pid}): tools/dine dbg fresh relaunches it")
         env = without_lldb_env(self.display.env())
-        env.update(RUN_FROM_BUILDDIR="1", ANDROID_APP_DATA_DIR=str(self.data), ATL_DBG_AGENT=str(self.socket))
+        env.update(RUN_FROM_BUILDDIR="1", DINE_PREFIX=str(self.data), ATL_DBG_AGENT=str(self.socket))
         cmd = ["./android-translation-layer", str(self.apk), *(["-l", activity] if activity else []), "-X", "-Xint"]
         self.socket.unlink(missing_ok=True)
         self.proc = subprocess.Popen(cmd, cwd=paths.ATL_GTK_BUILD, env=env, stdin=subprocess.DEVNULL,

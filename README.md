@@ -46,7 +46,7 @@ symbols, ATL build, and a verification checklist.
 | `tools/dine ios build-native [lib…]` | `native/*`, plus `native/dev/*` unless `DINE_RELEASE=1` → `out/ios/{lib,include}` (`DINE_IOS_BUILD_TYPE`, default `RelWithDebInfo`) |
 | `tools/dine ios build-art` | dine-art (ART, libcore natives, androidfw) plus ICU, lz4, liblzma, wolfSSL → static archives in `out/ios/lib`, boot jars → `out/ios/share/art` (ART's junit jars → `out/ios/share/art-junit`, bundled by dev builds only) |
 | `tools/dine ios build-atl` | dine-atl's uikit build (meson cross) → `out/ios/lib/libtranslation_layer_main.a`; its jars → `out/ios/share/atl`; the looper, dialog, nav, views and widgets test APKs → `out/tests/apks`; needs `linux build atl` first |
-| `tools/dine ios run [App]` | kill a running instance → native libs → dev payload (test APKs and jars → `out/ios/dev`) → asset catalog (accord → `out/ios/assets/<App>`) → `xtool dev` (build/sign/install) → launch via DVT. `DINE_RELEASE=1` (after `DINE_RELEASE=1 tools/dine ios build-atl`): a release build without dev or test code (CLAUDE.md) |
+| `tools/dine ios run [App]` | kill a running instance → native libs → dev payload (test APKs and jars → `out/ios/dev`; the package suite's installer app, after `tools/dine test package`) → asset catalog (accord → `out/ios/assets/<App>`) → `xtool dev` (build/sign/install) → launch via DVT. `DINE_RELEASE=1` (after `DINE_RELEASE=1 tools/dine ios build-atl`): a release build without dev or test code (CLAUDE.md) |
 | `tools/dine ios icons` | `apps/Dine/Resources/Icons.xcassets` from its `sources.txt`: copies the listed icons from the pack's clone |
 | `tools/dine ios launch [--suspended] [App]` | (re)launch via DVT, print the pid |
 | `tools/dine ios ps [App] [--all]`, `tools/dine ios kill <App\|pid>` | device processes |
@@ -60,6 +60,7 @@ symbols, ATL build, and a verification checklist.
 | `tools/dine test runtime [fetch\|build\|run\|all] [-f REGEX] [--update-expectations]` | ART run-tests on the local `dalvikvm -Xint` (suite `dine-art/tests/runtime`, engine `tests/harness`); `tools/dine test runtime -- --help` lists every option |
 | `tools/dine test framework [-f REGEX] [--gtk] [--update-expectations]` | `android.*` JUnit suites in-VM on the headless ATL build, or the gtk one with `--gtk` (suite `dine-atl/tests/framework`, after `linux build`) |
 | `tools/dine test apps [-f REGEX] [--gtk] [--update-expectations]` | real APKs (`tests/android-compat/apps/apps.toml`: Gravity Defied, AdaptiveIconDemo) to their log markers on the headless ATL build, or the gtk one with `--gtk` (after `linux build`) |
+| `tools/dine test package [-f REGEX] [--update-expectations]` | package install, query and removal on the headless ATL build: CLI installs graded on the registry's rows, a JUnit suite of `PackageManager` queries, and an installer app's sessions and intents with scripted dialog answers (suite `dine-atl/tests/package`, after `linux build`) |
 | `tools/dine test unit` | unit tests of `tests/harness` and `tools/py` |
 
 ## Device connection
@@ -251,9 +252,9 @@ apps/<App>/xtool/<App>.app/<App>` (local Mach-O + debug info) → `target.sdk-pa
 
 ```sh
 tools/dine linux build                  # all stages; or: bionic art opensles atl atl-headless
-tools/dine linux smoke                  # gd, demo, demo-480, looper, dialog, dialog-gtk, nav, views, views-gtk, widgets, controls, text, draw, draw-gtk: one line each
+tools/dine linux smoke                  # gd, gd-package, demo, demo-480, looper, dialog, dialog-gtk, nav, views, views-gtk, widgets, controls, text, draw, draw-gtk: one line each
 source env.sh                           # PATH + LD_LIBRARY_PATH for out/linux/prefix
-ANDROID_APP_DATA_DIR=$PWD/out/linux/appdata \
+DINE_PREFIX=$PWD/out/linux/appdata \
   android-translation-layer third_party/apks/org.happysanta.gd_29.apk \
   -l org/happysanta/gd/GDActivity -X -Xint     # -X passes straight to ART; -Xint = interpreter only
 ```

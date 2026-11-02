@@ -44,6 +44,22 @@ thread is parked after a fault while holding that object's monitor, ART would fo
 lock and run the method, instead of ending Dine when another app blocks on it. Low priority, much
 later. Context: `notes/multi-app-support/design.md` "Native faults" (the monitor rule).
 
+### ART-27
+
+**Bring dex2oat back, run once per install, after multi-app MA1.** dine-art has no oat or vdex for
+app dex, so every start verifies the dex at run time (`notes/art-findings.md` "How ART starts on
+Linux") and inflates a deflated dex into anonymous dirty memory. dex2oat's default
+`--copy-dex-files=true` copies a compressed dex into the vdex, which ART maps from the file
+(unchecked in dine-art), so the stored APK stays the original. Headless build, 10 starts each, the
+APK's dex deflated vs stored and 4-byte aligned: dirty memory 15.7 vs 11.3 MiB with a 4.2 MB dex,
+21.9 vs 14.5 MiB with a 6.9 MB dex, the difference moving to clean file pages; start time equal
+within the spread. Whether iOS leaves clean file pages out of Dine's memory limit: unchecked. Trap
+when measuring: an APK on tmpfs, or copied and not yet written back (`sync`), shows its mapped
+pages as dirty. iOS can't fork or exec, so dex2oat would run in-process there (unchecked). Compiled code has ART-22's absolute-reference problem, and iOS
+may refuse to execute pages that aren't signed (unchecked for Dine); a verify-only output (vdex,
+no machine code) would avoid both (unchecked). The side path that still reaches dex2oat:
+[ART-23](bug-tracker.md#art-23).
+
 ## ATL
 
 ### ATL-6

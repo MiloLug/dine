@@ -1234,21 +1234,22 @@ below. The Dine-only stages M8b to M8d are left for later ([Milestones](#milesto
 
 #### M8a: APK import and launch
 
-Runs after multi-app MA1 and builds on its registry: an import installs the APK into the registry,
-and the launcher reads the registry's rows (`notes/multi-app-support/design.md` "Registry",
+Runs after multi-app MA1 and builds on its registry: an import installs the package (its registry
+row, its APK in `apps/<pkg>/`), and the launcher reads the registry's rows (`notes/multi-app-support/design.md` "Registry",
 `notes/filesystem/proposal.md` "Layout").
 
 - Import from Files, with document types through the Info.plist merge (the base item of
   `notes/os-features.md`, if it isn't built yet). From the PC an APK reaches Files by a Safari
   download over the LAN (untried), or `pymobiledevice3 apps push --documents` puts it in Dine's
   Documents (needs `UIFileSharingEnabled`; unverified for a development-signed app on iOS 27).
-- The APK goes to the registry's APK store and the app's data to `data/<pkg>/`, both in
-  Application Support (`notes/filesystem/proposal.md` "Layout"). Every AtlView run shares Caches
-  today, which iOS may purge (iOS knowledge).
+- The APK goes to `apps/<pkg>/` and the app's data to `data/<pkg>/`, both in the prefix
+  `Application Support/dine` that MA1's dev-screen runs already use (`dine_atl_run`'s
+  `prefix_dir`).
 - The launcher reads the registry's rows (package, label, icon, launcher activity) in place of
-  `AppLibrary`'s `apps` table, which stores `id` and `name` today (multi-app MA1).
-- Install parses the APK and writes its row in one transaction (MA1). On iOS the VM starts to
-  install, so a VM-free reader is needed only if the rows can't hold labels and icons
+  `AppLibrary`'s `apps` table, which stores `id` and `name`. The registry has no label or icon
+  column yet: this stage adds them (a schema version 2), its launcher being their only reader.
+- Install parses the APK and writes its row in one transaction (`ATLInstaller`, MA1). On iOS the
+  VM starts to install, so a VM-free reader is needed only if the rows can't hold labels and icons
   (`notes/multi-app-support/design.md` "Further points"). Such a reader would be shared C in
   dine-atl over androidfw's C API (already linked into Dine), so the package suite grades on
   headless the code Dine runs; the API has no `AssetManager_delete` or `ApkAssets_delete`: each
@@ -1271,11 +1272,10 @@ and the launcher reads the registry's rows (`notes/multi-app-support/design.md` 
   `.when(configuration: .debug)` doesn't reach the linking executable), which dead stripping
   removes today; with `-export_dynamic` its `Java_*` would stay, so fix that condition first.
   Whether a clean release tree, which has no `libruntimetests.a`, fails to link is unverified.
-- The package suite (`dine-atl/tests/package`) starts here.
+- The package suite (`dine-atl/tests/package`, from MA1) grades the label and icon columns.
 
-**Done when:** the package suite passes on headless (the registry rows for the test APKs, an APK
-without a launcher installed without a tile, launcher resolution through the cli host without
-`-l`); on the phone a dev
+**Done when:** the package suite passes on headless (the label and icon columns of the test APKs,
+launcher resolution through the cli host without `-l`); on the phone a dev
 screen imports from the dev payload through the same code (`dbg smoke`), and a release build
 imports `demo_app.apk` and shows both strings (by hand).
 

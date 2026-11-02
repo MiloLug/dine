@@ -64,7 +64,7 @@ What blocks independent apps side by side:
 
 | Blocker | Where | Needs |
 |---|---|---|
-| One primary app, read once from `atl.app.class.path`; package visibility and paths key on it | `ATLLoadedApp.primary_application`, `ATLLoadedAppManager` | several primary apps, each with its own paths and visibility |
+| One primary app, read once from `atl.app.class.path`; package visibility and paths key on it | `ATLLoadedApp.primary_application`, `ATLLoadedAppManager` | an app record per app, none primary, each with its own paths and visibility |
 | App state in statics shared by every app | `Context.this_application` (deprecated; native code reads it in `android_content_Context.c`, `gtk_util.c`, `actions.c`), `Context.package_manager`, `Context.receiverMap` (broadcast receivers) | per-app context |
 | One main thread | `Looper.sMainLooper` | a main thread per app, or accepting that a slow app freezes the other |
 | One main window | ATL globals | a window per app |

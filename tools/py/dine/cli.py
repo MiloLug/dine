@@ -168,6 +168,9 @@ def _test(sub):
                                   "--gtk on the gtk one on a hidden display (after linux build); args go to "
                                   "tests/harness/apps.py")
     t.set_defaults(func=lambda a: _test_harness("apps.py", a), passthrough="all")
+    t = s.add_parser("package", help="package install, query and removal on the headless build (after linux "
+                                     "build); args go to tests/harness/package.py")
+    t.set_defaults(func=lambda a: _test_harness("package.py", a), passthrough="all")
     t = s.add_parser("unit", help="unit tests: tests/harness and tools/py")
     t.set_defaults(func=_test_unit)
 

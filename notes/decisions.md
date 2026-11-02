@@ -7,6 +7,11 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - Our delta: `git diff upstream/master...dine`. Local `master` lags upstream.
 - Upstream isn't merged: read its commits since the last merge and reimplement the wanted ones
   by hand.
+- Packages are ours: the registry (`ATLRegistry`, SQLite in the prefix `DINE_PREFIX`, default
+  `~/.dine`) is PackageManager's only source, and `ATLInstaller` its only writer; upstream's
+  `_installed_apks_`, `--install`'s copy, `ANDROID_APP_DATA_DIR` and the GMS name list are gone. A
+  run by APK path installs the APK; the app's dirs are set after VM start (`prepareApp`). Port
+  upstream PackageManager and PackageParser fixes onto the registry's reads.
 - Region is ours: y-bands of x-spans in `src/shared/region.c` on every build, `setPath` by pixel
   centres as Skia's non-antialiased fill; upstream's cairo natives are gone. Port upstream Region
   fixes into the shared code.

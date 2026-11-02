@@ -43,13 +43,14 @@ install` from its GitHub repo (`docs/first-run.md`).
 ```sh
 tools/dine ios tunnel start|status       # iOS 17+ developer services; start mounts the DDI
 tools/dine ios build-art | build-atl     # dine-art, dine-atl for iOS (not run by ios run); build-atl after linux build atl
-tools/dine ios run [App]                 # native libs, dev payload, asset catalogs, xtool dev, launch
+tools/dine ios run [App]                 # native libs, dev payload (after test package), asset catalogs, xtool dev, launch
 tools/dine ios icons                     # Icons.xcassets from its sources.txt
 tools/dine linux build [bionic|art|opensles|atl|atl-headless ...]   # default: all, in that order
 tools/dine linux smoke [check...] [--list]
 tools/dine test runtime [fetch|build|run|all] [-f REGEX] [--network] [--update-expectations]
 tools/dine test framework [-f REGEX] [--gtk] [--update-expectations]
 tools/dine test apps [-f REGEX] [--gtk] [--update-expectations]       # real APKs to their log markers
+tools/dine test package [-f REGEX] [--update-expectations]            # install, query, removal on headless
 tools/dine test unit                     # harness + tools/py unit tests
 tools/dine dbg start-server [--target gtk --app <apk>] | smoke [--network] [--list] | stop-server
 ```

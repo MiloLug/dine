@@ -110,7 +110,7 @@ def run_suite(suite: Path, work: Path, build: Build) -> tuple[str, Run, str]:
         return suite.name, Run(problems=[f"APK build failed: {e}"]), "fail"
     (work / "data").mkdir()
     # MALLOC_PERTURB_ fills freed memory, so a use-after-free fails instead of reading intact data
-    env = dict(os.environ, RUN_FROM_BUILDDIR="1", ANDROID_APP_DATA_DIR=str(work / "data"), MALLOC_PERTURB_="85")
+    env = dict(os.environ, RUN_FROM_BUILDDIR="1", DINE_PREFIX=str(work / "data"), MALLOC_PERTURB_="85")
     cmd = ["./android-translation-layer", "--instrument", RUNNER, str(package), "-X", "-Xint"]
     with open(work / "stdout", "w") as out, open(work / "stderr", "w") as err:
         try:

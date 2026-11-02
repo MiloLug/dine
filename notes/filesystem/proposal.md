@@ -33,7 +33,7 @@ platform. State: the path model, the hidden app-specific dirs and the picker's p
 Owns:
 - the prefix: where it is, its layout, creating it with the standard shared dirs;
 - every path the framework hands out: an app's data, cache and code-cache dirs, external storage
-  and its public dirs, the app-specific external dirs, the APK store, `java.io.tmpdir`, the
+  and its public dirs, the app-specific external dirs, each package's APK dir, `java.io.tmpdir`, the
   runtime's caches (ART's `ANDROID_DATA`, fontconfig's `XDG_CACHE_HOME`);
 - the mapping between Android's paths and host paths, both ways;
 - the host's view of the shared storage: the Files app keys on iOS;
@@ -70,7 +70,7 @@ Linux. The prefix is `~/.dine`, or `$DINE_PREFIX` (as Wine's `WINEPREFIX`):
     data/<pkg>/ obb/<pkg>/ media/<pkg>/
   data/<pkg>/                   /data/user/0/<pkg>: files, shared_prefs, databases, no_backup, lib,
                                 cache, code_cache
-  apps/                         the APK store; the multi-app registry sits next to it
+  apps/<pkg>/                   each installed package's APK; the multi-app registry sits next to it
   tmp/                          java.io.tmpdir
   runtime/                      ART's and fontconfig's caches
 ```
@@ -159,9 +159,9 @@ Until then nothing stops code from opening any host path by absolute path.
 
 ## Depends on, and affects
 
-- Multi-app: `design.md` "Prefix" points to this layout (approved with the design, 2026-11-02). Data dirs keyed by package need the package before VM start (the TODO in
-  `startup.c`, `findings-hosting.md`); that comes with the registry (MA1) and APK import (M8a).
-  Until then fs keys an app's dir by what the host gives it.
+- Multi-app: `design.md` "Prefix" points to this layout (approved with the design, 2026-11-02). MA1 built the prefix's root (`DINE_PREFIX`,
+  `~/.dine`) with `registry.sqlite`, `apps/<pkg>/` and `data/<pkg>/`, the app's dirs set after VM
+  start from its registry row; the rest of this layout and the `fs` slot are still to build.
 - `notes/os-features.md` items 1 (Info.plist keys), 7 and 8 (files handed to other apps), 9 (the
   picker), 20 (`Download/`); [ART-11](../bug-tracker.md#art-11) (`java.nio.file` on iOS), one of
   the entry points.

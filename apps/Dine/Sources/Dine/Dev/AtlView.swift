@@ -30,6 +30,9 @@ struct AtlView: View {
                 tile("views_widgets_samples_flower_finder", activity: "com/example/recyclersample/flowerList/FlowersListActivity", title: "flowers")
                 tile("com.leocardz.multitouch.test_19", activity: "com/leocardz/multitouch/test/MultitouchTest", title: "multitouch")
                 tile("com.ashwin.example.accelerometerdemo", activity: "com/ashwin/example/accelerometerdemo/MainActivity", title: "accelerometer")
+                // the package suite's installer app: installs ext through a session, confirmed from the Application context
+                tile("driver", in: "dev/package", activity: "dev/dine/pkg/driver/Main", title: "installer",
+                     scenario: "session-app-context:ext")
             }
             .padding()
         }
@@ -37,22 +40,38 @@ struct AtlView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    private func tile(_ apk: String, activity: String, title: String? = nil) -> some View {
-        Button { run(apk, activity: activity, title: title ?? apk) } label: { AppIconView(name: title ?? apk) }
-            .buttonStyle(.plain)
+    private func tile(_ apk: String, in directory: String = "dev", activity: String, title: String? = nil,
+                      scenario: String? = nil) -> some View {
+        Button { run(apk, in: directory, activity: activity, title: title ?? apk, scenario: scenario) } label: {
+            AppIconView(name: title ?? apk)
+        }
+        .buttonStyle(.plain)
     }
 
-    private func run(_ apk: String, activity: String, title: String) {
+    /// `scenario`: the driver app's DINE_TEST_SCENARIO; its fixtures are the APKs beside it.
+    private func run(_ apk: String, in directory: String, activity: String, title: String, scenario: String?) {
         // `art/` holds the runtime boot jars, `atl/` ATL's jars, `dev/` the test APKs (xtool.yml)
         guard let root = Bundle.main.path(forResource: "art", ofType: nil),
               let atl = Bundle.main.path(forResource: "atl", ofType: nil),
-              let path = Bundle.main.path(forResource: apk, ofType: "apk", inDirectory: "dev"),
-              let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+              let path = Bundle.main.path(forResource: apk, ofType: "apk", inDirectory: directory),
+              let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first,
+              let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
         else {
-            return log.error("atl: art/, atl/, dev/\(apk, privacy: .public).apk or caches dir missing")
+            return log.error("atl: art/, atl/, \(directory, privacy: .public)/\(apk, privacy: .public).apk or a library dir missing")
+        }
+        // the prefix: the package registry, installed APKs and app data, out of the purgeable Caches
+        let prefix = support.appendingPathComponent("dine")
+        do {
+            try FileManager.default.createDirectory(at: prefix, withIntermediateDirectories: true)
+        } catch {
+            return log.error("atl: can't create \(prefix.path, privacy: .public): \(error, privacy: .public)")
+        }
+        if let scenario {
+            setenv("DINE_TEST_SCENARIO", scenario, 1)
+            setenv("DINE_TEST_FIXTURES", (path as NSString).deletingLastPathComponent, 1)
         }
         navigator.run(title) { window, listener in
-            dine_atl_run(root, atl, caches.path, path, activity, window, listener)
+            dine_atl_run(root, atl, prefix.path, caches.path, path, activity, window, listener)
         }
     }
 }

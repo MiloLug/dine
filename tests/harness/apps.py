@@ -61,13 +61,26 @@ def verdict(log: bytes, wanted: list[bytes], running: bool) -> str | None:
     return None if missing else "pass"
 
 
-def run_app(name: str, app: dict, work: Path, build: Build) -> tuple[str, str, str | None]:
+def install(app: dict, build: Build, env: dict[str, str]) -> str:
+    """Installs the APK into the run's prefix; its package name."""
+    # only gtk's --install also writes a desktop entry
+    flag = "--install-internal" if build is GTK else "--install"
+    proc = subprocess.run(["./android-translation-layer", flag, str(APKS / app["apk"]), "-X", "-Xint"],
+                          cwd=build.dir, env=env, capture_output=True, text=True, timeout=TIMEOUT)
+    m = re.search(r"^Success: (\S+)", proc.stdout, re.M)
+    if not m:
+        raise RuntimeError(f"install failed: {proc.stdout}{proc.stderr}")
+    return m.group(1)
+
+
+def run_app(name: str, app: dict, work: Path, build: Build, by_package: bool = False) -> tuple[str, str, str | None]:
     """(name, status, problem)"""
     work.mkdir(parents=True)
     (work / "data").mkdir()
     log = work / "log"
-    env = dict(os.environ, RUN_FROM_BUILDDIR="1", ANDROID_APP_DATA_DIR=str(work / "data"))
-    cmd = ["./android-translation-layer", str(APKS / app["apk"]), "-l", app["activity"], "-X", "-Xint"]
+    env = dict(os.environ, RUN_FROM_BUILDDIR="1", DINE_PREFIX=str(work / "data"))
+    target = ["--package", install(app, build, env)] if by_package else [str(APKS / app["apk"])]
+    cmd = ["./android-translation-layer", *target, "-l", app["activity"], "-X", "-Xint"]
     wanted = markers(app, build)
     with open(log, "wb") as out:
         proc = subprocess.Popen(cmd, cwd=build.dir, env=env, stdin=subprocess.DEVNULL, stdout=out,
@@ -98,6 +111,8 @@ def main() -> int:
     p.add_argument("-f", "--filter", help="regex on app names")
     p.add_argument("--gtk", action="store_true", help="run on the gtk build (needs a display; tools/dine test "
                                                         "apps --gtk gives it a hidden one)")
+    p.add_argument("--by-package", action="store_true",
+                   help="install each APK into the run's prefix, then run it with --package")
     p.add_argument("--update-expectations", action="store_true",
                    help="record this run's failures as expected (passes clear their entries)")
     a = p.parse_args()
@@ -116,7 +131,7 @@ def main() -> int:
         if not (APKS / app["apk"]).exists():
             sys.exit(f"missing {APKS / app['apk']}: docs/first-run.md lists the APKs")
     runs = OUT / "runs" / f"{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}"
-    done = parallel(lambda n: run_app(n, apps[n], runs / n, build), sorted(apps), build.jobs, "apps")
+    done = parallel(lambda n: run_app(n, apps[n], runs / n, build, a.by_package), sorted(apps), build.jobs, "apps")
 
     results = {}
     for name, status, problem in sorted(done):
