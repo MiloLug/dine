@@ -10,8 +10,8 @@ agreed with the user before any code is written. The deliverable is this directo
 
 ## Current state
 
-Brainstorming (superpowers:brainstorming) mid-way; the last question asked, saved state on Linux
-(Open questions 1), is unanswered.
+Brainstorming (superpowers:brainstorming): the builder check ran on 2026-11-02 and its questions
+are answered; the user's approval of the design and the roadmap is asked, not given.
 
 ## Decisions and rules (the user's words)
 
@@ -49,6 +49,9 @@ Brainstorming (superpowers:brainstorming) mid-way; the last question asked, save
   allows for alarms, for example, with some systemd or dbus or whatever "standard" alarm service -
   we must use it." A separate Linux server goes "as super-low priority to the general todo"
   (ATL-29).
+- Saved state on Linux: "Yes" to "If something outside the app ends a Linux app's process (not you
+  closing it, and not a crash), should the app reopen where it was the next time you start it?"
+  (the Bundle files of the one-VM backends; a clean end deletes them).
 - Call timeouts: "ok, no limit" (after: "i'd not go the android way and add some timeout").
 - Start at boot: "no special treatment for microG (system flags or whatever)"; service management
   (a slot: systemd `--user` on Linux, an internal manager on iOS, a UI) "goes TOO FAR. For now just
@@ -63,38 +66,65 @@ Brainstorming (superpowers:brainstorming) mid-way; the last question asked, save
   bugs in Dine's own native code or in ART may still end Dine.
 - Repo rules: don't commit or push in dine-art or dine-atl without asking; both forks keep building
   and passing on Linux; Linux is the fast loop and the reference for the iOS port.
+- Background apps on the phone: "B. Of course, if an app explicitly asks for background - allow
+  it" (B: freeze about 10 s after leaving the screen unless the app plays audio, runs a service or
+  is bound by a running app).
+- Memory: "your proposal is good" (a cap per app on the Java heap, JNI globals and descriptors;
+  the drop order of `design.md` "Freeze and drop"), then "can't we also increase global cap?"
+  (answered in `design.md` "Memory control", recorded as proposed).
+- Signature spoofing: "B" (`FAKE_PACKAGE_SIGNATURE` granted only after the user accepts it in the
+  install confirmation).
+- B1's points: "1 - let's add a comptime switch for this, so we could build dev builds with error
+  handling instead of crash - to test apps. But I mean a separate flag, not dev vs release.
+  something like enable-oob-unsafe-recovery"; "2 - agree" (unknown locks); "4 - agree"
+  (`abort()`). On monitors (3), after the explanation and a changed lean (Dine ends only when
+  another app blocks on the held monitor): "yes, for now", plus "to the general todo add: think
+  about extending java for "standard" unwind method for shared objects after a thread crash"
+  (ART-25, low priority).
+- Trust: "let's add think about file isolation in general todo for much later" (apps are trusted;
+  ATL-32).
+- `notes/background-tasks.md` edits: "yes, and rename background-processes to background-tasks, to
+  not confuse with processes and services" (renamed; references updated).
+- Builder check answers: stage order "I will go with MA0 + M6a, then MA1, MA2, M6b. I already
+  spelled out notes/steps.md, so you now just have to add LITTLE updates to those tasks so they
+  know about each other (don't change steps)" (one-line cross-links in M6a, M6b, MA0-MA2; the
+  user's `notes/steps.md` is untouched and untracked); live apps "I think it should be dynamic...
+  Like allocation dependant?" (no fixed count); `ATLGStub` "your lean" (preinstalled registry
+  rows); "on others agree" (the builder-check calls below).
 
-My calls in `design.md`, not contested: freeze only under memory pressure (being asked, Pending
-1), least recently used first; a headless test mode with several apps in one VM; a uid per package
-at install; APKs without a launcher activity install; one VM with app records on iOS, K bundled ART
-copies only as the fallback; `supervisor` as the service-management slot's name; the D-Bus intent
-API kept as the gtk build's desktop entry point.
+My calls in `design.md`, not contested: what counts as asking to run in the background (the list
+adds a partial `WakeLock` and a running job); a thaw for calls and delivered events;
+`InternalError` as the exception under `enable-oob-unsafe-recovery`; a headless test mode with
+several apps in one VM; a uid per package at install; APKs without a launcher activity install;
+one VM with app records on iOS, K bundled ART copies only as the fallback; `supervisor` as the
+service-management slot's name; the D-Bus intent API kept as the gtk build's desktop entry point;
+the rest of "Open design points" (stated to the user 2026-11-02, no objection). From the builder
+check (2026-11-02, the user: "on others agree"): the heap cap set at an app's start from the memory
+available then; the wait or close dialog for a hung app on one-VM backends, its limits measured
+under `-Xint`, no watchdog on Linux; `OutOfMemoryError` on the app's own allocation through per-app
+live-byte counting (heap walk as the fallback); the heap caps may add up to more than `-Xmx`;
+per-app state only for native libraries whose state differs per app, in their source, ICU and font
+caches shared; one running apps list entry per task; the drop probes' pass rule (`todo.md` MA0); the
+uncovered design items as tasks in MA1, MA7 and MA8.
 
 ## Done
 
 - `.` [main], uncommitted (the directory itself is in `da6a8bf`):
   - `M notes/multi-app-support/design.md`, `todo.md`, `handoff.md`, `findings-framework.md`,
     `findings-native-faults.md`, `findings-runtime.md`
-  - `M notes/background-processes.md` (AlarmKit row, question 9)
-  - `M notes/general-todo.md` (ATL-29, ATL-30)
+  - `notes/background-processes.md` renamed to `notes/background-tasks.md` (plain `mv`, not
+    staged), questions 7 and 8; references in 6 notes
+  - `M notes/general-todo.md` (ART-25, ATL-32)
   - `M notes/decisions.md` (later-SDK behaviour line in the `SDK_INT` entry)
   - `?? notes/service-management/proposal.md`
 - `?? dine-atl/subprojects/graphene/.meson-subproject-wrap-hash.txt` is not this task's.
 
 ## Pending
 
-1. Get the answer to Open questions 1 and record it in `design.md` and `todo.md` MA5. Then ask, one
-   per message: freezing background apps for CPU on the phone (Android 14 freezes cached apps after
-   10 s); per-app budgets for shared resources (Java heap, JNI globals, descriptors) with per-app
-   `maxMemory` and `getMemoryClass`; B1's four `[?]` points; signature spoofing through
-   `FAKE_PACKAGE_SIGNATURE` instead of ATL's GMS package list (stated, not answered).
-2. The rest of `design.md` "Open design points": state each lean, ask only where the user's answer
-   changes what gets built.
-3. Brainstorming's builder check on `design.md` (a fresh subagent with the skill's
-   `builder-check-prompt.md`), then the user's approval of the design and the roadmap.
-4. After approval: superpowers:writing-plans per stage, with the consilium inside it
+1. The user's approval of `design.md` and `todo.md` (a plain yes), asked 2026-11-02.
+2. After approval: superpowers:writing-plans per stage, with the consilium inside it
    (`~/.claude/rules/consilium.md`), MA0's probes first.
-5. After approval: update the notes in `findings-hosting.md` "Notes that assume one app per
+3. After approval: update the notes in `findings-hosting.md` "Notes that assume one app per
    process", M8a first.
 
 ## Traps and facts found
@@ -123,17 +153,8 @@ API kept as the gtk build's desktop entry point.
 
 1. Read `CLAUDE.md`, `notes/meta.md`, then this file, `design.md`, `todo.md`.
 2. The findings files when a question needs a fact; they carry file:line and checked/unchecked tags.
-3. Continue the brainstorming skill's conversation: Open questions 1 is waiting for the user, then
-   Pending 1. The user answers several numbered questions at once, by points.
+3. Continue with Pending 1. The user answers several numbered questions at once, by points.
 
 ## Open questions
 
-1. Saved state on Linux. Asked: "If something outside the app ends a Linux app's process (not you
-   closing it, and not a crash), should the app reopen where it was the next time you start it?"
-   Options: yes (my lean: the iOS code writes the Bundle file; a clean end deletes it; a start that
-   finds it restores) or no (always start fresh). Details in `design.md` "Open design points".
-2. B1's points (`todo.md` B1): a failed check ends the app or throws; faults in code whose locks
-   Dine can't see (libmalloc, Apple's frameworks; ART's own mutexes are visible) end Dine or follow
-   a narrower rule; held monitors; which `abort()` paths can be contained.
-3. Background apps on the phone: freeze only under memory pressure, or after a delay unless they
-   play audio, run a foreground service or serve a running app.
+None open; approval pending (Pending 1).

@@ -2,7 +2,7 @@
 
 How Android apps expect to run when they are not on screen, what iOS offers instead, and what Dine
 can map between the two. Why Dine has one process and what limits that brings is in
-`notes/meta.md`; the service-backend plan (M7) is in `notes/service-impl.md`; tool commands are in
+`notes/meta.md`; the OS features plan (M7) is in `notes/os-features.md`; tool commands are in
 `README.md`.
 
 Marks used below:
@@ -18,11 +18,10 @@ Marks used below:
   implementation. A `notify()` call on iOS has no native to reach (not run on the phone).
 - `android.app.DownloadManager` (ATL) is a stub: `enqueue()` logs and returns 0, `query()` returns an
   empty cursor.
-- `android.app.Service` (ATL) logs its lifecycle calls. Foreground-service behavior was not
-  checked.
+- `android.app.Service` (ATL) logs its lifecycle calls; `startForeground` logs and keeps the id.
 - Dine has no background code: no `UIBackgroundModes`, `beginBackgroundTask`, `URLSession` or
   `BGTaskScheduler` in `apps/Dine/Sources`.
-- `notes/service-impl.md` plans notifications on `UNUserNotificationCenter` (its notifications
+- `notes/os-features.md` plans notifications on `UNUserNotificationCenter` (its notifications
   item).
 - With no keep-alive, iOS suspends Dine within seconds of leaving the foreground. The VM and every
   Android app in it stop (same process, `notes/meta.md`).
@@ -76,7 +75,7 @@ These points are iOS-knowledge-level for Android as well; none was verified agai
 
 | Android | iOS | Fit |
 |---|---|---|
-| `NotificationManager.notify` | `UNUserNotificationCenter` local notification | good; needs an iOS notifications service backend and a permission prompt |
+| `NotificationManager.notify` | `UNUserNotificationCenter` local notification | good; needs the notifications OS feature's `ios` backend and a permission prompt |
 | `PendingIntent` on a notification tap | notification response delegate, then the Activity | needs a route from the delegate to the VM |
 | `DownloadManager` | background `URLSession` | good; the API is already "request it, the system does it". The completion broadcast (`ACTION_DOWNLOAD_COMPLETE`) fires on the relaunch wake-up |
 | `WorkManager` / `JobScheduler` | `BGProcessingTask` | deferred, constrained, system-timed on both; iOS runs it later and less often |
@@ -115,17 +114,19 @@ download freezes until Dine is in front again.
 5. Is `UNUserNotificationCenter` authorization granted to a free-account sideloaded app?
 6. Does `AlarmManager` map to scheduled local notifications for the apps that matter, or is
    firing app code at a set time required?
-7. Does ATL's `Service` implement `startForeground`, and what should a foreground service request
-   do in Dine (start a continued task, start a keep-alive, or nothing)?
+7. What should a foreground service request (`startForeground`) do in Dine: start a continued
+   task, start a keep-alive, or nothing?
 8. A keep-alive keeps every Android app in the shared process alive, not only the one that asked.
-   Is that acceptable, and is it per-app opt-in?
+   Is that acceptable, and is it per-app opt-in? Partly answered: background apps freeze about
+   10 s after leaving the screen unless they ask to run (`notes/multi-app-support/design.md`
+   "Freeze and drop"), so a keep-alive runs only those. Per-app opt-in stays open.
 9. Does AlarmKit exist on iOS 27 and work for a free-account sideloaded app, and can an alarm's
    action start the Android app's PendingIntent?
 
 ## Options
 
 1. Foreground-only by default, plus an iOS `DownloadManager` on background `URLSession` and an iOS
-   notifications service on `UNUserNotificationCenter`. Works regardless of the open questions
+   notifications backend on `UNUserNotificationCenter`. Works regardless of the open questions
    above, except 5.
 2. Add `BGProcessingTask` for `WorkManager` jobs and `BGContinuedProcessingTask` for foreground
    services once questions 1 and 2 are answered.
@@ -135,5 +136,5 @@ download freezes until Dine is in front again.
    exists.
 
 Order: M8d in `notes/atl-port.md` answers the open questions above on the phone first; the
-notifications, media session, downloads and jobs items of `notes/service-impl.md` build on its
+notifications, media session, downloads and jobs items of `notes/os-features.md` build on its
 answers.

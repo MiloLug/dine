@@ -86,7 +86,9 @@ nothing more.
 5. **System services:** a fake `system_server` covering activities/intents, app install
    (including APK parsing and signature checks), content providers, storage layout, permissions,
    notifications and background jobs.
-6. **Platform bridges:** GPS, camera, WebView → WKWebView, files, and so on. These are not 1:1:
+6. **Platform bridges:** GPS, camera, WebView → WKWebView, files, and so on. In dine-atl GPS and
+   files are OS features of the `os` slot (`notes/os-features.md`), camera has no item yet, and
+   WebView is M9. Bridges are not 1:1:
    - WKWebView can't intercept http/https the way `shouldInterceptRequest` does.
    - Push notifications depend on Google's servers.
    - iOS limits background work.

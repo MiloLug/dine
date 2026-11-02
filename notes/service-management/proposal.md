@@ -22,8 +22,8 @@ every app starts disabled, and microG is enabled the way any other app is.
 ## A slot
 
 A new slot in dine-atl (`src/slots/`, next to `gfx`, `host`, `loop`, `ui`). Its proposed name is
-`supervisor`, since "service manager" is already Android's binder registry (`ServiceManager`) and
-`notes/service-impl.md` uses "services" for system services such as the vibrator.
+`supervisor`, since "service manager" is already Android's binder registry (`ServiceManager`).
+OS features such as the vibrator have their own slot, `os` (`notes/os-features.md`).
 
 | Backend | Where | Enabling an app | Start, stop, state |
 |---|---|---|---|
@@ -68,7 +68,7 @@ connect starts the app through systemd instead of the static model's exec; trans
 - Enabled apps take memory in the shared VM from Dine's start. Whether memory pressure may freeze
   or drop them like other background apps, or only after them, is open.
 - iOS suspends Dine in the background, so an enabled app runs only while Dine runs, unless one of
-  the mechanisms in `notes/background-processes.md` keeps it going.
+  the mechanisms in `notes/background-tasks.md` keeps it going.
 
 ## UI
 

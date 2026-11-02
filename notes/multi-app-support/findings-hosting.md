@@ -103,7 +103,7 @@ To update once the design is approved (`todo.md` "Docs to update").
 | `atl-port.md` | M8b, M8c | `atl_nav_home` and `atl_nav_front` for "the app"; one insets set |
 | `atl-port.md` | M8e, Tests | the globals; one VM per process, Dine restarts every N tests |
 | `nav-gestures.md` | Behaviour, host API, events, `RunningApps`, Insets | one run per process, no close action; `atl_nav_*` and events without an app id; one `Navigator.sendInsets`. Its line cite of `artbridge.cpp:379-452` is stale (the file has 244 lines) |
-| `service-impl.md` | items 7, 10, 17, 18, 19, 21 | another app's service is `none` on iOS; keystore keys live per process (U); UnifiedPush and MPRIS own one bus name per process; a tap goes to "the running app"; alarms and jobs go through the one main Looper |
+| `os-features.md` | items 7, 10, 17, 18, 19, 21 | another app's service is `none` on iOS; keystore keys live per process (U); UnifiedPush and MPRIS own one bus name per process; a tap goes to "the running app"; alarms and jobs go through the one main Looper |
 | `decisions.md` | window config, dialogs, `moveTaskToBack`, base JNI frame | one window per VM, one task, one Android thread |
 | `bug-tracker.md` | DINE-1 | `Navigator.home()` handles one container |
 | `general-todo.md` | DINE-9 | "ATL runs once per process: relaunch Dine" |

@@ -8,7 +8,7 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - Upstream isn't merged: read its commits since the last merge and reimplement the wanted ones
   by hand.
 - Vibrator: upstream's gudev natives build only with gtk; headless and uikit take no-op natives
-  (`src/shared/android_os_Vibrator.c`) until M7's services slot. Port upstream Vibrator edits into
+  (`src/shared/android_os_Vibrator.c`) until M7's `os` slot. Port upstream Vibrator edits into
   the gtk file.
 - Path is ours: a `struct gfx_path` of verbs and points (`src/shared/path.c`, arcs and round
   rects as cubics) behind `android.graphics.Path`'s one handle; upstream's GskPath natives and

@@ -36,6 +36,14 @@ reservation (`notes/art-findings.md` "Runs on the phone"). An image would need i
 relocated to that base (unchecked). Without an image `dine-0001-hello` takes 0.15 to 0.20 s on
 Linux, against 0.03 s warm with one (`notes/art-findings.md`).
 
+### ART-25
+
+**Think about a "standard" unwind method for shared objects after a thread crash**: a Java
+extension where an object defines a method that undoes a half-done change to its state. When a
+thread is parked after a fault while holding that object's monitor, ART would force-release the
+lock and run the method, instead of ending Dine when another app blocks on it. Low priority, much
+later. Context: `notes/multi-app-support/design.md` "Native faults" (the monitor rule).
+
 ## ATL
 
 ### ATL-6
@@ -93,6 +101,31 @@ breaks and those alarms don't fire. Lowest priority. Context: `notes/multi-app-s
 **Service management:** a slot that lets the user enable, start and stop apps as services (systemd
 user units on Linux, an internal manager in Dine on iOS) with a UI for it. A proposal, separate
 from multi-app support: `notes/service-management/proposal.md`.
+
+### ATL-31
+
+**Think about an optional alarm connector for AlarmKit**, so an Android alarm clock app
+(`AlarmManager.setAlarmClock`, the `AlarmClock.ACTION_SET_ALARM` intent) sets a system alarm on
+iOS. Very low priority. The mapping and its open question are in `notes/background-tasks.md`
+(question 9). iOS knowledge, untested:
+- AlarmKit (iOS 26 and later) lets an app schedule alarms and timers that ring like the Clock
+  app's, through the silent switch and Focus, shown on the lock screen, after a one-time permission
+  prompt and with a usage string in Info.plist. No paid-only entitlement for it is known.
+- Without it, iOS alarm apps use a scheduled local notification (its sound plays at most 30 s; the
+  silent switch and Focus mute it) or stay alive in the background playing silent audio (no alarm
+  after a force-quit). Critical alerts ring through mute but need an entitlement Apple grants on
+  request.
+- `AlarmManager` wake-ups that run app code have no iOS equivalent besides a keep-alive; they stay
+  in the jobs item of `notes/os-features.md`.
+
+### ATL-32
+
+**Think about file isolation between apps**: today every app can read the others' files, since all
+of them run as one OS user under one prefix on Linux and in one sandbox on iOS
+(`notes/multi-app-support/design.md`, the trust point). Much later. On Linux a per-app sandbox
+(bubblewrap or similar) is one candidate; iOS gives one sandbox to all of Dine, so there the layer
+would have to do it. Nothing checked. Linux mounts and storage permissions are the later stage of
+the filesystem slot (`notes/filesystem/proposal.md`).
 
 ## DINE
 

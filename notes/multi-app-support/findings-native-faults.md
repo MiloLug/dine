@@ -122,8 +122,9 @@ Each stays open until a task in `todo.md` B1 settles it.
    under the gfx backend, CoreFoundation, libdispatch); ICU's own mutex. sqlite takes its mutexes
    through a replaceable layer (`SQLITE_CONFIG_MUTEX`, U). For a fault inside code whose locks are
    unknown, the only safe outcome is ending Dine, so a framework fault on bad app input (a font, an
-   image) ends Dine. ART's own mutexes are visible: release builds record each one a thread holds,
-   one slot per lock level, readable with `Thread::GetHeldMutex(level)` (`SetHeldMutex` outside
+   image) ends Dine; decided instead: contained, with a hang rule (`design.md` "Native faults").
+   ART's own mutexes are visible: release builds record each one a thread holds, one slot per lock
+   level, readable with `Thread::GetHeldMutex(level)` (`SetHeldMutex` outside
    the `kDebugLocking` block, `art/runtime/base/mutex-inl.h:101-165`; `thread.h:1075,1747`).
    Monitors are not recorded there (`mutex-inl.h:160-163`). C
 6. Java monitors: a thread that entered `synchronized` on an object other apps also use, then
@@ -156,7 +157,7 @@ Each stays open until a task in `todo.md` B1 settles it.
 13. `abort()` paths raise SIGABRT: libmalloc's corruption check, C++ `std::terminate`, assertions in
     sqlite or ICU. ART's `LOG(FATAL)` goes through `Runtime::Abort` and `HookAbort`
     (`findings-runtime.md`). Which of them can be contained is open: libmalloc's abort on a per-app
-    zone may be, on the shared zone it isn't. U
+    zone may be, on the shared zone it isn't. U Decided in `design.md` "Native faults".
 14. Per-app malloc zones on iOS: system libraries call plain `malloc`, so routing their allocations
     to a zone means replacing the default zone's functions. Untested; an MA0 probe. U
 15. Per-app instances of stateful native libraries (ICU's caches, wolfSSL's init and RNG, sqlite's
@@ -165,5 +166,5 @@ Each stays open until a task in `todo.md` B1 settles it.
     JIT on iOS, or any other way app native code gets in, that code can write anywhere and the bar
     no longer holds. On Linux each app has its own process; an in-process guest with native code
     takes its host app down, as on Android.
-17. What a failed check does is open: end the app (on Android the bad access faults the app's
-    process) or throw an exception into it.
+17. What a failed check does: end the app (on Android the bad access faults the app's process) or
+    throw an exception into it. Decided in `design.md` "Native faults".

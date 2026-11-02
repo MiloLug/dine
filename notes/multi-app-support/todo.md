@@ -32,7 +32,8 @@ Task markers:
 
 Order: MA1 and MA2 can start once MA0 settles the design; MA3 and MA4 need MA2; B1 needs MA2
 (threads tagged with their app) and MA4's drop; MA7 needs MA1 and MA2; MA9 needs everything before
-it. M8a's APK import builds on MA1's registry.
+it. M8a's APK import builds on MA1's registry. The order against `notes/atl-port.md`'s stages is
+`notes/steps.md`.
 
 ## B1: native fault containment
 
@@ -58,16 +59,21 @@ found are in `findings-native-faults.md`.
 - `[ ]` Region registration at every point that hands Java a raw address (problem 4).
 - `[ ]` Object-plus-offset checks on `Unsafe`'s object calls: the offset inside the object and
   past its header, no primitive write over a reference field (problem 3).
-- `[?]` What a failed check does: end the app or throw (problem 17).
+- `[ ]` A failed check ends the app; the build flag `enable-oob-unsafe-recovery` makes it throw
+  into the app instead (problem 17, `design.md` "Native faults").
 - `[ ]` A malloc zone per app (shared with MA4's memory ledger; problem 14).
-- `[ ]` A separate instance per app of each native library with global state, from the listing
-  above (problem 15).
+- `[ ]` Per-app state, kept per app in the library's source, for each native library whose global
+  state the listing above shows to differ per app; ICU and the font caches stay shared (problem
+  15).
 - `[ ]` Shared locks taken through a wrapper that counts the ones each thread holds; sqlite's mutex
   layer.
-- `[?]` Faults inside code whose locks Dine can't see (libmalloc, Apple's frameworks, ICU's mutex):
-  end Dine, or a narrower rule (problem 5).
-- `[?]` Java monitors a faulting thread holds on objects other apps use (problem 6).
-- `[?]` Which `abort()` paths (SIGABRT) can be contained (problem 13).
+- `[ ]` Faults inside code whose locks Dine can't see: libmalloc's shared zone ends Dine; Apple's
+  frameworks and ICU are contained, and a hang of UIKit's thread or another app's main thread
+  afterwards ends Dine (problem 5).
+- `[ ]` A monitor a parked thread holds: Dine ends when a thread of another app blocks on it,
+  checked in ART's contended lock paths (problem 6).
+- `[ ]` `abort()` paths: libmalloc's on the app's own zone contained, on the shared zone ends Dine;
+  `std::terminate` and assertions follow the rule for unknown locks (problem 13).
 - `[ ]` Linux fault-injection tests in the headless test mode: a fault in `kNative` on one app's
   thread inside a JNI call leaves the other app running; a fault with a shared lock held ends the
   process; a wild `Unsafe` access is rejected.
@@ -81,9 +87,12 @@ found are in `findings-native-faults.md`.
 
 ## MA0: design and probes
 
+Runs beside M6a of `notes/atl-port.md` (`notes/steps.md`): the design and probes, no product code.
+
 - `[?]` The user's review of `design.md`, the static Linux model first; then the open design points
   listed there.
-- `[ ]` Builder check of the design (brainstorming), then a plan per stage (writing-plans).
+- `[x]` Builder check of the design (brainstorming), 2026-11-02.
+- `[ ]` A plan per stage (writing-plans).
 - `[?]` Probe, Linux headless: two apps in one VM through artbridge-like C, an async exception into
   threads parked in `Object.wait`, `LockSupport.park`, `Thread.sleep` and a socket read; check
   `ThreadList` and monitors afterwards.
@@ -94,17 +103,23 @@ found are in `findings-native-faults.md`.
 - `[?]` Probe, phone: `malloc_create_zone` per app and `malloc_destroy_zone`, and what each does to
   `phys_footprint`; does ART's memset plus `MADV_DONTNEED` lower it.
 - `[?]` Probe, phone: `os_proc_available_memory()` and memory warnings on iOS 27; Dine's jetsam
-  limit on the iPhone 13.
+  limit on the iPhone 13, with and without the `increased-memory-limit` entitlement (does a free
+  account get it); `RLIMIT_NOFILE`'s soft and hard limits and raising the soft one.
 - `[?]` Probe, phone: Mach `thread_suspend` and `thread_terminate` on Dine's own threads.
+- The drop probes pass (my call) when a drop and reload of a test app returns its measured
+  footprint except a few MB of what is never freed (interned strings, dex locations), and no
+  thread of an idle app stays parked for good once ART-24 is fixed.
 - `[?]` Fallback probe, only if the drop probes fail: two renamed libart dylib copies on the phone,
   a VM in each, drop one, boot it again.
 
 ## MA1: registry and install
 
+After MA0 and M6a, before MA2 (`notes/steps.md`).
+
 - `[ ]` Registry schema (SQLite, WAL) and APK store, written in one transaction per install; uid
   per package at install.
-- `[ ]` Signature spoofing through `FAKE_PACKAGE_SIGNATURE` for any app that asks, in place of the
-  GMS package-name list.
+- `[ ]` Signature spoofing through `FAKE_PACKAGE_SIGNATURE`, in place of the GMS package-name list:
+  the install confirmation shows the request and grants it only if the user accepts.
 - `[ ]` `PackageInstaller` sessions (`createSession`, `openWrite`, `fsync`, `commit` with a
   PendingIntent, `STATUS_PENDING_USER_ACTION`), `ACTION_INSTALL_PACKAGE` with
   `EXTRA_RETURN_RESULT`, `ACTION_UNINSTALL_PACKAGE`; the CLI's `--install` writes the same rows.
@@ -114,6 +129,13 @@ found are in `findings-native-faults.md`.
   `getPackageInfo`, intent resolution across packages, `getLaunchIntentForPackage`,
   `getPackagesForUid`, `getPackageUid`, `checkSignatures`. The microG-only visibility gate goes.
 - `[ ]` `PACKAGE_ADDED/REPLACED/REMOVED` with scheme `package` to running apps.
+- `[ ]` `ATLGStub` as preinstalled rows (`com.google.android.gms`, `gsf`, `vending`, with
+  `FLAG_SYSTEM` and Google's signatures, as today); an installed package of the same name
+  replaces its row.
+- `[ ]` PendingIntent records as registry rows (owner, intent, flags, a generation) on every
+  backend; MA7 sends them.
+- `[ ]` An APK replaced while its app runs: the app ends, the APK is written under a versioned name
+  and fsynced before the row points at it.
 - `[ ]` Data dirs keyed by package; the gtk app id from the package.
 - `[ ]` iOS: the registry in Application Support; Dine's launcher reads its rows (labels, icons)
   instead of `AppLibrary`'s `apps` table.
@@ -123,6 +145,9 @@ found are in `findings-native-faults.md`.
   without a launcher activity and a `reqFeatures` query.
 
 ## MA2: app records
+
+Before M6b of `notes/atl-port.md` (`notes/steps.md`), so M6b's breadth work adds its app state
+behind the record.
 
 - `[ ]` The app record and its thread tagging (`ThreadGroup` plus a field on ART's `Thread`;
   attached threads; UIKit upcalls).
@@ -147,7 +172,8 @@ found are in `findings-native-faults.md`.
 - `[ ]` App-reachable ART FATALs become app kills: JNI global table overflow, the suspension
   timeout (non-fatal return), `-Xcheck:jni` errors.
 - `[ ]` A finalizer thread and watchdog per app.
-- `[ ]` A main-thread watchdog per app (ANR).
+- `[ ]` A main-thread watchdog per app on one-VM backends, with Android's wait or close dialog;
+  its limits measured under `-Xint` on the phone.
 - `[ ]` libcore's VM-wide statics behind the app record (`findings-runtime.md` table); drop the
   `-Djava.io.tmpdir`.
 - Done when: in the headless test mode each failure kind in one app leaves the other app running
@@ -162,6 +188,10 @@ found are in `findings-native-faults.md`.
   [ART-24](../bug-tracker.md#art-24).
 - `[ ]` The memory ledger: heap per class loader, malloc zone per app with shared caches in a
   shared zone, stacks, descriptors, mappings.
+- `[ ]` Caps per app on the Java heap, JNI globals and descriptors; the heap cap is set at the
+  app's start from the memory available then; `maxMemory` and `getMemoryClass` report it; the app
+  over its cap fails. Shared limits raised:
+  `kGlobalsMax` and `kWeakGlobalsMax`, the soft `RLIMIT_NOFILE` (`design.md` "Memory control").
 - `[ ]` A leak report in dev builds: what still holds a dropped app's objects.
 - Done when: on the phone, dropping an app returns its footprint (measured) while another app keeps
   running.
@@ -172,11 +202,13 @@ found are in `findings-native-faults.md`.
   and `restoreHierarchyState`, `onRestoreInstanceState`, a Bundle to `onCreate`.
 - `[ ]` Bundles held outside the app and on disk (one-VM backends); restore after a drop and after
   iOS ends Dine.
-- `[?]` Linux: restore after a kill from outside the app (`design.md` "Open design points").
+- `[ ]` Linux: the same Bundle files; a clean end (window closed, crash, SIGTERM at logout)
+  deletes them, a start that finds them restores (`design.md` "Holes in the static model").
 - `[ ]` `onTrimMemory` (`TRIM_MEMORY_UI_HIDDEN`, `TRIM_MEMORY_BACKGROUND`), `onLowMemory`,
   `registerComponentCallbacks`.
 - `[ ]` Configuration changes: `onConfigurationChanged` or recreation with saved state.
-- Done when: a test APK's activity state survives a drop and a reload on headless.
+- Done when: a test APK's activity state survives a drop and a reload in the headless test mode,
+  and a `kill -9` of its headless process and a restart.
 
 ## MA6: tasks and windows
 
@@ -190,7 +222,7 @@ found are in `findings-native-faults.md`.
 
 - `[ ]` Binder within one app: `queryLocalInterface`, `onTransact`, `transact`, `linkToDeath`.
 - `[ ]` Parcels with binder handle tables; the `ipc` slot with `inproc` and `unix` backends.
-- `[ ]` `inproc`: the target app's binder thread, call timeouts, `DeadObjectException` and
+- `[ ]` `inproc`: the target app's binder thread, no call timeout, `DeadObjectException` and
   `binderDied` on drop.
 - `[ ]` `unix`: runtime dir, lock files, spawn lock, `SO_PEERCRED` identity, object exports with
   reference counts, loop-slot descriptor watches for poll and glib.
@@ -199,16 +231,28 @@ found are in `findings-native-faults.md`.
   `unbindService`, `onServiceDisconnected`; providers across apps (CursorWindow over shared
   memory); broadcasts across apps (implicit ones only to running apps; an explicit one starts its
   target).
-- `[?]` The gtk D-Bus intent API: kept as the desktop's entry point (proposed, `design.md`).
+- `[ ]` `ParcelFileDescriptor` in Parcels: descriptors passed with `SCM_RIGHTS` on `unix`.
+- `[ ]` A bound service app that dies is started again with a backoff for `BIND_AUTO_CREATE`
+  clients, which reconnect.
+- `[ ]` `unix`: a second launch of a running app forwards its intent to it and exits.
+- `[ ]` `PendingIntent.send` from the registry rows: starts the owner if needed and delivers.
+- `[ ]` The gtk D-Bus intent API kept as the desktop's entry point into the same delivery
+  (`design.md`).
 - Done when: a client APK binds a service APK and queries its provider in both the headless test
   mode and two headless processes, with the same results.
 
 ## MA8: Dine policy and UI
 
-- `[ ]` Memory pressure sources and the freeze and drop policy; `-Xmx` from
-  `os_proc_available_memory()`.
-- `[ ]` The running apps list with several entries and their states (running, frozen, dropped,
-  crashed), a close action (`notes/nav-gestures.md` Behaviour).
+- `[ ]` Background freeze about 10 s after an app leaves the screen, unless it asks to run (audio, a
+  started or foreground service, a partial `WakeLock`, a running job, a bound client); a thaw for
+  calls and delivered events (`design.md` "Freeze and drop").
+- `[ ]` Memory pressure sources and the drop order; `-Xmx` from `os_proc_available_memory()`.
+- `[ ]` The running apps list with one entry per task, each with its app's state (running, frozen,
+  dropped, crashed), and a close action (`notes/nav-gestures.md` Behaviour).
+- `[ ]` iOS background wake-ups (a finished background `URLSession`, a `BGProcessingTask`, a
+  notification tap after Dine was killed) load only the owning app's record, without UI; the
+  wake-ups themselves are M8d and the downloads, notifications and jobs items of
+  `notes/os-features.md`.
 - `[ ]` App lifecycle around iOS background and foreground for every app (M8b's calls per app).
 
 ## MA9: scenario apps

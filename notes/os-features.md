@@ -1,57 +1,65 @@
-# Services: one stage per service
+# OS features: one stage each
 
-M7 of `notes/atl-port.md`. ATL implements Android's system services with Linux desktop code
-(GTK, D-Bus portals, ALSA, libsecret, sysfs) that only the gtk build has; headless and iOS builds
-throw `UnsatisfiedLinkError` when an app reaches it. Each service moves behind the `services` slot
-in a stage of its own. Item 1 builds the services test APK and the slot; every later item adds its
-service's section to that APK and implements the service. Slot rules and the milestone rule are in
+M7 of `notes/atl-port.md`. An OS feature is an Android API whose implementation calls the host
+OS: hardware such as sensors, the vibrator and location; system integration such as the
+clipboard, share and notifications; and the OS's schedulers for background work (jobs, alarms).
+Android's `Service` components, the code an app runs in the background, are not OS features:
+item 21 maps foreground services to iOS, and starting apps as services is
+`notes/service-management/proposal.md`.
+
+ATL implements OS features with Linux desktop code (GTK, D-Bus portals, ALSA, libsecret, sysfs)
+that only the gtk build has; headless and iOS builds throw `UnsatisfiedLinkError` when an app
+reaches it. Each OS feature moves behind the `os` slot in a stage of its own. Item 1 builds the
+OS features test APK and the slot; every later item adds its feature's section to that APK and
+implements the feature. Slot rules and the milestone rule are in
 `notes/atl-port.md`; what iOS runs while Dine is in the background is in
-`notes/background-processes.md`.
+`notes/background-tasks.md`.
 
 ## Rules
 
-- An item moves its service's natives out of the gtk-only legacy list (`dine-atl/meson.build`)
+- An item moves its feature's natives out of the gtk-only legacy list (`dine-atl/meson.build`)
   into shared JNI glue plus a `desktop-linux` backend, with no behaviour change on gtk, and adds
   `none` and `ios` backends.
-- meson rejects `desktop-linux` without `ui=gtk` for a service whose code needs GTK or the gtk host
-  (GdkClipboard, GtkFileDialog, GtkMediaFile, the GApplication behind notifications); each item
-  finds out whether its service does. `util.h` pulls in no GTK.
-- `none` answers what Android answers when the hardware or service is absent, where Android has
-  such an answer. It logs `services: none <service> <call>` once per service and call, so a triage
+- meson rejects `desktop-linux` without `ui=gtk` for an OS feature whose code needs GTK or the gtk
+  host (GdkClipboard, GtkFileDialog, GtkMediaFile, the GApplication behind notifications); each
+  item finds out whether its feature does. `util.h` pulls in no GTK.
+- `none` answers what Android answers when the hardware or feature is absent, where Android has
+  such an answer. It logs `os: none <feature> <call>` once per feature and call, so a triage
   still sees what an app asked for.
 - `ios`: a call that must return at once (`hasVibrator`, `getActiveNetworkInfo`, `hasPrimaryClip`)
   reads a mirror the backend keeps current, or waits for UIKit's thread with `dispatch_sync`, as
   text measurement does. UIKit's thread never waits for the Android one;
   results reach the Android main thread through `loop_main_post`. Which thread each framework needs
   is checked in its item.
-- Target: the item's section of the services APK, graded on headless against `none`'s answers and
-  checked on the phone with `ios`: a `dbg smoke atl-services` step where the debug agent sees the
-  result, by hand otherwise. gtk is checked by hand, since its answers depend on the machine
-  (clipboard contents, `/dev/input`, portals). The gtk Gravity Defied smoke and the runtime suite
-  keep passing.
-- Order: reach-first. The services the triage APKs reach come first, then common app services,
-  media, the two stubs, and last the services that need parts of M8. M6c adds which APKs reach each
-  item. Other notes name an item by its service, not its number.
+- Target: the item's section of the OS features APK, graded on headless against `none`'s answers
+  and checked on the phone with `ios`: a `dbg smoke atl-os-features` step where the debug agent
+  sees the result, by hand otherwise. gtk is checked by hand, since its answers depend on the
+  machine (clipboard contents, `/dev/input`, portals). The gtk Gravity Defied smoke and the runtime
+  suite keep passing.
+- Order: reach-first. The OS features the triage APKs reach come first, then the ones common in
+  apps, media, the two stubs, and last the ones that need parts of M8. M6c adds which APKs reach
+  each item. Other notes name an item by its feature, not its number.
 - A finished item gets an "as built" status in its section, as the milestones in
   `notes/atl-port.md` do.
 
 Native paths below are under `dine-atl/src/api-impl-jni/`.
 
-## 1. Base: the services test APK and the slot
+## 1. Base: the OS features test APK and the slot
 
-- The APK: `dine-atl/tests/headless/services/`, built by `tests/harness/apk.py`. One activity runs
-  each service's section in order, logs `services: <service> <step> <result>` and ends with
-  `services done`.
-- Runners: `run-services.sh` (graded on headless, run by hand on gtk), `linux smoke services`, the
-  APK in `out/tests/apks` from `build-ios-atl.sh`, an AtlView tile, `dbg smoke atl-services`.
-- The slot: the meson option from the slot table (one backend per service: `desktop-linux`, `ios`
-  or `none`), `src/slots/services.h`, `src/backends/services/{desktop-linux,none,ios}/`, and the
+- The APK: `dine-atl/tests/headless/os-features/`, built by `tests/harness/apk.py`. One activity
+  runs each feature's section in order, logs `os-features: <feature> <step> <result>` and ends with
+  `os-features done`.
+- Runners: `run-os-features.sh` (graded on headless, run by hand on gtk), `linux smoke
+  os-features`, the APK in `out/tests/apks` from `build-ios-atl.sh`, an AtlView tile,
+  `dbg smoke atl-os-features`.
+- The slot: the meson option from the slot table (one backend per feature: `desktop-linux`, `ios`
+  or `none`), `src/slots/os.h`, `src/backends/os/{desktop-linux,none,ios}/`, and the
   `none` log line.
 - Info.plist keys: `apps/Dine/xtool.yml`'s `infoPath` is accord's partial plist (icons, accent
   color), with no place for other keys. Usage strings (location, microphone), background modes
   and task identifiers (jobs, M8d) and document types (M8a) need keys merged into it.
-- Done when: the APK logs `services done` on headless, gtk and the phone, with no service sections
-  yet.
+- Done when: the APK logs `os-features done` on headless, gtk and the phone, with no feature
+  sections yet.
 
 ## 2. Sensors
 
@@ -166,8 +174,8 @@ Native paths below are under `dine-atl/src/api-impl-jni/`.
 
 - Today: `location/android_location_LocationManager.c` uses libportal's location portal, off
   unless `ATL_UGLY_ENABLE_LOCATION` is set. `LocationManager` names its provider `"xdgportal"`;
-  the name comes from the service instead (the Java table's row in `notes/atl-port.md`). Sensors'
-  TYPE_ORIENTATION uses this service today.
+  the name comes from the `os` slot instead (the Java table's row in `notes/atl-port.md`).
+  Sensors' TYPE_ORIENTATION uses location today.
 - `none`: no providers, `getLastKnownLocation` null, every provider disabled.
 - `ios`: CoreLocation, with the iOS permission prompt and a usage string in Info.plist (base item).
 - Done when: headless logs no providers; on the phone the prompt is accepted by hand and a fix
@@ -228,7 +236,7 @@ Native paths below are under `dine-atl/src/api-impl-jni/`.
   calls it too.
 - `none`: registration never completes, as on Android without a distributor app.
 - `ios`: as `none`. iOS has no UnifiedPush distributor, and APNs needs a paid developer account
-  (iOS knowledge, `notes/background-processes.md`).
+  (iOS knowledge, `notes/background-tasks.md`).
 - Done when: headless and the phone register and get no message.
 
 ## 18. Notifications
@@ -238,7 +246,7 @@ Native paths below are under `dine-atl/src/api-impl-jni/`.
   the ui slot (M6b).
 - `none`: `notify` does nothing; `areNotificationsEnabled` false.
 - `ios`: UNUserNotificationCenter local notifications, after the iOS permission prompt. Whether a
-  free account gets the permission is open (`notes/background-processes.md`, question 5); M8d's
+  free account gets the permission is open (`notes/background-tasks.md`, question 5); M8d's
   answer may change this design.
 - A tap delivers the notification's PendingIntent to the running app. A tap after Dine was killed
   has to start the app, which needs M8a.
@@ -260,7 +268,7 @@ Native paths below are under `dine-atl/src/api-impl-jni/`.
 - `desktop-linux` and `none`: DownloadManager in shared Java on a worker thread: enqueue, query,
   the files, `ACTION_DOWNLOAD_COMPLETE`.
 - `ios`: a background URLSession takes the transfer, so it continues while Dine is suspended
-  (iOS knowledge, `notes/background-processes.md`).
+  (iOS knowledge, `notes/background-tasks.md`).
   Delivering the completion after iOS relaunches Dine in the background needs a start path without
   UI, after M8a and M8d; M8d's answers may change this design.
 - Done when: headless downloads a small file with `--network` and gets the completion broadcast;
@@ -273,7 +281,7 @@ Native paths below are under `dine-atl/src/api-impl-jni/`.
   so alarms and jobs run only while Dine runs; `JobScheduler.enqueue` is a stub.
 - `desktop-linux` and `none`: in-process, as today.
 - `ios`: BGProcessingTask for jobs, BGContinuedProcessingTask for foreground services, and the
-  opt-in keep-alive (`notes/background-processes.md`, Options), chosen from M8d's answers; their
+  opt-in keep-alive (`notes/background-tasks.md`, Options), chosen from M8d's answers; their
   Info.plist keys come through the base item.
 - Needs: M8b (the iOS lifecycle) and M8d (the background probes).
 - Reach: Gravity Defied sets an AlarmManager alarm in `GDActivity.doRestartApp` (static read).

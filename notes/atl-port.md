@@ -29,7 +29,7 @@ its row here changes when that block does.
 | [M6a](#m6a-triage-and-fixes) | triage and fixes | next |
 | [M6b](#m6b-breadth) | breadth | planned |
 | [M6c](#m6c-search-ahead-of-m7) | search ahead of M7 | planned |
-| [M7](#m7-services) | services, items in `notes/service-impl.md` | planned |
+| [M7](#m7-os-features) | OS features, items in `notes/os-features.md` | planned |
 | [M8a](#m8a-apk-import-and-launch) | APK import and launch | planned |
 | [M8b](#m8b-ios-lifecycle) | iOS lifecycle | planned |
 | [M8c](#m8c-navigation-settings-store) | navigation settings store | planned |
@@ -40,7 +40,7 @@ its row here changes when that block does.
 ## Decisions
 
 - api-impl stays the one Java implementation of `android.*`, shared by every build.
-- Everything that touches a UI toolkit, an OS service or a native-code loader sits behind a
+- Everything that touches a UI toolkit, an OS feature or a native-code loader sits behind a
   backend slot. Code outside the backends, Java and C alike, depends only on JNI, ART/libcore,
   androidfw, sqlite, graphene and libc: no GTK, no glib. graphene is built without GObject (a
   meson wrap) everywhere but the desktop build, which links the system one gtk4 uses.
@@ -111,10 +111,10 @@ A build selects one backend per slot with a meson option.
 | `loop` | the Android main thread's integration with the platform loop, worker-thread loops, delayed and cross-thread posts to the main thread | `glib`, `cfrunloop`, `poll` |
 | `ui` | windows (Activity, Dialog, PopupWindow, WindowManager views), view nodes (children, frame, visibility, background, padding), toolkit widgets, focus, IME, touch and key input | `gtk`, `uikit`, `headless` |
 | `gfx` | Canvas, Paint, Path, Bitmap, image decoding, text measurement and layout, fonts, NinePatch, RenderNode | `gsk` (GSK, Pango, GdkPixbuf), `coregraphics` (CoreGraphics, CoreText, ImageIO), `record` (a display list), later possibly `skia` |
-| `services` | one sub-slot per service, listed in `notes/service-impl.md` | `desktop-linux`, `ios`, `none`, selectable per service |
+| `os` | one sub-slot per OS feature, listed in `notes/os-features.md` | `desktop-linux`, `ios`, `none`, selectable per feature |
 | `native` | loading the app's own `.so` files: bionic linker, libandroid (NDK), EGL and Vulkan surface shims | `bionic`, `none` |
 
-| Build | host | loop | ui | gfx | services | native |
+| Build | host | loop | ui | gfx | os | native |
 |---|---|---|---|---|---|---|
 | Linux desktop | `gtk` | `glib` | `gtk` | `gsk` | `desktop-linux` | `bionic` |
 | Linux headless (tests) | `cli` | `poll` | `headless` | `record` | `none` | `none` |
@@ -185,14 +185,14 @@ thread.
 
 - `util.h` and `util.c` split: JNI helpers, logging and NIO buffer helpers stay shared; the
   `atl_safe_gtk_*` helpers go to the gtk backend; intent serialization to GVariant goes to the
-  `desktop-linux` services (it exists for D-Bus and desktop notifications).
+  `os` slot's `desktop-linux` backend (it exists for D-Bus and desktop notifications).
 - `native_window.h` moves to the `native` slot.
 - AssetManager: its few glib string helpers become libc.
 - MemoryFile: GHashTable becomes a small map; `memfd_create` becomes a platform helper.
 - SystemClock: `CLOCK_BOOTTIME` has no Darwin equivalent under that name; a platform helper picks
   the clock.
-- ContentResolver's content-type lookup goes to the MIME service; ConnectivityManager's network
-  monitor to the connectivity service.
+- ContentResolver's content-type lookup and ConnectivityManager's network monitor go to the `os`
+  slot (MIME lookup, connectivity).
 - The GInputStream wrapper exists for GdkPixbuf decoding and goes to `gsk`.
 - Matrix uses graphene (`src/shared/android_graphics_Matrix.c`; decided 2026-10-21); it
   cross-builds for iOS with NEON and no glib.
@@ -212,10 +212,10 @@ is extracted:
 | CSS classes for `setAllCaps`, `setTextAlignment`, Button's `ATL-no-border` | all caps in Java (AOSP's transformation), `ui_text_set_alignment`, the border from the view's background (done) | M4b |
 | `Paint.measureText` width estimate | text measurement from the gfx slot (done) | M5c |
 | AlertDialog's three toolkit-bound Buttons | dialog content as data (see M2) | M2 |
-| `GTK_FILE_CHOOSER_ACTION_*` ints in Activity | file-picker service request kinds | M7 (file picker) |
+| `GTK_FILE_CHOOSER_ACTION_*` ints in Activity | file-picker request kinds of the `os` slot | M7 (file picker) |
 | Toast sent as a desktop notification | a ui-slot toast | M6b |
-| `"xdgportal"` location provider name | provider name from the location service | M7 (location) |
-| external intents sent over D-Bus from ContextImpl | the open-links-and-files service | M7 (open links and files) |
+| `"xdgportal"` location provider name | provider name from the `os` slot's location | M7 (location) |
+| external intents sent over D-Bus from ContextImpl | the `os` slot's open links and files | M7 (open links and files) |
 
 ## Build
 
@@ -243,7 +243,7 @@ runtime suite shows no regressions.
 From M5 on, a stage has one target graded on headless, plus a check on the phone where the target
 shows there. A milestone too big for that splits into lettered stages (M4a, M5a) before its work
 starts; a bare number means the whole milestone. M7's stages are the numbered items of
-`notes/service-impl.md`.
+`notes/os-features.md`.
 
 A triage stage (M6a, M6c) is graded by its table, a design choice (M5a's renderer, M8e's design)
 by the decision and its reason written into its section. The Dine-only stages M8b to M8d have no
@@ -1087,6 +1087,8 @@ the stage that owns it (M6b, M7, M9) or, owned by none, to a code in `notes/bug-
 defect) or `notes/general-todo.md`; a stop an M6b item names stays there. The
 triage then runs again; the cycle ends when a triage finds only stops owned elsewhere.
 
+Runs beside multi-app MA0 (`notes/steps.md`), which adds probes only, no product code.
+
 Findings from M4b and M5 (M5's stages add and update them):
 - gtk `ui_view_set_background_drawable` makes a CSS provider per call and never unrefs it.
 - A triage run shows one stop only: `activity_start` (`src/shared/activity.c`) calls
@@ -1127,6 +1129,9 @@ stop and finding is fixed, named in a later stage or coded in `notes/bug-tracker
 
 ### M6b: breadth
 
+Comes after multi-app MA1 and MA2 (`notes/steps.md`): app state that M6b adds goes behind MA2's
+app record (`notes/multi-app-support/design.md` "App record"), not into process-wide statics.
+
 - ListView and RecyclerView (`views_widgets_samples_flower_finder.apk`). On uikit, lists need a
   measure cache: each measured text is one hop to UIKit's thread.
 - Drawables, themes and styles, AdaptiveIconDemo; BitmapShader and ComposeShader
@@ -1164,11 +1169,11 @@ stop and finding is fixed, named in a later stage or coded in `notes/bug-tracker
 
 A search that fixes nothing: it finds what M7 and later stages will hit. The triage APKs outside
 M9 run past their M6 stops on headless, with `-c` input where a stop needs it, and a dexdump read
-of each APK lists the services it calls and the methods that call them. Each finding goes, with
-how to reproduce it, to the stage that needs it fixed (an item of `notes/service-impl.md`, an M8
+of each APK lists the OS features it calls and the methods that call them. Each finding goes, with
+how to reproduce it, to the stage that needs it fixed (an item of `notes/os-features.md`, an M8
 stage, M9); one that blocks nothing gets a code in `notes/bug-tracker.md` (a defect) or
-`notes/general-todo.md`. A service's findings also go into its
-item in `notes/service-impl.md`.
+`notes/general-todo.md`. An OS feature's findings also go into its item in
+`notes/os-features.md`.
 
 Known from static reads, not run:
 - accelerometerdemo registers an accelerometer listener in `onCreate` (sensors).
@@ -1179,24 +1184,24 @@ Known from static reads, not run:
 **Done when:** the table (APK, what it hits, owner) is in this section, and each entry is named in
 a later stage or coded in `notes/bug-tracker.md` or `notes/general-todo.md`.
 
-### M7: services
+### M7: OS features
 
-The `services` slot, one stage per service, each with `desktop-linux`, `none` and `ios` backends
-and a section in a services test APK: `notes/service-impl.md`. Its notifications, media session,
+The `os` slot, one stage per OS feature, each with `desktop-linux`, `none` and `ios` backends
+and a section in the OS features test APK: `notes/os-features.md`. Its notifications, media session,
 downloads and jobs items wait for parts of [M8a](#m8a-apk-import-and-launch),
 [M8b](#m8b-ios-lifecycle) and [M8d](#m8d-background-probes); each item says which.
 
 ### M8: inside Dine
 
 The launcher installs and starts APKs; iOS foreground and background drive the Activity
-lifecycle (what runs once Dine is backgrounded: `notes/background-processes.md`); Back, Home and
+lifecycle (what runs once Dine is backgrounded: `notes/background-tasks.md`); Back, Home and
 the running apps list are in `notes/nav-gestures.md`; what is left of them is in the stages
 below. The Dine-only stages M8b to M8d are left for later ([Milestones](#milestones)).
 
 #### M8a: APK import and launch
 
 - Import from Files, with document types through the Info.plist merge (the base item of
-  `notes/service-impl.md`, if it isn't built yet). From the PC an APK reaches Files by a Safari
+  `notes/os-features.md`, if it isn't built yet). From the PC an APK reaches Files by a Safari
   download over the LAN (untried), or `pymobiledevice3 apps push --documents` puts it in Dine's
   Documents (needs `UIFileSharingEnabled`; unverified for a development-signed app on iOS 27).
 - Each app gets a directory in Application Support for its APK and data. Every AtlView run shares
@@ -1253,12 +1258,12 @@ imports `demo_app.apk` and shows both strings (by hand).
 
 #### M8d: background probes
 
-A dev screen answers the open questions in `notes/background-processes.md` on the phone. Question
+A dev screen answers the open questions in `notes/background-tasks.md` on the phone. Question
 3 and question 2's "exists and submits" take one log line each, question 5 one tap on the prompt;
 question 1 needs days of runs, question 4 the user's hands (another app playing audio); questions
 6 to 8 are code reads or the user's decisions. The task identifiers and background modes come
-through the Info.plist merge. The answers go into `notes/background-processes.md` and set the
-notifications, media session, downloads and jobs items of `notes/service-impl.md`.
+through the Info.plist merge. The answers go into `notes/background-tasks.md` and set the
+notifications, media session, downloads and jobs items of `notes/os-features.md`.
 
 #### M8e: several apps
 

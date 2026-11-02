@@ -41,10 +41,10 @@ Facts come from the findings files (`findings-runtime.md`, `findings-framework.m
 
 Each backend uses the real mechanism its OS has for a system feature (alarms, background work,
 start at boot, notifications, on-demand start): an iOS alarm where iOS has one, systemd or D-Bus
-where Linux has a standard service. Where the OS has none, the feature is off and nothing breaks.
+where Linux has a standard one. Where the OS has none, the feature is off and nothing breaks.
 A separate Linux service for what systemd and D-Bus lack is optional, planned on its own at the
-lowest priority ([ATL-29](../general-todo.md#atl-29)). The per-service mappings are
-`notes/service-impl.md` and `notes/background-processes.md`.
+lowest priority ([ATL-29](../general-todo.md#atl-29)). The per-feature mappings are
+`notes/os-features.md` and `notes/background-tasks.md`.
 
 Starting apps at login or when Dine starts, and enabling or stopping them as services, is service
 management: a separate proposal, `notes/service-management/proposal.md`
@@ -99,7 +99,7 @@ One-VM backends (**proposed**); on process-per-app backends each row ends the pr
 | `System.exit`, `Runtime.halt`, `Process.killProcess` | caught in Java before `Runtime`'s `shuttingDown` latch; ends the calling app |
 | ART FATAL an app reaches through Java: JNI global table full, suspension timeout, `-Xcheck:jni` | turned into an app kill; the suspension timeout becomes a non-fatal return |
 | finalizer running over 10 s | a finalizer thread and watchdog per app; the timeout ends that app |
-| hung main thread | a watchdog per app (Android's ANR) ends or freezes it |
+| hung main thread | a watchdog per app shows Android's wait or close dialog (my call); its limits are measured under `-Xint` in MA3, not Android's fixed ones |
 | SIGSEGV or SIGBUS in native code | ends the app when it is containable, else Dine ([Native faults](#native-faults-one-vm-decided)) |
 | ART invariant FATAL that app code can't reach (an ART bug) | ends Dine |
 
@@ -122,8 +122,25 @@ in `findings-native-faults.md`.
   - checks on `Unsafe`'s object-plus-offset calls: the offset stays inside the object, and no
     primitive write lands on a reference field;
   - a malloc zone per app;
-  - a separate instance per app of each native library with global state;
+  - per-app state for the native libraries whose global state B1's listing shows to differ per
+    app, kept per app in their source, not by library copies (my call); ICU and the font caches
+    stay one shared instance;
   - shared locks taken through a wrapper that counts the ones each thread holds.
+- A failed check ends the app (decided). The build flag `enable-oob-unsafe-recovery`, separate
+  from dev and release builds (the user: "a separate flag, not dev vs release"), makes it throw into
+  the app instead, to test apps. Proposed: `java.lang.InternalError` naming the address, as HotSpot
+  throws for a faulting `Unsafe` access (from memory).
+- Faults in code whose locks Dine can't see (decided): on libmalloc's shared zone they end Dine,
+  since the shared heap may be corrupt. In Apple's frameworks or ICU on an app's thread they are
+  contained; if UIKit's thread or another app's main thread then hangs, Dine ends.
+- `abort()` (decided): libmalloc's abort on the app's own zone is contained (the app and its zone
+  go); on the shared zone it ends Dine. `std::terminate` and assertions in sqlite or ICU follow
+  the rule above. ART's `LOG(FATAL)` follows [Containment](#containment).
+- A Java monitor the parked thread holds (decided; the user: "yes, for now"): it stays held; when
+  a thread of another app, or of no app, blocks on it, Dine ends. The check sits in ART's contended
+  lock paths, which know the owner (`Monitor::Lock`'s `owner_`, the thin-lock owner in
+  `Monitor::MonitorEnter`, `monitor.cc:417-470,1100-1135`). Later: an unwind method an object can
+  define, so ART releases the lock and undoes the change ([ART-25](../general-todo.md#art-25)).
 - What stays Dine-ending: bugs in Dine's own native code or in ART that fault in `kRunnable` or
   corrupt shared memory. The user accepted this as the bar for lifting B1.
 - Measured on Linux, the checks add under 0.1% to an interpreted `Unsafe` call when the address
@@ -145,25 +162,61 @@ in `findings-native-faults.md`.
   again and its activities recreated from their saved Bundles.
 - Saved state: `onSaveInstanceState` at `onStop`; the Bundle is held outside the app (as
   system_server holds it) and written to disk, so it also survives iOS ending Dine.
-- Policy: freeze only under memory pressure, least recently used first; drop when freezing is not
-  enough. No per-app heap measuring decides the order (Android doesn't either).
+- Background freeze (decided): an app freezes about 10 s after it leaves the screen, as Android 14
+  freezes cached apps, unless it asks to run in the background. The user: "if an app explicitly
+  asks for background - allow it". What counts as asking (proposed): audio playing, a started or
+  foreground service, a held partial `WakeLock`, a running job, a client bound from a running app.
+  A call or a delivered event (alarm, broadcast, notification action) thaws the app while it is
+  handled.
+- Memory pressure (decided): frozen apps drop first, least recently used first, then apps that
+  asked to run; the app on screen last. No per-app heap measuring decides the order (Android
+  doesn't either).
 
 ## Memory control (one-VM, proposed)
 
 Every resource an app holds is owned by its record and counted, so Dine sees each app's footprint,
 picks what to drop, and checks that a drop freed it:
-- Java heap: attributed by class loader (a heap walk under memory pressure; per-app allocation
-  spaces are a later option);
+- Java heap: live bytes counted per app in ART's allocation and sweep paths, so an app over its
+  cap gets an `OutOfMemoryError` on its own allocation, as on Android (my call). A heap walk by
+  class loader is the fallback if MA0's probe finds the counting too costly, and serves the leak
+  report; per-app allocation spaces are a later option;
 - native allocations on the app's threads: a malloc zone per app. Shared native caches (ICU, fonts)
   must allocate from a shared zone, or destroying the app's zone frees memory other apps use;
 - threads and stacks, file descriptors, memory mappings, windows and surfaces.
-- `-Xmx` sized from `os_proc_available_memory()` instead of ART's 256 MB default.
+
+Caps per app (decided; the user: "your proposal is good"): the Java heap, the JNI global table
+and the descriptor table are shared, so each gets a cap per app, and the app over its cap is the
+one that fails. `Runtime.maxMemory` and `getMemoryClass` report the app's heap cap, since apps size
+their caches from them. When a shared total runs out with no app over its cap, Dine drops apps in
+the order of [Freeze and drop](#freeze-and-drop-one-vm-proposed) before anyone fails. Needs the live
+heap per app (a probe).
+
+No fixed number of live apps (decided; the user: "I think it should be dynamic... Like allocation
+dependant?"): apps stay loaded while memory allows, and the drop order frees memory when it runs
+short. An app's heap cap is set when the app starts, from the memory available then, and stays
+fixed for its life, since apps read `maxMemory` and `getMemoryClass` once to size their caches (my
+call). The caps may add up to more than `-Xmx`, since the drop order handles a full shared heap.
+
+Shared limits raised (proposed; the user: "can't we also increase global cap?"):
+- JNI globals: `kGlobalsMax` and `kWeakGlobalsMax` (51,200, `java_vm_ext.cc:60-62`) are constants
+  in our fork. The index encoding has room for more than 16 bits (`indirect_reference_table.h:
+  342-348`); the ceiling is `kMaxTableSizeInBytes`, 128 MB (`indirect_reference_table.cc:39`). The
+  table is mapped whole at start (`indirect_reference_table.cc:81-86`), so a larger one costs only
+  the pages it touches.
+- Descriptors: Dine raises the soft `RLIMIT_NOFILE` to the hard limit at start; nothing raises it
+  today. The iOS values are a probe.
+- Java heap: `-Xmx` sized from `os_proc_available_memory()` instead of ART's 256 MB default. The
+  real ceiling is Dine's iOS memory limit: past it iOS kills all of Dine, with no
+  `OutOfMemoryError`. The `com.apple.developer.kernel.increased-memory-limit` entitlement raises
+  that limit (iOS knowledge); whether a free account gets it is a probe. A larger footprint also
+  gets Dine killed sooner while it is in the background.
 
 ## Calls between apps (all backends, proposed)
 
 - No Java object crosses from one app to another. A call into another app is a Parcel run on the
-  target app's own binder thread, with a timeout that ends in `DeadObjectException`. A hung or
-  dropped target can't take the caller with it, and nothing outside an app keeps it alive.
+  target app's own binder thread, with no timeout (see "No timeout on sync calls" below); a
+  dropped or dead target fails it with `DeadObjectException`. A hung or dropped target can't take
+  the caller with it, and nothing outside an app keeps it alive.
 - Within one app, a Binder stays a local object (`queryLocalInterface`, `onTransact`), as on
   Android.
 - Binder objects inside a Parcel travel as handles; each side keeps a handle table.
@@ -171,10 +224,16 @@ picks what to drop, and checks that a drop freed it:
   `getCallingPid` return them. A package's uid is assigned at install and kept in the registry.
 - No package gets special treatment; the user: "no special treatment for microG (system flags or
   whatever)". microG's clients accept a target with a Google or microG signature
-  (`findings-apps.md`), so no system flag is needed. Proposed: signature spoofing becomes the
-  generic Android mechanism (an app that asks for `android.permission.FAKE_PACKAGE_SIGNATURE` gets
-  the signature it declares; how it declares it is unchecked here) in place of ATL's list of GMS
-  package names (`ATLLoadedApp.play_services`). Caller checks get real per-call identity.
+  (`findings-apps.md`), so no system flag is needed. Signature spoofing (decided; the user chose
+  "B"): an app that requests `android.permission.FAKE_PACKAGE_SIGNATURE` is reported with the
+  signature it declares (how it declares it is unchecked here), in place of ATL's list of GMS
+  package names (`ATLLoadedApp.play_services`). The install confirmation shows the request, and the
+  permission is granted only if the user accepts it there.
+- `ATLGStub` (decided, the user took the lean): ATL's fake `com.google.android.gms`, `gsf` and
+  `vending` (`FLAG_SYSTEM`, Google's signatures, a `ProviderInstaller` and a Maps creator) become
+  preinstalled packages in the registry, as a phone ships Play Services; installing microG
+  replaces them. Apps that start without microG today keep starting. Caller checks get real per-call
+  identity.
 
 ## Registry (all backends, proposed)
 
@@ -236,13 +295,17 @@ No Dine service runs. The fixed places are the registry above and the prefix's r
 
 ### Holes in the static model (2026-11-01)
 
-The user answered "ok" to lifetime, start race, activities across apps and binders, which are
-**decided**; the rest stay proposed.
+The user answered "ok" to lifetime, start race, activities across apps and binders, and "Yes" to
+saved state, which are **decided**; the rest stay proposed.
 - Lifetime (decided): closing the window ends the process today (`atl_exit`), the cli build ends
   with its last activity, and an app without a launcher activity exits (`findings-hosting.md`). A
   process started for `bindService` (microG) has no activity. A process lives while it has an
   activity, a started or foreground service, or a bound client, and exits after a short idle grace
   period.
+- Saved state across process death (decided): the one-VM code that writes each activity's Bundle
+  to a file runs on Linux too. A clean end (the window closed, a crash, SIGTERM at logout) deletes
+  the file; a start that finds it restores from it, so an app killed from outside (the OOM killer,
+  systemd-oomd) reopens where it was. The gtk build runs the restore path iOS depends on.
 - Start race (decided): two clients, or a client and a desktop launch, can both find X's lock free
   and exec X. X takes `X.lock` before it listens; a second X that finds the lock held forwards its
   intent to the first and exits. The spawn lock only saves the double exec. A client that finds the
@@ -292,7 +355,7 @@ Isolation on iOS:
 | Option | Outcome |
 |---|---|
 | One VM, app records, async-exception drop | **proposed** |
-| One VM per app from K bundled copies of ART as dylibs (own statics, heap, malloc zone; drop resets the copy) | fallback if the drop probes fail: a hard cap of about 3-4 live apps, a full VM boot and boot classes per app (no boot image), the uikit backend's Objective-C classes can't be duplicated, one address space still |
+| One VM per app from K bundled copies of ART as dylibs (own statics, heap, malloc zone; drop resets the copy) | fallback if the drop probes fail: a hard cap of about 3-4 live apps, a full VM boot and boot classes per app (no boot image), the uikit backend's Objective-C classes can't be duplicated, one address space still; the fixed count goes against the decided dynamic one |
 | Framework jars loaded per app class loader | rejected: ATL's cached class and method ids become per app, its C globals still need keying, libcore's statics stay shared |
 | Discard threads without unwinding (siglongjmp) | kept as the later escalation of drop |
 | File-backed per-app arenas, frozen apps hibernated to clean pages | rejected for now: a large ART heap change; the frozen-footprint question stays a probe |
@@ -319,45 +382,30 @@ Reaching other apps on Linux:
 
 ## Open design points
 
-- Where saved Bundles live on one-VM backends: a system record in the VM plus a file per app in its
-  data dir (my lean).
-- Whether Linux keeps saved state across process death, asked, not answered. The ends of a Linux
-  app process: the user closes the window (activities finish; Android drops their state), a crash
-  or a logout (Android starts fresh after a crash and after a reboot), or a kill from outside (the
-  kernel's OOM killer, systemd-oomd), after which Android reopens an app where it was (Android
-  knowledge, unsourced here). Lean, changed from no to yes: the one-VM code that writes each
-  activity's Bundle to a file runs on Linux too; a clean end (close, crash, SIGTERM at logout)
-  deletes the file, and a start that finds it restores from it. The cost is that deletion, and the
-  gtk build then runs the restore path iOS depends on.
-- Who writes the registry on iOS when no app runs: the VM can start just to install, so M8a's
-  VM-free APK reader may only be needed for labels and icons, or not at all if the rows hold them.
-- Cost of an Android main thread per app (8 MiB virtual stack each today).
-- The gtk D-Bus intent API, proposed: keep it. Under
-  [Platform mechanisms](#platform-mechanisms-decided) D-Bus activation is how the Linux desktop
-  starts an app from its notification or launcher entry, so it becomes the gtk build's entry into
-  the same delivery the sockets use. Not answered yet.
-- A per-app okhttp pool, and which other shared caches must be split.
+My calls, stated to the user on 2026-11-02 without objection:
+- Saved Bundles on one-VM backends: a system record in the VM plus a file per app in its data dir.
+- The registry on iOS when no app runs: the VM starts just to install, so M8a's VM-free APK reader
+  may only be needed for labels and icons, or not at all if the rows hold them.
+- The cost of an Android main thread per app (8 MiB virtual stack each today): measured in MA2.
+- The gtk D-Bus intent API stays. Under [Platform mechanisms](#platform-mechanisms-decided) D-Bus
+  activation is how the Linux desktop starts an app from its notification or launcher entry, so it
+  becomes the gtk build's entry into the same delivery the sockets use.
+- A per-app okhttp pool, and which other shared caches must be split: settled in MA2.
+- The running apps list on iOS: one entry per task, as Android's recents; each entry shows its
+  app's state (running, frozen, dropped, crashed). An app with two tasks has two entries.
+- Hangs on Linux, one process per app: no watchdog; a hung app hangs like any desktop program.
 - JIT with an APK's own `.so`: native code of one app can write anywhere, and the
   [Native faults](#native-faults-one-vm-decided) bar no longer holds (`findings-native-faults.md`
-  problem 16).
+  problem 16). Left to the JIT work.
 
 Found on 2026-11-01, proposed leans:
-- Shared finite resources (one-VM): the Java heap, the JNI global table (51,200 entries) and the
-  descriptor table are shared, and the next caller fails when one is full, which may be another
-  app (`findings-runtime.md` Memory). Lean: a budget per app for each; the app over its budget is
-  the one that fails or is dropped. `Runtime.maxMemory` and `getMemoryClass` report the app's heap
-  budget, since apps size their caches from them. Needs the live heap per app (a probe).
-- Background CPU (one-VM): interpreted on the phone, background apps that keep running take CPU
-  from the one on screen. Android 14 freezes cached apps 10 s after they become cached
-  (`findings-apps.md`). Open: freeze only under memory pressure (the current call), or freeze
-  background apps after a delay unless they play audio, run a foreground service or serve a running
-  app.
 - No timeout on sync calls between apps (decided; the user: "ok, no limit"). Calls that
   legitimately take long: some microG calls do network work before they return (a sign-in token,
   from memory), and opening a file from a cloud documents provider may block for the download
   (from memory). Tachiyomi's extensions make no calls between apps: their code runs inside
   Tachiyomi. When an app's main thread waits on another app past the hang limit, the waited-on app
-  is the one marked as not responding; ending it fails the call and the waiting app goes on. A
+  is the one marked as not responding, in the wait or close dialog; closing it fails the call and
+  the waiting app goes on. A
   background thread waits as long as the target lives. Android's limits on a service's start, a
   broadcast receiver and a provider's publish stay, as hangs of the target. A call to a frozen app
   thaws it; a call to a dropped or dead app fails with `DeadObjectException`.
@@ -367,7 +415,16 @@ Found on 2026-11-01, proposed leans:
   on Android; UIKit upcalls take the record of the activity's app, not the window's.
 - `android:process` is ignored: every component of a package runs in its one app record or
   process, as ATL does today.
-- Trust, to confirm with the user: apps are trusted. Containment protects apps from each other's
-  bugs, not from a malicious app (reflection reaches shared statics; one sandbox on iOS).
+- Trust (decided): apps are trusted. Containment protects apps from each other's bugs, not from a
+  malicious app (reflection reaches shared statics; one sandbox on iOS; one OS user and one prefix
+  on Linux). File isolation between apps is a later item ([ATL-32](../general-todo.md#atl-32)).
 - After iOS ends Dine: the apps that were running show as dropped and are restored from their
   Bundles when opened, not all at start.
+
+Found on 2026-11-02 in `notes/background-tasks.md`, proposed leans:
+- iOS background wake-ups: iOS starts Dine without UI when a background `URLSession` finishes (a
+  few seconds), for a `BGProcessingTask` run (minutes) and for a notification tap after Dine was
+  killed. Dine loads only the app that owns the event, without UI; the other apps stay dropped.
+- PendingIntent records on every backend: the registry rows of the Linux holes (owner, intent,
+  flags, a generation) hold them on iOS too, so a notification tap or an alarm still reaches its
+  app after iOS ended Dine.
