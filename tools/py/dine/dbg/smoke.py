@@ -180,6 +180,13 @@ SCENARIOS = {
             Step("run lists", tap="lists", ok=(r"lists first [1-9]\d* of \d+ shown",), fail=ATL_FAIL, timeout=120),
             Step("Home", action="Home", ok=("nav: launcher root",)),
         ], uses_vm=True, needs_clean=True, alive=True),
+        Scenario("atl-windows", [
+            Step("atl", tap="atl"),
+            # Dine gets the window's brightness and its reset, and ignores both (DINE-11)
+            Step("run windows", tap="windows", ok=("nav: brightness 0.50 ignored", "nav: brightness -1.00 ignored"),
+                 fail=ATL_FAIL, timeout=120),
+            Step("Home", action="Home", ok=("nav: launcher root",)),
+        ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-gd", [
             Step("atl", tap="atl"),
             Step("run gravity", tap="gravity", ok=("- onResume - yay!", "nav: container shown gravity"),

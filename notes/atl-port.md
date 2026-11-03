@@ -28,7 +28,8 @@ its row here changes when that block does.
 | [M5d](#m5d-paths-nine-patch-layers-gravity-defied) | paths, nine-patch, layers; Gravity Defied | done |
 | [M6a](#m6a-triage-and-fixes) | triage and fixes | done |
 | [M6b1](#m6b1-content) | breadth: content | done |
-| [M6b2](#m6b2-windows) | breadth: windows | planned |
+| [M6b2](#m6b2-windows) | breadth: windows | done |
+| [M6b3](#m6b3-windows-continued) | breadth: windows, continued | planned |
 | [M6c](#m6c-search-ahead-of-m7) | search ahead of M7 | planned |
 | [M7](#m7-os-features) | OS features, items in `notes/os-features.md` | planned |
 | [M8a](#m8a-apk-import-and-launch) | APK import and launch | planned |
@@ -215,7 +216,7 @@ is extracted:
 | `Paint.measureText` width estimate | text measurement from the gfx slot (done) | M5c |
 | AlertDialog's three toolkit-bound Buttons | dialog content as data (see M2) | M2 |
 | `GTK_FILE_CHOOSER_ACTION_*` ints in Activity | file-picker request kinds of the `os` slot | M7 (file picker) |
-| Toast sent as a desktop notification | a ui-slot toast | M6b2 |
+| Toast sent as a desktop notification | a ui-slot toast | M6b3 |
 | `"xdgportal"` location provider name | provider name from the `os` slot's location | M7 (location) |
 | external intents sent over D-Bus from ContextImpl | the `os` slot's open links and files | M7 (open links and files) |
 
@@ -713,13 +714,13 @@ keyboard, the keyboard after Home and front. As built:
 - Debug agent: `ui type <label> <text>` (`insertText:`; no marked text).
 - Tests: `run-text.sh` (`linux smoke text`, the widgets APK's `TextActivity`), the framework suite
   `text`, smoke `atl-text`.
-- Open: keyboard avoidance (M6b2); Java's click and touch listeners on a field or a selectable
+- Open: keyboard avoidance (M6b3); Java's click and touch listeners on a field or a selectable
   TextView where the toolkit takes its touches (gtk; on iOS unchecked); a hardware keyboard types
   only into the field with the keyboard (no KeyListener); gtk multi-line; a Dialog's EditText
-  (M6b2's content-view root); ClipboardManager (M7); `onCreateInputConnection` on EditText,
+  (M6b3's content dialogs on uikit); ClipboardManager (M7); `onCreateInputConnection` on EditText,
   BaseInputConnection (a stub whose own `Editable` class shadows `android.text.Editable`) and
   `onKeyPreIme`;
-  AutoCompleteTextView's drop-down (PopupWindow, M6b2); on headless a field whose activity another
+  AutoCompleteTextView's drop-down (PopupWindow, M6b3); on headless a field whose activity another
   one covers keeps the keyboard (Java's next Back hides it); typing lag under `-Xint`, unmeasured.
 
 ### M5: Canvas
@@ -777,8 +778,8 @@ graphics suite's Matrix and Paint tests pass on headless and on gtk (`tools/dine
   requests a layout only for a change to or from GONE). `View.atlDraw` runs `draw()` into a fresh
   list and clears the canvas after. An invalidate inside `onDraw` draws in the next pass, unpaced
   (M5b).
-  Dialog windows get no layout pass on records, so their views never draw (M6b2's second layout
-  root).
+  Dialog windows lay out and draw in the app window's pass on records (M6b2); uikit shows them in
+  M6b3.
 - record: each op keeps a copy of its paint and the matrix it was drawn under (Paint and Matrix
   free their native state on the FinalizerDaemon). `ATL_DUMP_DISPLAYLIST=1` prints `displaylist:`
   lines after each draw (`test_hooks`).
@@ -1167,7 +1168,7 @@ As built:
 Comes after multi-app MA1 and MA2a (`notes/steps.md`): app state that M6b adds goes into the app
 record (`notes/multi-app-support/design.md` "App record"), not into process-wide statics. Split
 into M6b1 (what draws inside an app's window) and M6b2 (windows and window state), built one
-after the other in one session.
+after the other in one session; the user moved M6b2's later steps into M6b3.
 
 #### M6b1: content
 
@@ -1263,16 +1264,52 @@ As built:
 
 #### M6b2: windows
 
-- A second layout root over the container, for Dialogs with a content view (they show nothing on
-  headless and uikit) and Builder's single and multi choice, `setAdapter` and `setView` content.
-  Dialog windows then need what the shown activity's window has: keep-screen-on and fullscreen,
-  ViewTreeObserver observations on records (only the app window has layout passes), insets for
-  Dialog and WindowManager roots, exclusion rects.
-- PopupWindow and PopupMenu, Toast.
+- Window attributes and screen brightness on every build: `Window.setAttributes`, `setLayout`,
+  `setGravity` and `setDimAmount` through the ui slot; brightness (`LayoutParams.screenBrightness`)
+  as window state of the shown activity, sent through the host slot as keep-screen-on is. The gtk
+  host sets the desktop's through GNOME's power settings over D-Bus, else `/sys/class/backlight`;
+  Dine ignores it ([DINE-11](general-todo.md#dine-11)): iOS 27 gives no way back to the user's
+  level.
+- A second layout root over the container on records, for Dialogs with a content view (they show
+  nothing on headless and uikit): laid out, drawn and touched over the activity in the app
+  window's pass. Showing it on uikit is [M6b3](#m6b3-windows-continued)'s.
+
+**Done when:** `linux smoke dialog windows` pass, the dialog check with its content run
+(`dialog-content.viewtree`); the framework `windows` suite passes on headless, gtk and one VM;
+every earlier suite passes against expectations that weren't loosened; on the phone `dbg smoke`
+passes; both builds build.
+
+**Status: done (2026-11-03).** Built: AOSP 10's `WindowManager.LayoutParams` (constants, fields,
+constructors), `ui_window_set_layout`, `host_screen_brightness` on every host (the gtk host saves
+and restores the desktop's level; Dine logs and ignores it, DINE-11); records lay out a shown
+Dialog's content view over the activity (Gravity.apply, a floating window's least width, the
+window's frame to Java, touch routing with outside touches to a touch-modal dialog, the dump's
+`window dialog` line), the cli's `dump` and `tap <text>`, AOSP's dialog and alert dialog themes,
+the floating window layout and `Window.shouldCloseOnTouch`. uikit keeps content dialogs out of its
+overlays and touch routing until M6b3 draws them. Checks: the framework suites (headless and one
+VM 245/246, gtk with `DialogTest`'s centering and least-width cases as expected failures: gtk
+places and sizes a dialog's window itself), the apps and package suites, `linux smoke` (18, with
+`windows` and the dialog content run), `test unit`; on the iPhone 13 `dbg smoke` (16, with
+`atl-windows`) and the dev and release builds. Open: in a dialog's content `getRawX`/`getRawY`
+are window-local while `getLocationOnScreen` adds the window's origin (`struct atl_pointer` has no
+raw coordinates).
+
+#### M6b3: windows, continued
+
+- Showing a Dialog's content view on uikit: an overlay container over the app surface, the dim,
+  touches, the first responder for its fields, Dine's status-bar strip dimmed.
+- Builder's single and multi choice, `setAdapter` and `setView` content, with native chrome per
+  backend (UIKit, GTK, fixed metrics on headless).
+- Dialog windows get what the shown activity's window has: keep-screen-on and fullscreen,
+  ViewTreeObserver observations, insets for Dialog and WindowManager roots, exclusion rects.
+- PopupWindow, `WindowManager.addView`, ListPopupWindow, AutoCompleteTextView's drop-down;
+  PopupMenu (a native menu), Toast.
 - Configuration changes: no resize or trait-change relayout (portrait only).
 - The UIKit pieces the uikit backend adds around Android's views match the iPhone's own in light
   and dark: the Done bar above the number and phone pads (M4c) looks off next to the keyboard
-  (probably should match iOS style, for example glass).
+  (probably should match iOS style, for example glass). The user's reference: a number pad in
+  another app shows a round glass X button floating above the pad's top-right corner, with no
+  bar ("The approve should look similar too"), so the Done bar becomes a round glass checkmark.
 - Keyboard avoidance: a keyboard covers a field low on the screen, since the surface has a fixed
   size and `atl_window_insets` no IME edge. The window's `softInputMode` (adjustPan, adjustResize;
   `Window.setSoftInputMode` does nothing, the manifest's is parsed) and the keyboard's frame from
@@ -1280,11 +1317,6 @@ As built:
 - Immersive mode and status-bar insets for a window that covers the whole screen
   (`notes/nav-gestures.md` Immersive mode). The Dine setting that hides the home indicator for
   every app is [M8c](#m8c-navigation-settings-store)'s.
-- Screen brightness (`WindowManager.LayoutParams.screenBrightness`): window state of the shown
-  activity, sent through the host slot as keep-screen-on is. Linux sets it through GNOME's power
-  settings over D-Bus, else `/sys/class/backlight` (`src/api-impl-jni/android_view_Window.c`,
-  gtk-only); iOS through `UIScreen.brightness`. `Window.setAttributes` reaches gtk-only natives
-  (`set_layout`, brightness), so it throws `UnsatisfiedLinkError` on headless and iOS.
 
 **Done when:** `linux smoke dialog windows keyboard nav config` pass with their new goldens; the
 framework `windows` suite passes on headless, gtk and one VM; `dialog-gtk`, `windows-gtk` and `gd`
@@ -1390,7 +1422,7 @@ imports `demo_app.apk` and shows both strings (by hand).
 
 - `notes/nav-gestures.md` Settings: the `navigation` store, the observable `NavigationSettings`
   model, agent `ui defaults`, smoke `atl-nav` steps 1, 5 and 6, and the Dine setting that hides
-  the home indicator for every app over M6b2's immersive mode.
+  the home indicator for every app over M6b3's immersive mode.
 - Phone check known so far: the settings steps of smoke `atl-nav` (`notes/nav-gestures.md` Tests).
 
 #### M8d: background probes

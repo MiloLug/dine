@@ -1,6 +1,6 @@
 """Linux smoke: the gtk build runs Gravity Defied to onResume, the dialog and views APKs and the
 widgets APK's drawing, on a hidden display (display.py); the headless build runs demo_app and the
-looper, dialog, nav, views and widgets APKs. Needs a prior `tools/dine linux build`."""
+looper, dialog, nav, views, widgets and windows APKs. Needs a prior `tools/dine linux build`."""
 
 import signal
 import subprocess
@@ -21,6 +21,7 @@ DIALOG_APK = paths.OUT / "tests/apks/dialog.apk"
 NAV_APK = paths.OUT / "tests/apks/nav.apk"
 VIEWS_APK = paths.OUT / "tests/apks/views.apk"
 WIDGETS_APK = paths.OUT / "tests/apks/widgets.apk"
+WINDOWS_APK = paths.OUT / "tests/apks/windows.apk"
 # not in tests/apks: the iOS dev payload bundles every APK there
 CRASH_APK = paths.OUT / "tests/linux-apks/crash.apk"
 
@@ -150,6 +151,12 @@ def _text() -> str | None:
     return _widgets_apk() or _script("run-text.sh", HEADLESS_TESTS / "run-text.sh", HEADLESS_BUILD, WIDGETS_APK)
 
 
+def _windows() -> str | None:
+    _need_headless()
+    return (_script("apk.py", sys.executable, paths.ROOT / "tests/harness/apk.py", HEADLESS_TESTS / "windows", WINDOWS_APK)
+            or _script("run-windows.sh", HEADLESS_TESTS / "run-windows.sh", HEADLESS_BUILD, WINDOWS_APK))
+
+
 def _draw() -> str | None:
     _need_headless()
     return _widgets_apk() or _script("run-draw.sh", HEADLESS_TESTS / "run-draw.sh", "--headless", HEADLESS_BUILD,
@@ -169,7 +176,7 @@ CHECKS = [
     Check("demo", "headless: demo_app reaches onResume, view tree matches the golden", _demo),
     Check("demo-480", "headless: the same at density 480, where sp, dp and px differ", _demo_480),
     Check("looper", "headless: looper.apk goes through the loop paths and exits 0", _looper),
-    Check("dialog", "headless: dialog.apk's alerts and list take scripted answers, an alert changes its buttons in onShow, it exits 0", _dialog),
+    Check("dialog", "headless: dialog.apk's alerts and list take scripted answers, an alert changes its buttons in onShow, it exits 0; a Dialog's content view lays out over the activity (dialog-content.viewtree), takes a tap and closes on a touch outside", _dialog),
     Check("dialog-gtk", "gtk: the same through the GTK dialog's widgets", _dialog_gtk),
     Check("nav", "headless: nav.apk's lifecycle under Back, Home and front from cli -c", _nav),
     Check("crash", "headless: crash.apk throws in onCreate, onResume, a posted Runnable and a started activity's onCreate; each ends ATL through the uncaught handler with exit 10, no CheckJNI abort", _crash),
@@ -181,6 +188,7 @@ CHECKS = [
     Check("text", "headless: widgets.apk's text fields take cli -c text lines through filters, watchers, a composition, a held report, focus moves and Back", _text),
     Check("draw", "headless: widgets.apk's Canvas view redraws on invalidate, not on a same-size layout; display lists (clips, a PNG bitmap, a scrolled background, text, paths, arcs, gradients, a layer, nine-patches) match the golden", _draw),
     Check("draw-gtk", "gtk: the same view draws through gsk", _draw_gtk),
+    Check("windows", "headless: windows.apk's window brightness reaches the host while it shows, then the screen's own", _windows),
 ]
 
 

@@ -58,6 +58,10 @@ final class Navigator: ObservableObject {
                 }
             }
         }
+        // ignored: iOS 27 gives no way back to the user's level (notes/general-todo.md DINE-11)
+        listener.screen_brightness = { _, _, brightness in
+            log.notice("nav: brightness \(brightness, format: .fixed(precision: 2)) ignored")
+        }
         listener.keep_screen_on = { context, app, on in
             let navigator = Unmanaged<Navigator>.fromOpaque(context!).takeUnretainedValue()
             DispatchQueue.main.async {

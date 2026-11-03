@@ -33,7 +33,7 @@ and backend results count only while it is drawn. The nav APK's A shows a list o
 amended there): the window stays full height with no padding; apps get the side strips and the
 home indicator as insets and decide. Linux `linux smoke nav` checks the insets on every show and
 the exclusion spans; `framework` has `WindowInsetsTest`; iOS `atl-nav` checks B's insets and its
-exclusion span. Left: M6b2 (status-bar insets for a window that covers the whole screen, insets
+exclusion span. Left: M6b3 (status-bar insets for a window that covers the whole screen, insets
 and exclusion for Dialog and WindowManager roots), [ATL-3](bug-tracker.md#atl-3), and M4a's check
 on the phone that the recognizer ignores an excluded span (smoke checks the log line).
 
@@ -42,7 +42,7 @@ store, the observable `NavigationSettings`, today a constant value with the defa
 `apps/Dine/Sources/Dine/EdgeGestures.swift`, agent `ui defaults`, smoke `atl-nav` steps 1, 5 and
 6), the running apps list and the run states on the launcher's tiles (M8a; several apps: multi-app
 MA8, `notes/multi-app-support/todo.md`),
-[Immersive mode](#immersive-mode) (M6b2; the Dine-wide setting: M8c). The by-hand default
+[Immersive mode](#immersive-mode) (M6b3; the Dine-wide setting: M8c). The by-hand default
 bindings fire their actions; the other phone checks are [DINE-7](general-todo.md#dine-7) and M8c's
 settings steps. Open elsewhere: [DINE-1](bug-tracker.md#dine-1) (Dialogs and Home),
 [DINE-9](general-todo.md#dine-9) (the AtlView run states).
@@ -242,7 +242,7 @@ more androidx calls `getOnBackInvokedDispatcher`, which ATL lacks
 
 ### Immersive mode
 
-Planned: M6b2, the Dine-wide setting M8c. `SYSTEM_UI_FLAG_HIDE_NAVIGATION` and the immersive flags
+Planned: M6b3, the Dine-wide setting M8c. `SYSTEM_UI_FLAG_HIDE_NAVIGATION` and the immersive flags
 map to the container's `prefersHomeIndicatorAutoHidden` and
 `preferredScreenEdgesDeferringSystemGestures` (a first swipe at a deferred edge only reveals). A
 Dine setting forces `prefersHomeIndicatorAutoHidden` on for every app, so the indicator doesn't
