@@ -31,9 +31,11 @@ along the way. The decision and its tasks are in `todo.md` B1; the design is in 
   with no timeout. C
 - ATL's Java declares no `@FastNative` or `@CriticalNative` (grep of `dine-atl/src`, 0 files):
   every ATL native runs in `kNative`. C
-- Every thread attached to ART gets an alternate signal stack (`art/runtime/thread.cc:978`,
-  `thread_linux.cc`, which the make build lists for every host in `art/runtime/Android.mk:217-221`).
-  Whether the iOS build uses that list is U. Threads not attached to ART get none from ART. C
+- Every thread attached to ART gets a 32 KB alternate signal stack (`art/runtime/thread.cc:984`,
+  `thread_linux.cc:36-37`, which the make build lists for every host in
+  `art/runtime/Android.mk:217-221`). The iOS build compiles it too: its `thread_linux.o` is a Mach-O
+  arm64 object that references `_sigaltstack` (checked 2026-11-03). Threads not attached to ART get
+  none from ART. C
 
 ## What a fault leaves behind
 

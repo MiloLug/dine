@@ -16,6 +16,7 @@ numbering and links follow `notes/bug-tracker.md`; the two files share the numbe
 **Port mterp, the assembly interpreter, to heap-base references.** dine-art runs the C++ switch
 interpreter (`ART_USE_CXX_INTERPRETER`, `dine-art/art/build/Android.common_build.mk`), because
 mterp uses references as pointers. The Linux runtime suite takes ~78 s with it, ~52 s with mterp.
+Proposal, test order and findings: `notes/mterp/`.
 
 ### ART-20
 
