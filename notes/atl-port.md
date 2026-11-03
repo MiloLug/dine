@@ -27,7 +27,8 @@ its row here changes when that block does.
 | [M5c](#m5c-text) | text | done |
 | [M5d](#m5d-paths-nine-patch-layers-gravity-defied) | paths, nine-patch, layers; Gravity Defied | done |
 | [M6a](#m6a-triage-and-fixes) | triage and fixes | done |
-| [M6b](#m6b-breadth) | breadth | planned |
+| [M6b1](#m6b1-content) | breadth: content | done |
+| [M6b2](#m6b2-windows) | breadth: windows | planned |
 | [M6c](#m6c-search-ahead-of-m7) | search ahead of M7 | planned |
 | [M7](#m7-os-features) | OS features, items in `notes/os-features.md` | planned |
 | [M8a](#m8a-apk-import-and-launch) | APK import and launch | planned |
@@ -214,7 +215,7 @@ is extracted:
 | `Paint.measureText` width estimate | text measurement from the gfx slot (done) | M5c |
 | AlertDialog's three toolkit-bound Buttons | dialog content as data (see M2) | M2 |
 | `GTK_FILE_CHOOSER_ACTION_*` ints in Activity | file-picker request kinds of the `os` slot | M7 (file picker) |
-| Toast sent as a desktop notification | a ui-slot toast | M6b |
+| Toast sent as a desktop notification | a ui-slot toast | M6b2 |
 | `"xdgportal"` location provider name | provider name from the `os` slot's location | M7 (location) |
 | external intents sent over D-Bus from ContextImpl | the `os` slot's open links and files | M7 (open links and files) |
 
@@ -579,7 +580,7 @@ Gravity Defied stops at `NinePatchDrawable.nativeCreate` (M5d). As built:
 - AOSP provenance: `dine-atl/doc/AOSP.md`.
 - Open: the edge pans against an Android-hosted UIScrollView ([DINE-3](bug-tracker.md#dine-3))
   and an excluded span, by hand; touches on popovers on gtk; a GtkText's Tab moves GTK's focus,
-  not Java's; lists don't scroll (`ViewGroup.offsetChildrenTopAndBottom`, M6b).
+  not Java's. Lists scroll since M6b1 (rows move without a relayout).
 
 ### M4b: controls
 
@@ -712,13 +713,13 @@ keyboard, the keyboard after Home and front. As built:
 - Debug agent: `ui type <label> <text>` (`insertText:`; no marked text).
 - Tests: `run-text.sh` (`linux smoke text`, the widgets APK's `TextActivity`), the framework suite
   `text`, smoke `atl-text`.
-- Open: keyboard avoidance (M6b); Java's click and touch listeners on a field or a selectable
+- Open: keyboard avoidance (M6b2); Java's click and touch listeners on a field or a selectable
   TextView where the toolkit takes its touches (gtk; on iOS unchecked); a hardware keyboard types
   only into the field with the keyboard (no KeyListener); gtk multi-line; a Dialog's EditText
-  (M6b's content-view root); ClipboardManager (M7); `onCreateInputConnection` on EditText,
+  (M6b2's content-view root); ClipboardManager (M7); `onCreateInputConnection` on EditText,
   BaseInputConnection (a stub whose own `Editable` class shadows `android.text.Editable`) and
   `onKeyPreIme`;
-  AutoCompleteTextView's drop-down (PopupWindow, M6b); on headless a field whose activity another
+  AutoCompleteTextView's drop-down (PopupWindow, M6b2); on headless a field whose activity another
   one covers keeps the keyboard (Java's next Back hides it); typing lag under `-Xint`, unmeasured.
 
 ### M5: Canvas
@@ -776,7 +777,7 @@ graphics suite's Matrix and Paint tests pass on headless and on gtk (`tools/dine
   requests a layout only for a change to or from GONE). `View.atlDraw` runs `draw()` into a fresh
   list and clears the canvas after. An invalidate inside `onDraw` draws in the next pass, unpaced
   (M5b).
-  Dialog windows get no layout pass on records, so their views never draw (M6b's second layout
+  Dialog windows get no layout pass on records, so their views never draw (M6b2's second layout
   root).
 - record: each op keeps a copy of its paint and the matrix it was drawn under (Paint and Matrix
   free their native state on the FinalizerDaemon). `ATL_DUMP_DISPLAYLIST=1` prints `displaylist:`
@@ -1109,8 +1110,8 @@ headless and gtk, the apps suite on both, the runtime suite, `ios build-atl` (de
 | demo_app | none | none |
 | Gravity Defied | none | none |
 | AdaptiveIconDemo | `Region.nativeConstructor` in AdaptiveIconDrawable's constructor | none |
-| flower_finder | `Region.nativeConstructor` (material's FloatingActionButton) | `Resources$NotFoundException` for `drawable/rose`, which only `drawable-v24` has ([M6b](#m6b-breadth) `SDK_INT`); gtk stops there too |
-| multitouch | `NoSuchMethodError` for `ActionBar.setHomeButtonEnabled` in `onCreate`, then a CheckJNI abort | the same error, through the uncaught handler (M6b ActionBar) |
+| flower_finder | `Region.nativeConstructor` (material's FloatingActionButton) | `Resources$NotFoundException` for `drawable/rose`, which only `drawable-v24` has ([M6b1](#m6b1-content) `SDK_INT`); gtk stops there too |
+| multitouch | `NoSuchMethodError` for `ActionBar.setHomeButtonEnabled` in `onCreate`, then a CheckJNI abort | the same error, through the uncaught handler (M6b1 ActionBar) |
 | accelerometerdemo | `SensorManager.register_accelerometer_listener_native` | the same (M7 sensors); gtk reaches `onResume` |
 
 As built:
@@ -1164,28 +1165,114 @@ As built:
 ### M6b: breadth
 
 Comes after multi-app MA1 and MA2a (`notes/steps.md`): app state that M6b adds goes into the app
-record (`notes/multi-app-support/design.md` "App record"), not into process-wide statics.
+record (`notes/multi-app-support/design.md` "App record"), not into process-wide statics. Split
+into M6b1 (what draws inside an app's window) and M6b2 (windows and window state), built one
+after the other in one session.
 
+#### M6b1: content
+
+- ActionBar with Android's API as a no-op: ATL's `ActionBar` was an empty class and
+  `getActionBar()` returned null, so multitouch stopped at `ActionBar.setHomeButtonEnabled`, and a
+  method alone would only move the failure to a NullPointerException. A bar on screen (title, Up,
+  tabs, options menus) is [ATL-42](general-todo.md#atl-42).
+- `SDK_INT` and `RESOURCES_SDK_INT` 29: androidx reads gesture insets and exclusion rects only
+  from 29 (`notes/nav-gestures.md` Reach); flower_finder stops at its images, which only its
+  `drawable-v24` has; runtime permissions (23) get a result; [ATL-4](bug-tracker.md#atl-4)'s
+  navigation values. From 33 androidx calls `getOnBackInvokedDispatcher`, which ATL lacks:
+  [ATL-43](general-todo.md#atl-43), with the next raise.
+- `Canvas(Bitmap)` and Bitmap's pixel natives on headless and iOS (VectorDrawable, which always
+  draws through a bitmap, AdaptiveIconDrawable's mask, `Bitmap.createBitmap` from a source
+  bitmap, Compose's VectorPainter).
+- Drawables, themes and styles, AdaptiveIconDemo; BitmapShader and ComposeShader
+  ([ATL-23](general-todo.md#atl-23)); `RegionIterator`; `createFromXml`'s `scale`, `clip`,
+  `rotate`, `color`, `animated-selector` and `animated-rotate`; InsetDrawable's insets;
+  ScaleDrawable's draw; color filters other than PorterDuff on bitmaps; `BitmapDrawable.getPaint`,
+  a new Paint per call.
 - ListView and RecyclerView (`views_widgets_samples_flower_finder.apk`). On uikit, lists need a
   measure cache: each measured text is one hop to UIKit's thread.
-- Drawables, themes and styles, AdaptiveIconDemo; BitmapShader and ComposeShader
-  ([ATL-23](general-todo.md#atl-23)). `Canvas(Bitmap)` and Bitmap's pixel natives on headless and
-  iOS (AdaptiveIconDrawable's mask, `Bitmap.createBitmap` from a source bitmap, Compose's
-  VectorPainter); `RegionIterator`; `createFromXml`'s `scale`, `clip`, `rotate`, `color`,
-  `animated-selector` and `animated-rotate`; InsetDrawable's insets; ScaleDrawable's draw; color
-  filters other than PorterDuff on bitmaps; `BitmapDrawable.getPaint`, a new Paint per call.
-- PopupWindow and PopupMenu, Toast.
+- Styled text on iOS, with real Spanned support: ATL's `Html.fromHtml` kept the HTML tags in the
+  string; gtk rendered them as Pango markup (`ui_text_set_markup`), uikit showed them literally.
+
+**Done when:** at `SDK_INT` 29 the framework suites (headless, gtk, one VM), `linux smoke`, the
+package suite and the runtime suite pass; multitouch and flower_finder reach `onResume` on
+headless and gtk, or their reason names a later stage's stop (M6a's rule); the graphics suite
+reads back pixels drawn through `Canvas(Bitmap)`, VectorDrawable, the new XML drawables and color
+matrix filters on headless and gtk; `linux smoke draw` shows the adaptive icon masked; a ListView
+and a GridView scroll with no row laid out again; the controls dump shows `Html.fromHtml`'s spans
+as text runs; on the phone `dbg smoke` passes with a bitmap pixel line, a list and styled text,
+and the release build builds.
+
+**Status: done (2026-11-03).** At `SDK_INT` 29 the framework suites (headless, gtk, one VM: 235 of
+236, the one an expected failure), `linux smoke` (17 checks, with `lists`), the package suite, the
+runtime suite, `test unit`, `ios build-atl` (dev and release) and `dbg smoke` (15 scenarios, with
+`atl-lists`) pass. On the iPhone 13 flower_finder lists its 11 flowers with their images, the
+controls screen shows `BOLD & CAPS` with "BOLD" bold (the build before showed
+`<b>BOLD</b> &amp; CAPS`), and the draw screen the masked adaptive icon. API 29 triage (headless):
+
+| APK | Stop before | Stop after (owner) |
+|---|---|---|
+| demo_app | none | none |
+| Gravity Defied | none | none |
+| AdaptiveIconDemo | none | none; the icon is masked |
+| flower_finder | `Resources$NotFoundException` for `drawable/rose` (only `drawable-v24`) | none; on the phone its LiveData list was empty until the lifecycle callbacks below |
+| multitouch | `NoSuchMethodError` for `ActionBar.setHomeButtonEnabled` | none |
+| accelerometerdemo | `SensorManager.register_accelerometer_listener_native` | the same (M7 sensors); gtk reaches `onResume` |
+
+The level raise cost 5 fixes of the 15 the plan allowed: the installed `framework-res.apk` was
+stale (meson's target had no input), `ContextImpl.getTheme` picks Android's default theme for the
+target level ([ATL-45](bug-tracker.md#atl-45): API 24's step is missing), `WindowInsets.inset`,
+gtk's min-lines height after the theme change, and the activity lifecycle callbacks.
+
+As built:
+- ActionBar: AOSP 10's abstract API; `getActionBar()` is a per-activity `ATLActionBar` that
+  keeps its values and draws nothing ([ATL-42](general-todo.md#atl-42)).
+- Level: `ro.build.version.sdk` 29 in `SystemProperties.java`; bionic still says 21
+  ([ATL-44](bug-tracker.md#atl-44)). `requestPermissions` answers through
+  `onRequestPermissionsResult` from `checkSelfPermission`; `Context.getColor` and
+  `getColorStateList` take the theme. framework-res is regenerated with gestural navigation and a
+  20dp back inset ([ATL-4](bug-tracker.md#atl-4) fixed).
+- Lifecycle callbacks: native lifecycle calls go through `Activity.atlPerform*`, which call the
+  application's and the activity's API 29 pre and post callbacks around the app's method; the base
+  `on*` methods call the plain ones (androidx's lifecycle needs both).
+- Bitmaps: a `gfx_bitmap` changes in place on every backend (gsk a holder of the texture, record
+  premultiplied pixels drawn by cairo, coregraphics a CGImage; gsk's and coregraphics' swap under a
+  lock that guards only the pointer, and readers take their own ref). A Picture records into a
+  bitmap that `drawPicture` and PictureDrawable play back. Canvas(Bitmap) records and `getTexture` renders the list over the pixels; every Bitmap
+  native is shared. Headless bitmaps draw no text ([ATL-46](bug-tracker.md#atl-46)); a
+  Canvas(Bitmap) draws no views or Layout text ([ATL-47](bug-tracker.md#atl-47)).
+- Shaders and drawables: BitmapShader and ComposeShader on record, gsk and coregraphics (their
+  approximations: [ATL-48](bug-tracker.md#atl-48)); AOSP's AdaptiveIconDrawable draw; Scale,
+  Inset, Clip, Rotate, AnimatedRotate, AnimatedStateList and Transition drawables from XML; color
+  filters are `struct gfx_color_filter` (PorterDuff or a 4x5 matrix); RegionIterator.
+- Lists: AOSP's layout-required flag; `ui_view_layout` takes `relayout`; offsets move and
+  invalidate without a layout; uikit pushes frames moved outside a layout pass. Records cache text
+  measures (512 slots under a mutex, keyed on every input and the text runs; the frame stats line counts
+  the cached ones).
+- Styled text: AOSP 10's `Html` over `ATLHtmlReader`; TextView sends its CharacterStyles as runs
+  (`ui_text_set_styled`), drawn as Pango attributes on gtk and attributed strings on uikit;
+  headless prints `textruns:`. allCaps keeps the runs when the length stays. Links take no taps
+  ([ATL-49](general-todo.md#atl-49)); string resources stay plain ([ATL-50](general-todo.md#atl-50)).
+- Tests: framework `ActionBarTest`, `PermissionTest`, `SystemResTest`, `LifecycleCallbacksTest`,
+  `ThemedColorTest`, `BitmapTest`, `VectorDrawableTest`, `BitmapShaderTest`, `PictureTest`,
+  `XmlDrawableTest`, `ColorFilterTest`, `RegionTest`, `ListScrollTest`, `HtmlTest`, `SpanTest`;
+  `run-lists.sh` (`linux smoke lists`, `dbg smoke atl-lists`); `run-controls.sh` checks the bold run;
+  `draw.displaylist` has the masked icon and a greyscale bitmap; `atl-draw` reads a bitmap pixel and
+  redraws an ImageView's bitmap 50 times.
+- AOSP provenance: `dine-atl/doc/AOSP.md`.
+- Open: flower_finder's list scrolled by hand on the phone (the debug agent has no drag).
+
+#### M6b2: windows
+
 - A second layout root over the container, for Dialogs with a content view (they show nothing on
   headless and uikit) and Builder's single and multi choice, `setAdapter` and `setView` content.
   Dialog windows then need what the shown activity's window has: keep-screen-on and fullscreen,
   ViewTreeObserver observations on records (only the app window has layout passes), insets for
   Dialog and WindowManager roots, exclusion rects.
-- ActionBar with Android's API as a no-op: ATL's `ActionBar` is an empty class and
-  `getActionBar()` returns null, so multitouch stops at `ActionBar.setHomeButtonEnabled`, and a
-  method alone would only move the failure to a NullPointerException.
+- PopupWindow and PopupMenu, Toast.
 - Configuration changes: no resize or trait-change relayout (portrait only).
 - The UIKit pieces the uikit backend adds around Android's views match the iPhone's own in light
-  and dark: the Done bar above the number and phone pads (M4c) looks off next to the keyboard.
+  and dark: the Done bar above the number and phone pads (M4c) looks off next to the keyboard
+  (probably should match iOS style, for example glass).
 - Keyboard avoidance: a keyboard covers a field low on the screen, since the surface has a fixed
   size and `atl_window_insets` no IME edge. The window's `softInputMode` (adjustPan, adjustResize;
   `Window.setSoftInputMode` does nothing, the manifest's is parsed) and the keyboard's frame from
@@ -1195,14 +1282,15 @@ record (`notes/multi-app-support/design.md` "App record"), not into process-wide
   every app is [M8c](#m8c-navigation-settings-store)'s.
 - Screen brightness (`WindowManager.LayoutParams.screenBrightness`): window state of the shown
   activity, sent through the host slot as keep-screen-on is. Linux sets it through GNOME's power
-  settings over D-Bus, else `/sys/class/backlight` (`android_view_Window.c`, gtk-only); iOS through
-  `UIScreen.brightness`.
-- Styled text on iOS, with real Spanned support: ATL's `Html.fromHtml` keeps the HTML tags in the
-  string; gtk renders them as Pango markup (`ui_text_set_markup`), uikit shows them literally.
-- `SDK_INT` above 21 as `android.*` catches up: androidx reads gesture insets and exclusion rects
-  only from 29, and from 33 calls `getOnBackInvokedDispatcher`, which ATL lacks
-  (`notes/nav-gestures.md` Reach); [ATL-4](bug-tracker.md#atl-4). flower_finder stops at its
-  images, which only its `drawable-v24` has.
+  settings over D-Bus, else `/sys/class/backlight` (`src/api-impl-jni/android_view_Window.c`,
+  gtk-only); iOS through `UIScreen.brightness`. `Window.setAttributes` reaches gtk-only natives
+  (`set_layout`, brightness), so it throws `UnsatisfiedLinkError` on headless and iOS.
+
+**Done when:** `linux smoke dialog windows keyboard nav config` pass with their new goldens; the
+framework `windows` suite passes on headless, gtk and one VM; `dialog-gtk`, `windows-gtk` and `gd`
+pass; every earlier suite passes against expectations that weren't loosened; on the phone
+`dbg smoke` passes with a content dialog, a choice dialog, a popup, a menu, a toast, window state
+and the immersive steps, and both builds build; the hand checks are listed in the Status block.
 
 ### M6c: search ahead of M7
 
@@ -1302,7 +1390,7 @@ imports `demo_app.apk` and shows both strings (by hand).
 
 - `notes/nav-gestures.md` Settings: the `navigation` store, the observable `NavigationSettings`
   model, agent `ui defaults`, smoke `atl-nav` steps 1, 5 and 6, and the Dine setting that hides
-  the home indicator for every app over M6b's immersive mode.
+  the home indicator for every app over M6b2's immersive mode.
 - Phone check known so far: the settings steps of smoke `atl-nav` (`notes/nav-gestures.md` Tests).
 
 #### M8d: background probes
@@ -1337,13 +1425,13 @@ stop is that gap.
 | Suite | Home | Builds | Oracle | From |
 |---|---|---|---|---|
 | runtime | `dine-art/tests/runtime` | Linux; the phone (by hand, from Dine's art screen) | expected output and per-platform expectations | now: `dine-0002-jni-args` runs on both |
-| framework | `dine-atl/tests/framework` | headless, gtk, iOS | JUnit through `--instrument` and `test_runner.jar`; later CTS subsets at Android 10 (graphics, text, content, view) | M2 |
-| package | `dine-atl/tests/package` | headless | expected parse results | M8a |
-| apps | `tests/android-compat/apps` | gtk, iOS | reaches `onResume`, no crash, log markers, screenshot | M5d |
+| framework | `dine-atl/tests/framework` | headless, gtk; iOS waits for the phone runner below | JUnit through `--instrument` and `test_runner.jar`; later CTS subsets at Android 10 (graphics, text, content, view) | M2 |
+| package | `dine-atl/tests/package` | headless | expected parse results | MA1 |
+| apps | `tests/android-compat/apps` | headless, gtk; on the phone only Gravity Defied (`dbg smoke atl-gd`) | reaches `onResume`, no crash, log markers | M5d |
 
-- **Expectations per build:** `linux-x86_64-gtk`, `linux-x86_64-headless`, `ios-arm64-uikit`,
-  like the runtime suite's per-platform files. A test that passes on one build and fails on
-  another points at a backend.
+- **Expectations per build:** `linux-x86_64-gtk`, `linux-x86_64-headless` (an `ios-arm64-uikit`
+  file comes with the phone runner), like the runtime suite's per-platform files. A test that
+  passes on one build and fails on another points at a backend.
 - **Headless as the deterministic oracle:** fixed text metrics make view-tree dumps exact, and
   the `record` display list shows what the Java code drew independent of any rasterizer.
   Rasterizers get their own golden images with a tolerance (anti-aliasing differs between GSK,

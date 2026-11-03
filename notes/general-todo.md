@@ -99,13 +99,6 @@ capitalization) finds none.
 thread and on workers, on Apple's word that its objects are thread-safe; no run has stressed it
 on iOS 27.
 
-### ATL-23
-
-**BitmapShader and ComposeShader don't shade.** M5d's shaders are the gradients; a paint with
-either shader fills in its color (Canvas's `drawRoundRect` special case draws a BitmapShader's
-bitmap at 0,0). AdaptiveIconDrawable's `draw()` (commented out) and rounded image views use
-BitmapShader. Owner: M6b's drawables.
-
 ### ATL-29
 
 **An optional Linux service for alarms and background work of apps that aren't running**, only
@@ -143,6 +136,44 @@ of them run as one OS user under one prefix on Linux and in one sandbox on iOS
 (bubblewrap or similar) is one candidate; iOS gives one sandbox to all of Dine, so there the layer
 would have to do it. Nothing checked. Linux mounts and storage permissions are the later stage of
 the filesystem slot (`notes/filesystem/proposal.md`).
+
+### ATL-42
+
+**An action bar on screen.** M6b1 gives `getActionBar()` Android 10's whole API with nothing
+drawn: the title, the Up button, tabs (`NAVIGATION_MODE_TABS`) and the options menu
+(`onCreateOptionsMenu`, action items, overflow) reach no build. gtk's header bar comes from the
+gtk host, not from ActionBar. A native bar per backend (UINavigationBar and a UIMenu on iOS, the
+header bar and a menu on gtk) would show them; no stage owns it.
+
+### ATL-43
+
+**`getOnBackInvokedDispatcher` (API 33).** androidx calls it only when `SDK_INT` is 33 or more,
+and M6b1 raises the level to 29, so nothing reaches it yet. It comes with the next raise: an
+`android.window` dispatcher per window that Back consults before `onBackPressed`. Predictive back
+stays out of scope (`notes/nav-gestures.md`).
+
+### ATL-49
+
+**Clickable links in text.** M6b1 draws a `ClickableSpan` or `URLSpan` run as a link (underline,
+`linkColor`), but no build routes a tap on it: `LinkMovementMethod` and `setAutoLinkMask` /
+`Linkify` do nothing, and a toolkit label reports no character offset under a touch. A tap would
+need an offset-at-point call per backend (Pango `xy_to_index`, TextKit's glyph lookup).
+
+### ATL-50
+
+**Styled resource strings.** A string resource with `<b>`, `<i>` or `<u>` reaches apps as plain
+text: `AssetManager.getResourceText` (`AssetManager.java:191`) returns `TypedValue.coerceToString`,
+and `StringBlock.get`'s span code (`StringBlock.java:60`) is commented out. Restoring it needs
+dine-art's androidfw style data (`nativeGetStyle`) and spans built as AOSP's `applyStyles`; the
+runs then reach TextView as M6b1's do.
+
+### ATL-51
+
+**Native scrolling for ListView and RecyclerView (to be decided).** ScrollView and
+HorizontalScrollView are native scroll nodes since M4a (`ui_scroll_new`; UIScrollView on uikit),
+while ListView and RecyclerView scroll in their own Java code, so on iOS they lack UIKit's fling
+and bounce. The approach is open: a scroll node per list, a native list view (UICollectionView),
+or UIKit's scroll physics fed into the Java scrolling. RecyclerView ships inside the app (androidx).
 
 ## DINE
 
@@ -224,3 +255,7 @@ failures. Reasons per test: `dine-art/tests/runtime/expectations/linux-x86_64.js
 ### ATL-18
 
 **A CTFont cache on iOS.** 2026-11-01, dine-atl 4fd8005c.
+
+### ATL-23
+
+**BitmapShader and ComposeShader didn't shade.** 2026-11-03, M6b1, dine-atl cff73b6f.

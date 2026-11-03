@@ -116,7 +116,7 @@ the rest `dine-atl/tests/headless/run-*.sh`; the gtk checks run on a hidden disp
   `____TARGET=ios` cross-compiles. Make doesn't track flag changes: after editing cflags in an
   `.mk`, delete the module's `out/host/*/obj` **and** `out/host/*/gen` intermediates (stale
   generated `asm_defines.h`).
-- ART is Android 10, libcore 8.1/9, ATL's device level (`SDK_INT`) is 21 (`notes/decisions.md`).
+- ART is Android 10, libcore 8.1/9, ATL's device level (`SDK_INT`) is 29 (`notes/decisions.md`).
 - accord is this repo's `actool`: anything that needs `actool` runs the `accord` command, never
   Xcode's (there is none) or the `../dine-accord` checkout. Icons: the SF Symbol where iOS has one,
   else the Fluent pack (`notes/icons.md`).

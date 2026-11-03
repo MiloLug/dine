@@ -273,15 +273,6 @@ don't clip them.**
 - Effect: after a translation the edge recognizer uses the old rect until the next layout pass; a
   rect partly scrolled out of its parent still excludes the hidden part.
 
-### ATL-4
-
-**framework-res says 3-button navigation: `config_navBarInteractionMode` 0,
-`config_backGestureInset` 0dp.** Apps that detect gesture navigation from these resources assume
-buttons.
-- Where: `dine-atl/res/framework-res/res/values/config.xml`; a change needs
-  `-Dregenerate_framework_res`.
-- Owner: M6b, with `SDK_INT` above 21.
-
 ### ATL-5
 
 **Unchecked: whether ATL keeps every view's left and top current at the end of the root's layout
@@ -483,6 +474,52 @@ Code that takes it as "am I on the main thread" then touches UI state from that 
   daemons (they run no app code), native threads that attach without a group on iOS and in a
   headless VM of several apps (`notes/multi-app-support/design.md` "App record").
 
+### ATL-44
+
+**bionic_translation's native `__system_property_get("ro.build.version.sdk")` says 21 while Java's
+`SDK_INT` is 29.** A native library that asks for the level gets 21.
+- State: open; no suite reaches it (native-library apps run only on the gtk build).
+- Where: `third_party/bionic_translation/libc/libc.c:68`, a plain clone, not a fork
+  (`notes/decisions.md`), so a fix is a local patch the build applies.
+- Owner: M9 (native-library apps).
+
+### ATL-45
+
+**An app with no theme that targets API 24 or more gets `Theme_DeviceDefault` (dark), not AOSP
+10's `Theme_DeviceDefault_Light_DarkActionBar`.** `Resources.selectDefaultTheme` has the pre-N
+steps only.
+- State: open; ATL's own test APKs set no theme, so the fix changes how they look.
+- Where: `dine-atl/src/api-impl/android/content/res/Resources.java` `selectSystemTheme`.
+
+### ATL-46
+
+**On headless a Canvas(Bitmap) draws no text, a sweep gradient as 72 wedges and a hairline 1 unit
+wide.** The record backend measures text with fixed metrics and has no font; cairo
+(`dine-atl/src/backends/gfx/record/raster.c`) has no conic gradient or device-space hairline.
+- State: open; only bitmap pixels on headless (the display list keeps the text op).
+
+### ATL-47
+
+**A Canvas(Bitmap) draws no view and no Layout's text through the toolkit.** `View.onDraw`,
+`dispatchDraw`, `draw`'s background, `ViewGroup.drawChild`, `Layout.draw` (its native path) and
+`SurfaceView`'s post act only on an `ATLCanvas`; `Drawable.draw` takes any canvas
+(`Canvas.atlHandle`). So `view.draw(new Canvas(bitmap))` (snapshots, drawing caches) gets the
+view's Java drawing only.
+- State: open; whether `ui_view_draw_*` can draw a view into a bitmap's canvas is unchecked per
+  backend.
+- Where: `dine-atl/src/api-impl/android/view/View.java`, `ViewGroup.java`, `text/Layout.java`,
+  `view/SurfaceView.java`.
+
+### ATL-48
+
+**BitmapShader and ComposeShader are approximate on gsk and CoreGraphics.** CLAMP draws the bitmap
+once without extending its edges; MIRROR repeats; on gsk a ComposeShader's modes other than
+SRC_IN, DST_IN and the separable blends (DARKEN, LIGHTEN, MULTIPLY, SCREEN, OVERLAY) draw as
+SRC_OVER, on cairo (headless) a bitmap shader tiles both axes as x.
+- State: open; `graphics/BitmapShaderTest` checks what is exact (CLAMP inside the bitmap, REPEAT,
+  SRC_IN).
+- Where: `dine-atl/src/backends/gfx/{gsk/canvas.c,coregraphics/draw.c,record/raster.c}`.
+
 ## DINE
 
 ### DINE-1
@@ -562,3 +599,9 @@ one.**
 - State: open; not rechecked against the current accord.
 - Workaround: Dine tints in code, `.renderingMode(.template)` with `.foregroundStyle(...)`
   (`notes/icons.md` Rendering).
+
+## Fixed
+
+### ATL-4
+
+**framework-res said 3-button navigation.** 2026-11-03, M6b1, dine-atl cff73b6f.

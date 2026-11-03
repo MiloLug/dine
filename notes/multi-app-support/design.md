@@ -31,7 +31,7 @@ Facts come from the findings files (`findings-runtime.md`, `findings-framework.m
 - On PC, no running system service unless the alternatives are worse.
 - The VM uses threads wherever the platform allows.
 - Works on all backends: iOS uikit, Linux gtk, Linux headless.
-- Apps see SDK level 21, but the layer may follow a later Android version's behaviour where that
+- Apps see SDK level 29, but the layer may follow a later Android version's behaviour where that
   is easier or saner (decided; the user: "We don't aim to fully follow sdk 21 - we could use
   features from later sdk if they are easier or more sane").
 - All Android data of one install lives under one prefix, as in Wine
@@ -141,7 +141,9 @@ primary app. These functions are app-runtime-timed, they are not some global mag
 - A Linux process runs one record, and that record is no more primary than any other.
 
 Shared state that stays shared: interned strings, class metadata of boot classes, the okhttp
-connection pool (`Address.equals` already separates apps' TLS setups), the display configuration.
+connection pool (`Address.equals` already separates apps' TLS setups), the display configuration,
+the records text-measure cache (M6b1, `records/ui.c`: a result depends only on its key, which holds
+every measure input).
 
 ## Containment
 

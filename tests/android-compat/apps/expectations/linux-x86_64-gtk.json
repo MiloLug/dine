@@ -1,10 +1,1 @@
-{
-  "flower-finder": {
-    "expect": "fail",
-    "reason": "Resources$NotFoundException for drawable/rose, only in drawable-v24: SDK_INT is 21 (M6b SDK_INT)"
-  },
-  "multitouch": {
-    "expect": "fail",
-    "reason": "NoSuchMethodError ActionBar.setHomeButtonEnabled in onCreate (M6b ActionBar)"
-  }
-}
+{}

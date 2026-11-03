@@ -135,6 +135,11 @@ def _widgets() -> str | None:
     return _widgets_apk() or _script("run-widgets.sh", HEADLESS_TESTS / "run-widgets.sh", HEADLESS_BUILD, WIDGETS_APK)
 
 
+def _lists() -> str | None:
+    _need_headless()
+    return _widgets_apk() or _script("run-lists.sh", HEADLESS_TESTS / "run-lists.sh", HEADLESS_BUILD, WIDGETS_APK)
+
+
 def _controls() -> str | None:
     _need_headless()
     return _widgets_apk() or _script("run-controls.sh", HEADLESS_TESTS / "run-controls.sh", HEADLESS_BUILD, WIDGETS_APK)
@@ -171,6 +176,7 @@ CHECKS = [
     Check("views", "headless: views.apk removes, re-adds and frees views, view tree matches the golden", _views),
     Check("views-gtk", "gtk: the same through GTK's widgets, and gsk frees a nine-patch and a StateListDrawable", _views_gtk),
     Check("widgets", "headless: widgets.apk takes taps, a hold, Tab, Enter, a drag and keys from cli -c; a press shows only in its own copy of a shared selector resource", _widgets),
+    Check("lists", "headless: a ListView scrolled by 600 px shows a later first row", _lists),
     Check("controls", "headless: widgets.apk's buttons, checkboxes, radios, switch, toggle and image button take taps and keys from cli -c", _controls),
     Check("text", "headless: widgets.apk's text fields take cli -c text lines through filters, watchers, a composition, a held report, focus moves and Back", _text),
     Check("draw", "headless: widgets.apk's Canvas view redraws on invalidate, not on a same-size layout; display lists (clips, a PNG bitmap, a scrolled background, text, paths, arcs, gradients, a layer, nine-patches) match the golden", _draw),

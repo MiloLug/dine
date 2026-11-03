@@ -63,11 +63,13 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   Upstream's Pango Layout natives and Paint text natives are gone: port upstream text fixes there.
   Key listeners are AOSP's (`text/method/`), TextView's line limits AOSP's modes over
   `ui_text_set_lines`.
-- Bitmap's handle is a `gfx_bitmap` (gsk: the GdkTexture, `src/backends/gfx/gsk/bitmap.c`):
-  creation, size, ref, recycle and BitmapFactory's decode (Java reads the stream into a byte[]) are
-  shared; snapshots and pixel access stay in upstream's Bitmap natives. `Config.gdk_memory_format`
-  is `nativeInt` (AOSP's), mapped by `gsk/memory_format.h`. BitmapDrawable's paintable is
-  `gfx_bitmap_drawable_new`.
+- Bitmap's handle is a `gfx_bitmap` whose pixels change in place (gsk: a holder of the
+  GdkTexture, swapped under a mutex, readers taking a ref; record: premultiplied words drawn with cairo; coregraphics: a CGImage
+  swapped under a lock the replay shares), so drawables and lists made before see new pixels. A
+  Canvas(Bitmap) records into a `gfx_canvas` that `getTexture` renders over the pixels
+  (`gfx_bitmap_render`); every Bitmap native is shared, upstream's are gone. Row bytes are
+  Skia's (width x bytes per pixel, no padding). `Config.nativeInt` is AOSP's, mapped by
+  `gsk/memory_format.h`. BitmapDrawable's paintable is `gfx_bitmap_drawable_new`.
 - View's and ViewGroup's draw natives (`native_drawBackground`, `native_drawContent`,
   `native_drawChildren`, `native_drawChild`) and `Drawable.native_draw` are shared behind
   `ui_view_draw_*` and `gfx_canvas_draw_drawable`; gtk's bodies are in
@@ -80,7 +82,8 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   child without a state.
 - A bitmap or nine-patch drawable's color filter and tint live on its native drawable
   (`PaintableFilter`, `gfx_drawable_set_color_filter`); gsk's bitmap drawable is a paintable over
-  the texture that keeps the filter.
+  the texture that keeps the filter. A color filter is a `struct gfx_color_filter` (PorterDuff mode
+  and color, or a 4x5 matrix) from `ColorFilter.atlMode/atlColor/atlMatrix`, on paints and drawables.
 - The `coregraphics` gfx backend (iOS) is record's display list (`src/backends/gfx/record/`) plus a
   CoreGraphics replay and ImageIO bitmaps; uikit replays each view's list in a layer and paces
   draw passes with a CADisplayLink.
@@ -184,12 +187,13 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - Task state and dialogs' task are per app (the app record, `struct atl_app`); the window config
   is the VM's screen; both become per task with multi-app MA6
   (`notes/multi-app-support/design.md`).
-- `SDK_INT` is a device level set by hand: `ro.build.version.sdk` in `SystemProperties.java` (21),
+- `SDK_INT` is a device level set by hand: `ro.build.version.sdk` in `SystemProperties.java` (29),
   read by `Build.VERSION`; `RESOURCES_SDK_INT` = `SDK_INT`; `CODENAME` "REL". Upstream's derivation
   (`EarlyPackageParser`, `-DBuild.VERSION.SDK_INT`, `--sdk-int` and `create_vm`'s `sdk_int` in
   `main.c`, now `startup.c`) is gone; a minSdk above it logs and runs (`PackageParser`). Drop
   upstream SDK_INT edits there. bionic_translation's native `ro.build.version.sdk` (`libc.c`, Linux
-  only) also says 21; raising ours past it needs a local patch of that plain clone. Behaviour may
+  only) still says 21: a plain clone, so matching ours needs a local patch
+  ([ATL-44](bug-tracker.md#atl-44)). Behaviour may
   follow a later Android version where that is easier or saner (implicit broadcasts reach running
   apps only, as on Android 8 and later).
 - `Window` keeps the system bar state (`styleBars`, `updateFrame`, real `addFlags`/`setFlags`);
@@ -208,12 +212,24 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - Attach state is Java (`dispatchAttachedToWindow`/`dispatchDetachedFromWindow`, `isAttachedToWindow`
   a field); gtk's `notify::root` callback and `currently_unmapping` are gone. Port upstream attach
   fixes into View/ViewGroup Java.
-- Visibility, background drawable, invalidate, translation (`native_childrenMoved`), markup,
+- Visibility, background drawable, invalidate, translation (`native_childrenMoved`), text runs,
   multi-window, ImageView, ProgressBar and ViewTreeObserver natives are shared behind ui slot calls;
   gtk's bodies are in `src/backends/ui/gtk/{view,widgets,window,text}.c`.
 - Fullscreen and keep-screen-on are Window state sent for the shown activity (`set_frame`,
   `set_keep_screen_on`); `View.nativeSetFullscreen` and `native_keep_screen_on` are gone.
   `FLAG_KEEP_SCREEN_ON` is Android's 0x80.
+- `View.layout` keeps AOSP's layout-required flag: `ui_view_layout` gets `relayout`, and records
+  lay out a node's children only then; `offsetTopAndBottom`/`offsetLeftAndRight` move and
+  invalidate without a layout. Port upstream layout edits onto the flag. Records cache text
+  measures (`records/ui.c`, keyed on every input, runs included) for every app in the VM.
+- Styled text is ours: `Html` is AOSP 10's over `ATLHtmlReader` (no TagSoup), and TextView sends
+  its CharacterStyles as runs (`ui_text_set_styled`: gtk Pango attributes, records' runs, uikit
+  attributed strings). Upstream's markup path (`Html.fromHtml` keeping tags, `ui_text_set_markup`)
+  is gone; port upstream span edits onto the runs.
+- Native lifecycle calls go through `Activity.atlPerformCreate` and the other `atlPerform*`
+  wrappers (`handle_cache.c`), which call the API 29 pre and post lifecycle callbacks around the
+  app's methods; port upstream lifecycle edits behind them. `getActionBar()` is `ATLActionBar`,
+  Android's API drawing nothing ([ATL-42](general-todo.md#atl-42)).
 - The cli host has `--instrument`; `test_runner.jar` builds in the headless build dir.
 - The C targets depend on hax.jar (order-only), so javac rewrites the JNI headers first.
 - Insets are ours: `WindowInsets` stores per type; View/ViewGroup `dispatchApplyWindowInsets` is the
@@ -249,6 +265,7 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 
 - Min iOS 17.4 (os_sync): `env.sh` for scripts and CMake, `apps/Dine/Package.swift` for Swift.
   Never equal to the SDK version (compatibility mode).
-- Linux gate after a merge: `tools/dine linux smoke` (gd, demo, demo-480, looper, dialog, dialog-gtk, nav,
-  views, views-gtk, widgets, controls) + `tools/dine test runtime` + `tools/dine test framework`; iOS gate:
+- Linux gate after a merge: `tools/dine linux smoke` (every check in `tools/py/dine/linux.py`) +
+  `tools/dine test runtime` + `tools/dine test framework` (headless, `--gtk`, `--one-vm`) +
+  `tools/dine test apps` (headless, `--gtk`) + `tools/dine test package`; iOS gate:
   `tools/dine dbg smoke`.

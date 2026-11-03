@@ -169,10 +169,17 @@ SCENARIOS = {
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-draw", [
             Step("atl", tap="atl"),
-            Step("run draw", tap="draw", ok=("widgets draw 3", "widgets draw done"), fail=ATL_FAIL, timeout=120),
+            # the bitmap redraws start when the draws are done, before the spin
+            Step("run draw", tap="draw", ok=("widgets bitmap pixel ffff0000 0", "widgets draw 3", "widgets draw done",
+                                               "widgets bitmap redraw done"), fail=ATL_FAIL, timeout=120),
             Step("spin", ok=(r"widgets spin \d+ in \d+ ms",), fail=ATL_FAIL),
             Step("Home", action="Home", ok=("nav: launcher root",)),
         ], uses_vm=True, needs_clean=True, alive=True, check=_spin_paced),
+        Scenario("atl-lists", [
+            Step("atl", tap="atl"),
+            Step("run lists", tap="lists", ok=(r"lists first [1-9]\d* of \d+ shown",), fail=ATL_FAIL, timeout=120),
+            Step("Home", action="Home", ok=("nav: launcher root",)),
+        ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-gd", [
             Step("atl", tap="atl"),
             Step("run gravity", tap="gravity", ok=("- onResume - yay!", "nav: container shown gravity"),
