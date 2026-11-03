@@ -38,3 +38,4 @@ for lib in "${libs[@]}"; do
   cmake --build "$build"
   cmake --install "$build"
 done
+"$ROOT/tools/libexec/jni-symbols.sh"

@@ -474,6 +474,15 @@ whose uid falls in that range would make them refuse again.
 service's own class, so `onStopJob` never runs.
 - Where: `dine-atl/src/api-impl/android/app/job/JobScheduler.java` `cancel`.
 
+### ATL-41
+
+**`Looper.myLooper() == Looper.getMainLooper()` is true on a thread of no app**: both are null.
+Code that takes it as "am I on the main thread" then touches UI state from that thread.
+- State: unchecked: no app code is known to run there.
+- Where: `dine-atl/src/api-impl/android/os/Looper.java` `getMainLooper`. Threads of no app: ART's
+  daemons (they run no app code), native threads that attach without a group on iOS and in a
+  headless VM of several apps (`notes/multi-app-support/design.md` "App record").
+
 ## DINE
 
 ### DINE-1

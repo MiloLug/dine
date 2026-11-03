@@ -76,20 +76,28 @@ which subgroups inherit). ART copies a thread's tag into a member of its C++ `Th
 thread starts or attaches, from the group it starts in or attaches to, so a thread's Java group and
 its native tag always agree; a signal handler can read the member (`art_embedder.h`:
 `art_thread_embedder_tag`, `art_join_thread_group`, `art_set_default_attach_group`).
-- A thread joins the group of the thread that constructs it (Java's rule); a thread pool or a lazily
-  created shared thread takes the group of the app that made it first.
+- A thread joins the group of the thread that constructs it (Java's rule). A pool's worker takes the
+  group of the thread that creates it, so a shared pool (ForkJoin's common pool, okhttp's
+  connection pool) runs on threads of whichever apps grew it. AsyncTask's executors are each
+  app's own behind the static `THREAD_POOL_EXECUTOR` and `SERIAL_EXECUTOR`.
 - The host thread that runs the app joins the record's group before the main Looper exists.
 - Native threads that attach through JNI without a group: on gtk and headless, one app per process,
   the host makes its app's group the default for them (decided; the user: "Host's app on PC"); on
-  iOS they belong to no app. ATL's own attaching code names its app's group.
-- ART's daemons (finalizer, reference queue, watchdog, heap task) start before any app. On gtk and
-  headless they belong to the host's app, as unattached threads do (decided, MA2b); with several
-  apps in one VM each app has its own finalizer and reference-queue thread in its group (decided,
-  MA2b), so a finalizer sees the app whose object it finalizes.
+  iOS and in a headless VM of several apps they belong to no app. ATL's own attaching code names
+  its app's group.
+- ART's daemons (finalizer, reference queue, watchdog, heap task) start before any app and belong
+  to none; they run no app code. Each app has a cleanup thread in its group that runs the
+  finalizers and `Cleaner`s of its objects, on every backend (decided; the user: "we need to run
+  all app-related threads with that app's tag"), so they see their app and a slow one holds up
+  only its app. An object belongs to the app of its class's loader when that is an app's, else to
+  the app of the thread that made it. The thread starts with the app's first object to clean and
+  exits when idle; `System.runFinalization` waits for the caller's app's thread.
+- Each app has its own Android main thread, whose platform loop is its own loop slot instance
+  (one per process on gtk, which runs one app).
 
 Everything that holds app state lives in the record:
 - ATL Java: the Application, data dir, PackageManager, providers, dynamic receivers, shared
-  preferences, main Looper (each app gets its own Android main thread in MA2b), a copy of the
+  preferences, main Looper, a copy of the
   display's `Configuration`, `LayoutInflater`'s constructors (keyed by full class name), job
   scheduler state, shown dialogs, the keyboard and input state, location listeners.
 - ATL C: the window, the activity stack and its focus, insets and gesture exclusion, the APK class
@@ -98,8 +106,10 @@ Everything that holds app state lives in the record:
   `ResponseCache`, `Authenticator`, the SSL and HttpURLConnection defaults, `NetworkSecurityPolicy`,
   Security providers, the URL and socket factories, tmpdir (the `-Djava.io.tmpdir` goes), `user.dir`
   for relative paths (MA3).
-- ART: the native library table keyed by (path, loader), which also closes the Apple trap where
-  `dlsym` on the main image finds every `Java_*` symbol; target SDK and package name per app (MA2b).
+- ART: the native library table, keyed by (path, loader). On Apple every library's handle is the
+  app's image, where `dlsym` finds every linked `Java_*` symbol, so a library resolves only the
+  names of its own archive, listed at build time. Target SDK and package name per app are MA3's:
+  ART keeps one VM-wide value of each, which ATL never sets.
 
 The screen (size, density, night) is the VM's: Dine shows every app in one container size, and a
 window with its own size comes with a window per task (MA6). `DisplayMetrics.DENSITY_DEVICE` is the
@@ -460,7 +470,7 @@ My calls, stated to the user on 2026-11-02 without objection:
 - Saved Bundles on one-VM backends: a system record in the VM plus a file per app in its data dir.
 - The registry on iOS when no app runs: the VM starts just to install, so M8a's VM-free APK reader
   may only be needed for labels and icons, or not at all if the rows hold them.
-- The cost of an Android main thread per app (8 MiB virtual stack each today): measured in MA2b.
+- The cost of an Android main thread per app: `findings-runtime.md` "Memory".
 - The gtk D-Bus intent API stays. Under [Platform mechanisms](#platform-mechanisms-decided) D-Bus
   activation is how the Linux desktop starts an app from its notification or launcher entry, so it
   becomes the gtk build's entry into the same delivery the sockets use.

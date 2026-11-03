@@ -107,7 +107,7 @@ A build selects one backend per slot with a meson option.
 
 | Slot | Owns | Backends |
 |---|---|---|
-| `host` | process entry, VM creation, classpath, data dirs, launching an app and an activity, the container that holds activity windows (an app handle in every call and event; several apps per VM, multi-app MA2b; a container per task, MA6) | `gtk` (today's executable), `cli` (plain C entry, no glib), `embedded` (a library API Dine calls) |
+| `host` | process entry, VM creation, classpath, data dirs, launching an app and an activity, the container that holds activity windows (an app handle in every call and event; several apps per VM on cli and embedded; a container per task, multi-app MA6) | `gtk` (today's executable), `cli` (plain C entry, no glib), `embedded` (a library API Dine calls) |
 | `loop` | the Android main thread's integration with the platform loop, worker-thread loops, delayed and cross-thread posts to the main thread | `glib`, `cfrunloop`, `poll` |
 | `ui` | windows (Activity, Dialog, PopupWindow, WindowManager views), view nodes (children, frame, visibility, background, padding), toolkit widgets, focus, IME, touch and key input | `gtk`, `uikit`, `headless` |
 | `gfx` | Canvas, Paint, Path, Bitmap, image decoding, text measurement and layout, fonts, NinePatch, RenderNode | `gsk` (GSK, Pango, GdkPixbuf), `coregraphics` (CoreGraphics, CoreText, ImageIO), `record` (a display list), later possibly `skia` |
@@ -136,10 +136,10 @@ combinations.
   arguments and calls the slot. Backends never see `JNIEnv`.
 - **No toolkit object assumed per View:** `gtk` and `uikit` create one per view node; `headless`
   and a future single-surface backend keep records and request pixels through the draw upcall.
-- **Threads:** ui and gfx calls happen on the Android main thread, but gfx's text calls take any
+- **Threads:** ui and gfx calls happen on the app's Android main thread, but gfx's text calls take any
   thread (gsk gives each thread but the main one a Pango context of its own); uikit's layers replay
   coregraphics' finished display lists on UIKit's side, and list and bitmap refs drop on any thread.
-  `cfrunloop` binds to the run loop of the thread that prepares it. On iOS that is an 8 MiB pthread
+  A `cfrunloop` instance binds to the run loop of the thread that prepares it. On iOS that is an 8 MiB pthread per app
   with its own run loop, not UIKit's main thread (1008 KiB stack with RLIMIT_STACK fixed at that, so
   ATL's Linux setrlimit and 6 MiB pregrow can't grow it, and whether iOS honours LC_MAIN
   `-stack_size` is unverified; secondary threads get 524 KiB; VM creation and `-Xint` Java would
@@ -167,15 +167,16 @@ stray include fails the build.
 
 ### Loop slot
 
-Shared MessageQueue natives call the loop slot: whether this is the main thread, schedule the
-main thread's next dispatch (now, after a timeout, or never), wake it from any thread, and the
-same three operations on a worker thread's loop.
+Shared MessageQueue natives call the loop slot: the calling thread's main loop if it is an app's
+Android main thread, schedule that loop's next dispatch (now, after a timeout, or never), wake it
+from any thread, and the same three operations on a worker thread's loop. Each app's main thread
+has its own main loop instance; the glib backend has one per process (gtk runs one app).
 
 - `glib`: the GSource for the main thread; workers keep ALooper, because app native code under
   `native=bionic` can attach file descriptors to a Java thread's ALooper.
-- `cfrunloop`: a run-loop source on the main run loop calls `Looper.loop()`, a run-loop timer
-  carries the timeout, and a wake signals the source and wakes the loop. Worker threads run their
-  own CFRunLoop with a timeout.
+- `cfrunloop`: a run-loop source on the app's main thread runs the posts and, when a dispatch is
+  pending, `Looper.loop()`; a run-loop timer carries the timeout, and a wake signals the source and
+  wakes the loop. Worker threads run their own CFRunLoop with a timeout.
 - `poll`: a mutex and condition variable per loop, for headless builds.
 
 glib idle and timeout callbacks outside the gtk backend become loop-slot posts to the main
@@ -315,15 +316,17 @@ screen's runs then work on the VM ATL created. As built:
   from `tools/libexec/build-ios-atl.sh` and puts `out/ios/include` on the include path). Java
   builds only in native builds; the iOS build uses the Linux build's jars and JNI headers.
 - `host=embedded` is a static archive with `JNI_OnLoad_translation_layer_main` and a small API
-  (`atl_embedded.h`): ATL's VM options for the embedder's `JNI_CreateJavaVM`, then
-  `atl_embedded_main` on the thread that becomes the Android main thread. The start phases split
-  for it: `atl_set_app`, `atl_vm_options`, `atl_vm_init`; the Linux hosts keep `atl_prepare` and
-  `atl_vm_start`.
+  (`atl_embedded.h`): ATL's VM options for the embedder's `JNI_CreateJavaVM`, `atl_embedded_vm_init`
+  once, then per app `atl_embedded_main` on the thread that becomes that app's Android main thread.
+  The start phases split for it: `atl_open_prefix`, `atl_vm_options`, `atl_vm_init`, per app
+  `atl_app_prepare`; the Linux hosts keep `atl_prepare` and `atl_vm_start`.
 - In Dine, artbridge stays the one VM owner (states none, creating, ready, failed). `dine_atl_run`
-  creates the VM with ATL's options on an 8 MiB pthread and `ANDROID_LOG_TAGS=*:i`; it refuses
-  once any VM exists, so ATL runs before the art screen in a launch: the art screen's VM lacks
-  ATL's class and library paths, which are fixed at VM creation. The ATL thread detaches from
-  the VM when `atl_embedded_main` returns: ART aborts the process when an attached thread exits.
+  creates the VM with ATL's options on an 8 MiB pthread and `ANDROID_LOG_TAGS=*:i`, and each later
+  call starts its app on a new 8 MiB thread attached to that VM. It refuses while the first run
+  starts and when the art screen made the VM, so ATL runs before the art screen in a launch: the
+  art screen's VM lacks ATL's class and library paths, which are fixed at VM creation. An app's
+  thread detaches from the VM when `atl_embedded_main` returns: ART aborts the process when an
+  attached thread exits.
 - TLS on iOS is wolfSSL and libwolfssljni, as on Linux (`--enable-jni`), linked into Dine.
   wolfJSSE's default trust manager, when it gets no keystore and finds no Java trust store, makes
   the context call `wolfSSL_CTX_load_system_CA_certs`: on iOS wolfSSL then validates with SecTrust
@@ -457,13 +460,14 @@ the Linux golden: `1170x2391` roots, TextViews `315x51` and `375x51` at y 0 and 
   whose views have no labels (empty TextViews, an alert over the container) still reach the
   container's actions.
 - Freeing: `ViewGroup.removeView` and `View.finalize`'s destructor go through the ui slot
-  (`ui_view_remove_child`, `ui_view_free`). The destructor runs on the FinalizerDaemon and posts
-  the free to the Android main thread. uikit frees a record in a queued block, after every block
-  that names it. The same way: `Dialog.finalize` → `ui_dialog_free` (uikit's `ATLDialog` outlives
-  it in the alert's blocks; its ref is freed after queued answers), `Drawable.native_unref` →
-  `gfx_drawable_unref`, and `ui_window_close` releases the uikit surface. Top-level posts run in
-  the Android thread's base JNI frame, which never pops: their local refs must be deleted.
-  The app's `ui_window` struct stays allocated (one per process).
+  (`ui_view_remove_child`, `ui_view_free`). The destructor runs on its app's cleanup thread and
+  posts the free to the app's main thread. uikit frees a record in a queued block, after every
+  block that names it. The same way: `Dialog.finalize` → `ui_dialog_free` (uikit's `ATLDialog`
+  outlives it in the alert's blocks; its ref is freed after queued answers), and
+  `ui_window_close` releases the uikit surface. `Drawable.native_unref` drops its ref on the
+  finalizing thread (gsk hops to the main loop). Top-level posts run in the Android thread's base
+  JNI frame, which never pops: their local refs must be deleted. An app's `ui_window` struct stays
+  allocated (one per app).
 
 ### Pre-M4 batch (2026-10-21)
 
@@ -1262,9 +1266,9 @@ row, its APK in `apps/<pkg>/`), and the launcher reads the registry's rows (`not
   (`Activity.createMainActivity`). With none it calls `System.exit(1)`, which would end Dine: the
   embedded host returns an error instead, until multi-app MA3 makes `System.exit` end only the
   calling app.
-- One app per launch until multi-app MA2b: the running apps list (`RunningApps`) and the run states
-  that `notes/nav-gestures.md` Behaviour specifies for one run per process, on the launcher's
-  tiles. Several apps' list (an entry per task, each app's state, a close action) is MA8.
+- The running apps list (`RunningApps`) and the run states that `notes/nav-gestures.md` Behaviour
+  specifies, on the launcher's tiles. Several apps' list (an entry per task, each app's state, a
+  close action) is MA8.
 - Release builds (`DINE_RELEASE=1`, `-c release`) start no app yet: only the dev atl screen calls
   `dine_atl_run`, and such a build keeps no `Java_*` symbol (`llvm-nm` count 0). ART finds those
   with dlsym, so once the launcher starts APKs, a release build must keep them: check the count,

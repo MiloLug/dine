@@ -13,8 +13,8 @@ agreed with the user before any code is written. The deliverable is this directo
 MA0 is done and the design is approved (2026-11-02). The probes ran on Linux
 (`tests/probes/multi-app/`) and on the phone (the `ma` buttons on the Dev art screen); their
 results are in `findings-runtime.md`, `findings-native-faults.md` problem 14, `todo.md` MA0, ART-24
-and ART-26. MA1 is done; MA2 is split into MA2a (app records, no primary app) and MA2b (several
-apps in one VM); the stages' state is `todo.md` and their order `notes/steps.md`.
+and ART-26. MA1, MA2a and MA2b are done; the stages' state is `todo.md` and their order
+`notes/steps.md`.
 
 ## Decisions and rules (the user's words)
 
@@ -138,7 +138,7 @@ uncovered design items as tasks in MA1, MA7 and MA8.
 
 ## Pending
 
-1. MA1, after M6a: its plan first (writing-plans with the consilium).
+1. The next multi-app stage in `notes/steps.md`: its plan first (writing-plans with the consilium).
 
 ## Traps and facts found
 

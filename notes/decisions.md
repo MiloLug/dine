@@ -7,6 +7,13 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - Our delta: `git diff upstream/master...dine`. Local `master` lags upstream.
 - Upstream isn't merged: read its commits since the last merge and reimplement the wanted ones
   by hand.
+- Several apps per VM: the loop slot has an instance per Android main thread (`struct loop_main`,
+  `app->loop`; glib keeps one, gtk runs one app); the cli host runs each `-l`/`--instrument` group
+  on its own thread, artbridge each later `dine_atl_run`. An app ends through `host_app_end`
+  (`Instrumentation.finish` ends its app, not the VM); every Instrumentation line carries
+  `[<package>] `.
+  `AsyncTask`'s executors are the calling app's. Upstream loop, host or Instrumentation edits are
+  ported onto the instance, the per-app thread and the end hook.
 - No primary app: every app is a record (`ATLLoadedApp` plus the C `struct atl_app`, the hosts'
   handle); code reaches it through its Context or object, Android's static APIs through the calling
   thread's record (`ATLLoadedApp.ofCurrentThread`). Upstream code that reads a process-wide app,
@@ -217,6 +224,14 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 
 ## dine-art
 
+- Cleanup per app: libcore's `java.lang.ref.CleanupDomain` (one cleanup thread per app group,
+  `ThreadGroup.cleanupDomain`, a class loader may be its `Owner`) takes the finalizers and
+  `sun.misc.Cleaner`s of an app's objects off ART's daemons (`FinalizerReference.add`,
+  `Cleaner`'s queue, `ReferenceQueue.enqueueLocked`); `Daemons.finalizeReference` is shared. Keep
+  them across rebases of those files.
+- Native libraries are keyed by (path, class loader) in `java_vm_ext.cc`'s `Libraries`; the
+  "already opened by ClassLoader" refusal is gone. `art_register_jni_symbols` lists limit a
+  library's `Java_*` lookup (on Apple a library without one resolves none).
 - Thread tags for embedders: libcore's `ThreadGroup.embedderTag` (subgroups inherit it) and
   `Thread.joinThreadGroup`; ART copies the tag into a `Thread` member at start and attach and
   exports `art_embedder.h` (`art_thread_embedder_tag`, `art_join_thread_group`,

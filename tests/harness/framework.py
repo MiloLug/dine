@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """tools/dine test framework: android.* JUnit3 suites run in-VM on the headless ATL build, or with
---gtk on the gtk build (needs a display).
+--gtk on the gtk build (needs a display); --one-vm runs them side by side in one headless VM.
 
 Each dine-atl/tests/framework/<suite>/ is a test APK; the runner finds its TestCases in the dex.
-Results are `<Class>#<test>` plus `suite:<name>` for the run itself; each build has its own
-expectations file.
+Results are `<Class>#<test>` plus `suite:<name>` for the run itself (and `suite:one-vm` for the
+shared VM); each build has its own expectations file.
 """
 
 import argparse
@@ -27,7 +27,9 @@ RUNNER = "android.test.InstrumentationTestRunner"
 TIMEOUT = 120
 
 STATUS_CODES = {0: "pass", -1: "fail", -2: "fail"}   # -1 error, -2 assertion failure
-MULTILINE = {"stream", "stack"}   # other lines between status lines are ATL's own stdout
+MULTILINE = {"stream", "stack"}
+# Instrumentation's lines carry their app's package; unprefixed ones are ATL's own stdout
+PREFIXED = re.compile(r"\[([\w.]+)\] (.*)")
 
 
 @dataclass(frozen=True)
@@ -53,16 +55,31 @@ class Run:
     problems: list[str] = field(default_factory=list)
 
 
-def parse(stdout: str) -> Run:
-    """`am instrument -r` output: INSTRUMENTATION_STATUS key=value lines, each block ended by
-    INSTRUMENTATION_STATUS_CODE; INSTRUMENTATION_CODE ends the run."""
+def lines_by_package(stdout: str) -> dict[str, list[str]]:
+    """Instrumentation's lines by the package that printed them, prefix stripped."""
+    lines: dict[str, list[str]] = {}
+    for line in stdout.splitlines():
+        if m := PREFIXED.fullmatch(line):
+            lines.setdefault(m[1], []).append(m[2])
+    return lines
+
+
+def parse(stdout: str, package: str | None = None) -> Run:
+    """`am instrument -r` output of one app (package; None: a run of one app): INSTRUMENTATION_STATUS
+    key=value lines, each block ended by INSTRUMENTATION_STATUS_CODE; INSTRUMENTATION_CODE ends the
+    run."""
+    by_package = lines_by_package(stdout)
+    if package is None:
+        lines = [line for app in by_package.values() for line in app]
+    else:
+        lines = by_package.get(package, [])
     run = Run()
     block: dict[str, str] = {}
     key = None
     numtests = None
     started: set[str] = set()
     finished = False
-    for line in stdout.splitlines():
+    for line in lines:
         if line.startswith("INSTRUMENTATION_STATUS: "):
             key, _, value = line[len("INSTRUMENTATION_STATUS: "):].partition("=")
             block[key] = value
@@ -82,7 +99,7 @@ def parse(stdout: str) -> Run:
         elif line.startswith("INSTRUMENTATION_RESULT: "):
             key = None
             if line.startswith("INSTRUMENTATION_RESULT: shortMsg="):
-                run.problems.append("aborted by an uncaught exception (stack in stderr)")
+                run.problems.append(f"aborted by an uncaught exception: {line.partition('=')[2]} (stack in stderr)")
         elif line.startswith("INSTRUMENTATION_CODE: "):
             finished = line == "INSTRUMENTATION_CODE: -1"
             if not finished:
@@ -124,15 +141,53 @@ def run_suite(suite: Path, work: Path, build: Build) -> tuple[str, Run, str]:
     return suite.name, run, "fail" if run.problems else "pass"
 
 
+def manifest_package(suite: Path) -> str:
+    return re.search(r'package="([^"]+)"', (suite / "AndroidManifest.xml").read_text())[1]
+
+
+def run_one_vm(suites: list[Path], work: Path, build: Build) -> tuple[dict[str, tuple[Run, str]], Run, str]:
+    """All suites as apps of one VM: each suite's run and status, and the shared run's."""
+    work.mkdir(parents=True)
+    shared = Run()
+    cmd = ["./android-translation-layer", "-X", "-Xint"]
+    for suite in suites:
+        package = OUT / "apks" / f"{suite.name}.apk"
+        try:
+            apk.build(suite, package, build.classpath())
+        except (subprocess.CalledProcessError, SystemExit) as e:
+            shared.problems.append(f"{suite.name}: APK build failed: {e}")
+            return {}, shared, "fail"
+        cmd += ["--instrument", RUNNER, str(package)]
+    (work / "data").mkdir()
+    env = dict(os.environ, RUN_FROM_BUILDDIR="1", DINE_PREFIX=str(work / "data"), MALLOC_PERTURB_="85")
+    status = None
+    with open(work / "stdout", "w") as out, open(work / "stderr", "w") as err:
+        try:
+            proc = subprocess.run(cmd, cwd=build.dir, env=env, stdout=out, stderr=err, timeout=TIMEOUT * len(suites))
+            if proc.returncode != 0:
+                shared.problems.append(f"exit {proc.returncode}")
+        except subprocess.TimeoutExpired:
+            status = "timeout"
+    stdout = (work / "stdout").read_text(errors="replace")
+    runs = {}
+    for suite in suites:
+        run = parse(stdout, manifest_package(suite))
+        runs[suite.name] = run, status or ("fail" if run.problems else "pass")
+    return runs, shared, status or ("fail" if shared.problems else "pass")
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("-f", "--filter", help="regex on suite names")
     p.add_argument("--gtk", action="store_true", help="run on the gtk build (needs a display; tools/dine test "
                                                         "framework --gtk gives it a hidden one)")
+    p.add_argument("--one-vm", action="store_true", help="run the suites side by side in one headless VM")
     p.add_argument("--update-expectations", action="store_true",
                    help="record this run's failures as expected (passes clear their entries)")
     a = p.parse_args()
 
+    if a.one_vm and a.gtk:
+        sys.exit("--one-vm runs on the headless build: gtk runs one app per process")
     build = GTK if a.gtk else HEADLESS
     if a.gtk and not (os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY")):
         sys.exit("--gtk needs a display: run it as tools/dine test framework --gtk")
@@ -145,14 +200,21 @@ def main() -> int:
     if not suites:
         sys.exit(f"no suite in {SUITES} matches")
     runs = OUT / "runs" / f"{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}"
-    done = parallel(lambda s: run_suite(s, runs / s.name, build), suites, build.jobs, "framework")
-
     results: dict[str, str] = {}
+    if a.one_vm:
+        by_suite, shared, status = run_one_vm(suites, runs / "one-vm", build)
+        done = [(name, run, suite_status) for name, (run, suite_status) in by_suite.items()]
+        results["suite:one-vm"] = status
+        for problem in shared.problems:
+            print(f"one-vm: {problem} (log: {runs / 'one-vm'})")
+    else:
+        done = parallel(lambda s: run_suite(s, runs / s.name, build), suites, build.jobs, "framework")
+
     for name, run, status in sorted(done):
         results[f"suite:{name}"] = status
         results.update(run.tests)
         for problem in run.problems:
-            print(f"{name}: {problem} (log: {runs / name})")
+            print(f"{name}: {problem} (log: {runs / ('one-vm' if a.one_vm else name)})")
     expectations = expect.load(build.expectations)
     if a.update_expectations:
         expect.save(build.expectations, expect.update(results, expectations, "new failure"))
@@ -160,7 +222,8 @@ def main() -> int:
         return 0
     c = expect.compare(results, expectations)
     passed = sum(s == "pass" for n, s in results.items() if not n.startswith("suite:"))
-    print(f"framework: {len(suites)} suites, {passed}/{len(results) - len(suites)} tests pass, "
+    n_suite_rows = sum(n.startswith("suite:") for n in results)
+    print(f"framework{' (one VM)' if a.one_vm else ''}: {len(suites)} suites, {passed}/{len(results) - n_suite_rows} tests pass, "
           f"{len(c.expected_failures)} expected failures → {runs}")
     for name in c.fixed:
         print(f"fixed: {name} (run with --update-expectations)")

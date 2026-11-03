@@ -21,7 +21,7 @@ Task markers:
 | [MA0](#ma0-design-and-probes) | finish the design, run the probes | all | done 2026-11-02 |
 | [MA1](#ma1-registry-and-install) | registry and install | all | done 2026-11-02 |
 | [MA2a](#ma2a-app-records) | app records, no primary app; one app per VM | all | done 2026-11-02 |
-| [MA2b](#ma2b-several-apps-in-one-vm) | several apps in one VM | one-VM, headless test mode | planned |
+| [MA2b](#ma2b-several-apps-in-one-vm) | several apps in one VM | one-VM, headless test mode | done 2026-11-03 |
 | [MA3](#ma3-containment) | containment of every app failure | one-VM | planned |
 | [MA4](#ma4-freeze-drop-memory-ledger) | freeze, drop, memory ledger | one-VM | planned |
 | [MA5](#ma5-saved-state) | saved instance state and memory callbacks | all | planned |
@@ -215,37 +215,40 @@ while each VM still runs one app; MA2b runs several apps in one VM. The record m
 
 ## MA2b: several apps in one VM
 
-- `[ ]` A main thread and main loop per app: loop slot instances (`loop_main_*` are one per process
-  today); glib keeps its one; cli and iOS start each app's main thread in its group; the uikit
-  frame link and pending queue per main thread; the headless input state per window.
-- `[ ]` Every app in the VM gets `Application.onCreate`, its providers and its receivers through
-  `ATLLoadedApp.start` (MA2a's path), several per VM.
-- `[ ]` The embedded host and `dine_atl_run` stop refusing a second app; cfrunloop's
-  `main_loop.quit` per app; the dev screen starts a second APK over the first (one phone check
-  through `dine-peek`, not on the done line; the user's answer).
-- `[ ]` The native library table keyed by (path, loader); native lookup limited to the loader's own
-  libraries on Apple.
-- `[ ]` The headless test mode: several apps in one VM; a finished instrumentation ends only its app
-  and the VM exits after the last; each app's result lines carry its package (the user's answer);
-  test hooks (`ATL_DIALOG_ANSWERS`, `ATL_DUMP_VIEWTREE`) per app.
-- `[ ]` On gtk and headless (one app per process) ART's daemons (FinalizerDaemon,
-  ReferenceQueueDaemon, the finalizer watchdog, HeapTaskDaemon) belong to the host's app, as
-  threads that attach without a group do (the user, 2026-11-03): the host tags the system group and
-  ART retags the threads already running in it, since a thread takes its tag only at start. Today
-  they have no app: static APIs in a finalizer answer null or throw, and
-  `Looper.myLooper() == Looper.getMainLooper()` is true on them (`null == null`).
-- `[ ]` A finalizer thread and a reference-queue thread per app, each in its app's group (moved
-  from MA3, the user, 2026-11-03): each app's objects are finalized and its `Cleaner`s run on its
-  own threads, which see its app.
-- `[ ]` A service of another package runs in its caller's app, but its `getApplication()` is that
-  package's Application, which no host started (no `onCreate`, no main Looper): decide what it
-  returns (MA7 settles calls between apps).
-- `[ ]` Per-app AsyncTask executors (apps cast `THREAD_POOL_EXECUTOR` to `ThreadPoolExecutor`) and
-  shared lazily created threads (ForkJoinPool's common pool, okhttp's cleanup thread), which take
-  the group of the app that made them first.
-- `[ ]` The cost of an Android main thread per app (8 MiB virtual stack each today; `design.md`
-  "Further points"): Linux RSS and VmSize per idle app first, the phone's `phys_footprint` after.
-- Done when: two framework suite APKs instrumented side by side in one headless VM each pass.
+- `[x]` A main thread and main loop per app: the loop slot has an instance per Android main thread
+  (glib keeps its one: gtk runs one app per process); the cli host runs each app on its own 8 MiB
+  thread, artbridge each later `dine_atl_run`; uikit's queue to UIKit, its windows and the frame
+  link's passes per app; the headless input, edit and test-hook state per app main thread.
+- `[x]` Every app in the VM gets `Application.onCreate`, its providers and its receivers through
+  `ATLLoadedApp.start` (MA2a's path), several per VM. A package starts once per VM: a second start
+  of it is refused until MA4's drop.
+- `[x]` The embedded host and `dine_atl_run` start a second app; cfrunloop's quit per app; the dev
+  screen starts a second APK over the first, and a running app's tile brings it to front (phone,
+  2026-11-03: demo_app and widgets side by side).
+- `[x]` The native library table keyed by (path, loader); on Apple a library resolves only the
+  `Java_*` names of its own archive (`art_register_jni_symbols`, lists from
+  `tools/libexec/jni-symbols.sh`).
+- `[x]` The headless test mode: each `--instrument CLASS` or `-l ACTIVITY` opens an app with the
+  APKs after it; a finished instrumentation ends only its app (`host_app_end`) and the VM exits
+  after the last; each Instrumentation line carries `[<package>] ` (the user's answer); test hooks
+  per app; `tools/dine test framework --one-vm`.
+- `[x]` ART's daemons keep no app and run no app code; each app's finalizers and `Cleaner`s run on
+  one cleanup thread per app in its group (`CleanupDomain`), on every backend, started on the
+  first object and exiting when idle (the user, 2026-11-03: "retagging really doesn't make sense,
+  we need to run all app-related threads with that app's tag, do as you recommend"). On a thread of
+  no app `Looper.myLooper() == Looper.getMainLooper()` stays true:
+  [ATL-41](../bug-tracker.md#atl-41).
+- `[x]` Per-app AsyncTask executors behind the static `THREAD_POOL_EXECUTOR` (still a
+  `ThreadPoolExecutor`) and `SERIAL_EXECUTOR`. Shared lazily created threads need no code: each
+  worker of a shared pool takes the group of the thread that creates it (`design.md` "App record").
+- `[x]` The cost of an Android main thread per app: `findings-runtime.md` "Memory" (Linux RSS per
+  idle app, the phone's `phys_footprint` at each start).
+- Moved to MA7: a service of another package runs in its caller's app, but its `getApplication()`
+  is that package's Application, which no host started (the user: decide in MA7).
+- Moved to MA3: target SDK and package name per app in ART (one VM-wide value each, unset today).
+- Done when: two framework suite APKs instrumented side by side in one headless VM each pass. Met
+  2026-11-03: `tools/dine test framework --one-vm` runs all five suites in one VM at their
+  expectations.
 
 ## MA3: containment
 
@@ -254,15 +257,16 @@ while each VM still runs one app; MA2b runs several apps in one VM. The record m
   the `shuttingDown` latch.
 - `[ ]` App-reachable ART FATALs become app kills: JNI global table overflow, the suspension
   timeout (non-fatal return), `-Xcheck:jni` errors.
-- `[ ]` The finalizer watchdog per app (MA2b's finalizer thread per app): a finalizer over its
-  limit ends that app.
+- `[ ]` The finalizer watchdog per app (MA2b's cleanup thread per app, which ART's watchdog doesn't
+  watch): a finalizer over its limit ends that app.
 - `[ ]` A main-thread watchdog per app on one-VM backends, with Android's wait or close dialog;
   its limits measured under `-Xint` on the phone.
 - `[ ]` Native code that calls into an app (ATL's C, uikit's upcalls) checks and clears a pending
   exception after each call: under `-Xcheck:jni` the next JNI call with one pending aborts the
   process (MA0 probe).
 - `[ ]` libcore's VM-wide statics behind the app record (`findings-runtime.md` table); drop the
-  `-Djava.io.tmpdir`.
+  `-Djava.io.tmpdir`. ART's target SDK and process package name per app (`Runtime`,
+  `VMRuntime`).
 - Done when: in the headless test mode each failure kind in one app leaves the other app running
   (a test per kind).
 
@@ -338,6 +342,11 @@ while each VM still runs one app; MA2b runs several apps in one VM. The record m
   memory); broadcasts across apps (implicit ones only to running apps; an explicit one starts its
   target).
 - `[ ]` `ParcelFileDescriptor` in Parcels: descriptors passed with `SCM_RIGHTS` on `unix`.
+- `[?]` A service of another package runs in its caller's app, but its `getApplication()` is that
+  package's Application, which no host started (no `onCreate`, no main Looper; its
+  `getApplicationContext()` is null). Options: that never-started object (today), null, or that
+  package's start path (Application, providers, `onCreate`) run once on the caller's main thread
+  before the service's `onCreate`, as Android starts a package's Application before its services.
 - `[ ]` A bound service app that dies is started again with a backoff for `BIND_AUTO_CREATE`
   clients, which reconnect.
 - `[ ]` `unix`: a second launch of a running app forwards its intent to it and exits.

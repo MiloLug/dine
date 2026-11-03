@@ -1,6 +1,8 @@
 #include "bridge.h"
 #include "dineart.h"
+#include "jni_symbols.h"
 
+#include <art_embedder.h>
 #include <atl/atl_embedded.h>
 #include <errno.h>
 #include <pthread.h>
@@ -122,6 +124,9 @@ JNIEnv *CreateVm(const std::string &resource_dir, const std::string &data_dir, c
   for (const std::string &arg : args) options.push_back({const_cast<char *>(arg.c_str()), nullptr});
   options.insert(options.end(), extra, extra + n_extra);
   JavaVMInitArgs init = {JNI_VERSION_1_6, static_cast<jint>(options.size()), options.data(), JNI_FALSE};
+  for (size_t i = 0; i < dine_jni_symbols_count; i++) {
+    art_register_jni_symbols(dine_jni_symbols[i].library, dine_jni_symbols[i].names, dine_jni_symbols[i].count);
+  }
 
   JavaVM *vm = nullptr;
   JNIEnv *env = nullptr;
@@ -163,33 +168,37 @@ struct AtlRun {
   dine_atl_window window;
   atl_embedded_listener listener;
   atl_app *app;
+  std::string api_impl, framework_res;  // in atl_dir
+
+  atl_embedded_config Config() {
+    api_impl = atl_dir + "/api-impl.jar";
+    framework_res = atl_dir + "/framework-res.apk";
+    return {
+        .api_impl_jar = api_impl.c_str(),
+        .framework_res_apk = framework_res.c_str(),
+        .apk = apk.c_str(),
+        .activity = activity.empty() ? nullptr : activity.c_str(),
+        .window_width = window.width,
+        .window_height = window.height,
+        .density_dpi = window.density_dpi,
+        .night = window.night,
+        .surface = window.view,
+        .listener = &listener,
+        .app = app,
+    };
+  }
 };
 
 bool gAtlStarted = false;
+bool gAtlReady = false;  // ATL's VM is up: each later run gets an app thread of its own
 
+// the first run: creates the VM, then runs its app
 void *AtlThread(void *arg) {
   std::unique_ptr<AtlRun> run(static_cast<AtlRun *>(arg));
   os_log(Log(), "atl start");
   DevAtlThreadStarted();
 
-  // startup.c opens the prefix from here
-  setenv("DINE_PREFIX", run->prefix_dir.c_str(), 1);
-
-  std::string api_impl = run->atl_dir + "/api-impl.jar";
-  std::string framework_res = run->atl_dir + "/framework-res.apk";
-  atl_embedded_config config = {
-      .api_impl_jar = api_impl.c_str(),
-      .framework_res_apk = framework_res.c_str(),
-      .apk = run->apk.c_str(),
-      .activity = run->activity.empty() ? nullptr : run->activity.c_str(),
-      .window_width = run->window.width,
-      .window_height = run->window.height,
-      .density_dpi = run->window.density_dpi,
-      .night = run->window.night,
-      .surface = run->window.view,
-      .listener = &run->listener,
-      .app = run->app,
-  };
+  atl_embedded_config config = run->Config();
   int n_options;
   JavaVMOption *options = atl_embedded_vm_options(&config, &n_options);
   if (!options) {
@@ -207,11 +216,39 @@ void *AtlThread(void *arg) {
   atl_embedded_vm_options_free(options, n_options);
   DevAtlVmCreated();
 
-  int rc = atl_embedded_main(env, &config);
+  int rc = -1;
+  if (atl_embedded_vm_init(env, &config) == 0) {
+    {
+      std::lock_guard<std::mutex> lock(gLock);
+      gAtlReady = true;
+    }
+    rc = atl_embedded_main(env, &config);  // it reports its own exit
+  } else if (run->listener.exited) {
+    run->listener.exited(run->listener.context, run->app, -1);
+  }
   os_log(Log(), "atl main returned %d", rc);
   // ART aborts the process when a thread it knows exits attached
   gVm->DetachCurrentThread();
   DevAtlExited();
+  return nullptr;
+}
+
+// a later run: its app on a new thread attached to the VM
+void *AtlAppThread(void *arg) {
+  std::unique_ptr<AtlRun> run(static_cast<AtlRun *>(arg));
+  JavaVMAttachArgs args = {JNI_VERSION_1_6, const_cast<char *>("main"), nullptr};
+  JNIEnv *env;
+  if (gVm->AttachCurrentThread(&env, &args) != JNI_OK) {
+    os_log_error(Log(), "atl: can't attach the app's thread");
+    if (run->listener.exited) run->listener.exited(run->listener.context, run->app, -1);
+    return nullptr;
+  }
+  os_log(Log(), "atl app start");
+  DevAtlAppStarted();
+  atl_embedded_config config = run->Config();
+  int rc = atl_embedded_main(env, &config);  // it reports its own exit
+  os_log(Log(), "atl app main returned %d", rc);
+  gVm->DetachCurrentThread();
   return nullptr;
 }
 
@@ -225,17 +262,26 @@ int dine_atl_run(const char *resource_dir, const char *atl_dir, const char *pref
                  const dine_atl_window *window, const atl_embedded_listener *listener, atl_app *app) {
   using namespace dine;
   std::lock_guard<std::mutex> lock(gLock);
-  if (gAtlStarted) {
-    os_log_error(Log(), "atl already ran in this process: relaunch Dine");
+  if (gAtlStarted && !gAtlReady) {
+    os_log_error(Log(), "atl is still starting, or failed to: relaunch Dine if no app comes up");
     return -1;
   }
-  if (gVmState != VmState::kNone) {
+  if (!gAtlStarted && gVmState != VmState::kNone) {
     os_log_error(Log(), "atl needs a process without a VM: relaunch Dine");
     return -1;
   }
   if (gOutput < 0) RedirectOutput();
   auto *run = new AtlRun{resource_dir, atl_dir, prefix_dir, cache_dir, apk, activity ? activity : "", *window,
                          listener ? *listener : atl_embedded_listener{}, app};
+  if (gAtlReady) {
+    if (!StartVmThread(AtlAppThread, run)) {
+      delete run;
+      return -1;
+    }
+    return 0;
+  }
+  // startup.c opens the prefix from it; set before any ATL thread reads the environment
+  setenv("DINE_PREFIX", prefix_dir, 1);
   if (!StartVmThread(AtlThread, run)) {
     delete run;
     return -1;

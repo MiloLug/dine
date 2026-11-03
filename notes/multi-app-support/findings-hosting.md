@@ -69,12 +69,13 @@ All C.
   `dispatch_sync`, `view.m:898`); the Android main thread; a stdout/stderr relay to os_log
   (`artbridge.cpp:42-51`); one `loop_worker` per Java Looper thread
   (`android_os_MessageQueue.c:27`). ART daemons and the debug agent thread: U.
-- The host API has no app handle: `nav.h`, `host.h`, `atl_embedded.h`, `dineart.h`. Listener events
-  (`task_moved`, `exited`) carry no app id (`nav.h:46-56`). C
+- The host API takes an app handle (`struct atl_app`): `nav.h`, `host.h`, `atl_embedded.h`,
+  `dineart.h`, and listener events carry it. C
 - UIKit: a new `AppSurfaceView` per run, an `AppContainerController` presented full screen
-  (`apps/Dine/Sources/Dine/Navigation.swift:59-86,181-191,271-313`). `Navigator` keeps one app's
-  state (`:14-24`). The running apps list is a placeholder ("Running apps / under construction",
-  `:372-418`). A second `dine_atl_run` returns -1 and `run()` returns silently (`:82`). C
+  (`apps/Dine/Sources/Dine/Navigation.swift:59-86,181-191,271-313`). `Navigator` keeps the running
+  apps by handle and shows one at a time. The running apps list is a placeholder ("Running apps / under construction",
+  `:372-418`). A later `dine_atl_run` starts its app in ATL's VM; it returns -1 while the first run starts and
+  when the art screen made the VM. C
 - Not built: `RunningApps` (spec only, `notes/nav-gestures.md`), AtlView run states
   ([DINE-9](../general-todo.md#dine-9)), launcher tiles that launch (`LauncherView.swift:115-117`);
   `AppLibrary` stores `id` and `name` (`AppLibrary.swift:7-10`). C

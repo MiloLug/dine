@@ -81,7 +81,7 @@ settings steps. Open elsewhere: [DINE-1](bug-tracker.md#dine-1) (Dialogs and Hom
 | `WindowInsets` (getters zero, `Type` complete, Builder no-ops) | `dine-atl/src/api-impl/android/view/WindowInsets.java` |
 | `loop_main_post` signals with no check (crashes before prepare) | `dine-atl/src/backends/loop/cfrunloop/loop.c:60` |
 | embedded host API, installed header | `dine-atl/src/backends/host/embedded/atl_embedded.h`, `dine-atl/meson.build:270` |
-| ATL config, one run per process, `atl main returned` | `native/artbridge/artbridge.cpp:221`, `:226`, `:230`, `:211` |
+| ATL config, the start refusals, a later run's own app thread, `atl main returned` | `native/artbridge/artbridge.cpp:203`, `:265`, `:276`, `:229` |
 | Swift module for artbridge | `apps/Dine/Sources/CArtBridge/module.modulemap` |
 | launcher `NavigationStack` with destination links | `apps/Dine/Sources/Dine/LauncherView.swift:12`, `:31` |
 | debug agent: walk, escape, settle | `native/dbgagent/agent.mm:51`, `:92`, `:158` |
@@ -138,14 +138,16 @@ Every binding is a setting (see [Settings](#settings)).
 - **Running apps list:** a Dine screen over the launcher, newest first, one entry per running app
   labelled with its name. Opening it from an app moves the app to the back. Tapping an entry brings
   that app to the front and presents its container. Dismissing the running apps list returns to the
-  app that was in front, else to the launcher. It has no close action: ATL runs once per Dine
-  process, so a closed app couldn't start again. With several apps (multi-app MA8) the list has
-  one entry per task with its app's state (running, frozen, dropped, crashed) and a close action.
-- **One run per process:** while an app runs, its AtlView button brings it to the front, and the
-  other run buttons are disabled with the footer "ATL runs once per process: relaunch Dine". After
-  the app exits, every run button is disabled with the same footer.
-- **App exit:** when the last activity finishes, ATL exits. Dine removes the app from the running
-  apps list and dismisses its container, leaving the screen below it.
+  app that was in front, else to the launcher. It has no close action: an app starts once per Dine
+  process (until multi-app MA4 drops apps), so a closed app couldn't start again. With several apps
+  (multi-app MA8) the list has one entry per task with its app's state (running, frozen, dropped,
+  crashed) and a close action.
+- **Runs:** ATL runs several apps in Dine's one VM. While an app runs, its AtlView button brings it
+  to the front; another button starts its own app. A package that ran and ended can't start again
+  in this process ([DINE-9](general-todo.md#dine-9)).
+- **App exit:** when an app's last activity finishes, the app ends and the others run on. Dine
+  removes it from the running apps list and dismisses its container if it is in front, leaving the
+  screen below it.
 
 ## Settings
 
@@ -292,8 +294,8 @@ struct atl_gesture_exclusion {
 };
 ```
 
-`loop_main_post` returns `bool`: false before `loop_main_prepare` in every backend (poll stops
-queueing early posts), and false after `loop_main_quit` in poll and cfrunloop. glib has no
+`loop_main_post` returns `bool`: false for an app whose loop doesn't exist yet (a NULL loop, before
+its start) in every backend, and false after `loop_main_quit` in poll and cfrunloop. glib has no
 `loop_main_run`/`loop_main_quit`: the gtk host runs GApplication and the process exits with it.
 `loop_main_post` is the one running-state check; artbridge keeps no guard of its own.
 

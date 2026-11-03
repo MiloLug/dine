@@ -177,7 +177,7 @@ void *VmThread(void *arg) {
 }
 
 bool gAtlExited = false;
-// the ATL main thread's stack, for AtlProbe
+// the first app's ATL main thread's stack, for AtlProbe
 char *gAtlStackLow = nullptr;
 char *gAtlStackTop = nullptr;
 
@@ -231,6 +231,9 @@ void DevAtlThreadStarted() {
 }
 
 void DevAtlVmCreated() { AtlProbe("vm created"); }
+
+// the stack figures stay the first app's thread's
+void DevAtlAppStarted() { AtlProbe("app started"); }
 
 void DevAtlExited() {
   std::lock_guard<std::mutex> lock(gLock);

@@ -36,15 +36,18 @@ bool StartVmThread(void *(*body)(void *), void *arg);
 
 #ifdef DINE_DEV
 void DevVmArgs(const std::string &resource_dir, std::string &boot_class_path, std::vector<std::string> &args);
-// On the ATL main thread: at its start, once the VM exists, and as it ends.
+// On the first app's ATL main thread: at its start, once the VM exists, and as it ends.
 void DevAtlThreadStarted();
 void DevAtlVmCreated();
 void DevAtlExited();
+// On a later app's main thread, at its start.
+void DevAtlAppStarted();
 #else
 inline void DevVmArgs(const std::string &, std::string &, std::vector<std::string> &) {}
 inline void DevAtlThreadStarted() {}
 inline void DevAtlVmCreated() {}
 inline void DevAtlExited() {}
+inline void DevAtlAppStarted() {}
 #endif
 
 }  // namespace dine

@@ -5,8 +5,9 @@ import SwiftUI
 
 private let log = Logger(subsystem: "dev.dine.Dine", category: "art")
 
-/// Runs a bundled APK through ATL in the app container; the app's output goes to the log (category
-/// `art`). ATL creates the process's only VM, so it runs before any art screen run.
+/// Runs a bundled APK through ATL in the app container, a second one beside the first in ATL's VM;
+/// the apps' output goes to the log (category `art`). ATL creates the process's only VM, so it runs
+/// before any art screen run.
 struct AtlView: View {
     @EnvironmentObject private var navigator: Navigator
 
@@ -70,7 +71,7 @@ struct AtlView: View {
             setenv("DINE_TEST_SCENARIO", scenario, 1)
             setenv("DINE_TEST_FIXTURES", (path as NSString).deletingLastPathComponent, 1)
         }
-        navigator.run(title) { window, listener, app in
+        navigator.run(title, apk: path) { window, listener, app in
             dine_atl_run(root, atl, prefix.path, caches.path, path, activity, window, listener, app)
         }
     }

@@ -52,7 +52,7 @@ app's data dir is its record's (`ApplicationInfo.dataDir`).
 
 The `host` slot keeps process entry, VM creation, the classpath, launching an app and the window
 container; its "data dirs" move to fs. What moves, from `findings.md`: `data_dir_base`,
-`atl_set_app`'s dirs and the app's data dir (`struct atl_app`) in `shared/`; `ATLPaths.java`; the path
+`atl_app_prepare`'s dirs and the app's data dir (`struct atl_app`) in `shared/`; `ATLPaths.java`; the path
 methods of `Context` and `Environment`, `getCacheDir`'s `/tmp/atl_cache`; artbridge's
 `ANDROID_APP_DATA_DIR`, `ANDROID_DATA`, `XDG_CACHE_HOME` and `java.io.tmpdir`, and the Caches
 argument from `AtlView`/`ArtView`; `NotificationManager.c`'s icon path; the storage rewrite of

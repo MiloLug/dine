@@ -48,7 +48,7 @@ tools/dine ios icons                     # Icons.xcassets from its sources.txt
 tools/dine linux build [bionic|art|opensles|atl|atl-headless ...]   # default: all, in that order
 tools/dine linux smoke [check...] [--list]
 tools/dine test runtime [fetch|build|run|all] [-f REGEX] [--network] [--update-expectations]
-tools/dine test framework [-f REGEX] [--gtk] [--update-expectations]
+tools/dine test framework [-f REGEX] [--gtk | --one-vm] [--update-expectations]
 tools/dine test apps [-f REGEX] [--gtk] [--update-expectations]       # real APKs to their log markers
 tools/dine test package [-f REGEX] [--update-expectations]            # install, query, removal on headless
 tools/dine test unit                     # harness + tools/py unit tests

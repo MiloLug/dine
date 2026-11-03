@@ -6,16 +6,12 @@ directory, the design `design.md`, later findings the `findings-*.md` files. The
 constraint is in `notes/meta.md`. Outcome (2026-11-02): one VM with an app record per app; a
 second VM from bundled ART copies is rejected ("too complicated").
 
-## Why ATL runs once per launch
+## Why one VM per launch
 
-- `dine_atl_run` refuses in two cases:
-  - ATL already ran: `atl already ran in this process: relaunch Dine`;
-  - any VM exists, for example after the art screen ran: `atl needs a process without a VM:
-    relaunch Dine`.
-- ATL refuses a second start on its own too (`started` in the embedded host's
-  `atl_embedded_vm_options`), and the cfrunloop main loop's quit flag is never cleared.
-- ATL keeps each app's state in its app record (`notes/multi-app-support/design.md` "App
-  record"); what still makes one VM run one app is the table below.
+- The first `dine_atl_run` creates ATL's VM; each later one starts its app in that VM. It refuses
+  while the first run starts (`atl is still starting, or failed to`) and when the art screen made
+  the VM (`atl needs a process without a VM: relaunch Dine`): that VM lacks ATL's class and
+  library paths. A package runs once per VM: a second start of it ends with `exited` -1.
 - ART allows one runtime per process: `Runtime::Create` fails while `Runtime::instance_` is set,
   whichever thread calls it. There is no VM per thread.
 - On Linux each ATL launch is its own process, so the limit never shows. iOS apps can't spawn
@@ -46,9 +42,10 @@ second VM from bundled ART copies is rejected ("too complicated").
 
 ## Several apps in one VM
 
-A second app needs no second VM: apps can share one VM, each in its own class loader and app
-record. This is the model `notes/meta.md` assumes. iOS doesn't block it; ATL's one main loop and
-ART's one runtime per process shape how (multi-app MA2b).
+A second app needs no second VM: apps share one VM, each in its own class loader and app record,
+with its own Android main thread and main loop (multi-app MA2b: the cli and embedded hosts, the
+headless test mode). This is the model `notes/meta.md` assumes; `multi-app-support/design.md` "App
+record" is the design.
 
 Upstream ATL has groundwork:
 - "api-impl: Put applications into their own class loader": `ATLLoadedApp.loadFromPath` gives
@@ -57,18 +54,8 @@ Upstream ATL has groundwork:
   into the running VM, each as its own record; a record that no host started has no Application
   (a package context, a service).
 
-What blocks independent apps side by side:
-
-| Blocker | Where | Needs |
-|---|---|---|
-| One main loop per process | the loop slot's `loop_main_*` | a main thread and loop per app (MA2b) |
-| A second start refused | `started` in the embedded host, `dine_atl_run` | starts per app handle (MA2b) |
-| One app per host run | `atl_embedded_main` runs one app until its last activity finishes; `dine_atl_run` refuses a second call | an artbridge call that loads another app into the running VM |
-| ART opens a native library from one class loader only: `Shared library "<path>" already opened by ClassLoader …; can't open in ClassLoader …` | ART's per-VM library table | two apps can't both load a library of the same name; artbridge's `gLoaders` works around this for its own reruns |
-
-More blockers (the layout inflater cache, preferences, the shared data dir and `Configuration`,
-the Binder stub, guests without `Application.onCreate`, one task stack) are in
-`findings-framework.md`.
+What still limits apps side by side is staged in `todo.md`: one task stack per app (MA6), the
+Binder stub and guests without `Application.onCreate` (MA7).
 
 Risks no ATL change removes:
 - Crash isolation is as `notes/meta.md` describes; `System.exit` in any app also ends Dine and

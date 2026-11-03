@@ -11,44 +11,58 @@ private let log = Logger(subsystem: "dev.dine.Dine", category: "art")
 final class Navigator: ObservableObject {
     @Published var path = NavigationPath()
 
-    private var app: String?  // while ATL runs it
-    private var handle: OpaquePointer?  // ATL's for it (dine_atl_app_new), which nav calls take
-    private var surface: (view: AppSurfaceView, size: CGSize)?  // ATL's window, while ATL runs
+    /// An app ATL runs in Dine's VM.
+    private struct RunningApp {
+        let name: String
+        let apk: String  // its package starts once per VM: a second tap brings it to front
+        let handle: OpaquePointer  // ATL's (dine_atl_app_new), which nav calls take
+        let surface: (view: AppSurfaceView, size: CGSize)  // its window
+        var keepScreenOn = false  // the app asks; it applies while its container shows
+        var exclusion = EdgeExclusion()  // its shown activity's
+        var insetsSent: [Float] = []
+    }
+
+    private var apps: [RunningApp] = []
+    private var current: OpaquePointer?  // the app the container, Back and Home act on
     private var container: AppContainerController?
     private var appsList: AppsListController?
     private var listReturnsToApp = false
-    private var keepScreenOn = false  // the app asks; it applies while its container shows
-    private(set) var exclusion = EdgeExclusion()  // the shown activity's
-    private var insetsSent: [Float] = []
     private var listener = atl_embedded_listener()
+
+    private var currentIndex: Int? { apps.firstIndex { $0.handle == current } }
+    private var app: String? { currentIndex.map { apps[$0].name } }
+    private var handle: OpaquePointer? { currentIndex.map { apps[$0].handle } }
+    private var surface: (view: AppSurfaceView, size: CGSize)? { currentIndex.map { apps[$0].surface } }
+    private var keepScreenOn: Bool { currentIndex.map { apps[$0].keepScreenOn } ?? false }
+    var exclusion: EdgeExclusion { currentIndex.map { apps[$0].exclusion } ?? EdgeExclusion() }
     private var launcherEdges: EdgeGestureRecognizer?
 
     init() {
         // the navigator lives as long as the app (DineMain's state object)
         listener.context = Unmanaged.passUnretained(self).toOpaque()
-        listener.task_moved = { context, _, front, byHost in
+        listener.task_moved = { context, app, front, byHost in
             let navigator = Unmanaged<Navigator>.fromOpaque(context!).takeUnretainedValue()
-            DispatchQueue.main.async { MainActor.assumeIsolated { navigator.taskMoved(front: front, byHost: byHost) } }
+            DispatchQueue.main.async { MainActor.assumeIsolated { navigator.taskMoved(app, front: front, byHost: byHost) } }
         }
-        listener.exited = { context, _, _ in
+        listener.exited = { context, app, _ in
             let navigator = Unmanaged<Navigator>.fromOpaque(context!).takeUnretainedValue()
-            DispatchQueue.main.async { MainActor.assumeIsolated { navigator.exited() } }
+            DispatchQueue.main.async { MainActor.assumeIsolated { navigator.exited(app) } }
         }
-        listener.exclusion_changed = { context, _, exclusion in
+        listener.exclusion_changed = { context, app, exclusion in
             let navigator = Unmanaged<Navigator>.fromOpaque(context!).takeUnretainedValue()
             let spans = EdgeExclusion(exclusion!.pointee)
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
-                    navigator.exclusion = spans
+                    navigator.update(app) { $0.exclusion = spans }
                     log.notice("nav: exclusion left \(spans.left.count) right \(spans.right.count)")
                 }
             }
         }
-        listener.keep_screen_on = { context, _, on in
+        listener.keep_screen_on = { context, app, on in
             let navigator = Unmanaged<Navigator>.fromOpaque(context!).takeUnretainedValue()
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
-                    navigator.keepScreenOn = on
+                    navigator.update(app) { $0.keepScreenOn = on }
                     navigator.updateIdleTimer()
                 }
             }
@@ -56,8 +70,14 @@ final class Navigator: ObservableObject {
     }
 
     /// `start` runs ATL with the app's window and the listener; on success the app's container
-    /// comes up.
-    func run(_ app: String, start: (UnsafePointer<dine_atl_window>, UnsafePointer<atl_embedded_listener>, OpaquePointer) -> Int32) {
+    /// comes up. An `apk` that runs already comes to the front instead.
+    func run(_ app: String, apk: String, start: (UnsafePointer<dine_atl_window>, UnsafePointer<atl_embedded_listener>, OpaquePointer) -> Int32) {
+        if let running = apps.first(where: { $0.apk == apk }) {
+            current = running.handle
+            log.notice("nav: \(app, privacy: .public) runs already: front")
+            front()
+            return
+        }
         guard let keyWindow = rootController?.view.window else {
             return log.error("atl: no key window to size the app's window from")
         }
@@ -73,22 +93,23 @@ final class Navigator: ObservableObject {
         default: 0
         }
         let handle = dine_atl_app_new()!
-        self.handle = handle
-        insetsSent = []
-        sendInsets(safeArea: keyWindow.safeAreaInsets)
         let window = dine_atl_window(view: Unmanaged.passUnretained(view).toOpaque(),
                                      width: Int32((size.width * scale).rounded(.down)),
                                      height: Int32((size.height * scale).rounded(.down)),
                                      density_dpi: Int32((160 * scale).rounded()), night: night)
+        let previous = current
+        apps.append(RunningApp(name: app, apk: apk, handle: handle,
+                               surface: (view, CGSize(width: CGFloat(window.width) / scale, height: CGFloat(window.height) / scale))))
+        current = handle
+        sendInsets(safeArea: keyWindow.safeAreaInsets)
         let started = withUnsafePointer(to: window) { window in
             withUnsafePointer(to: listener) { start(window, $0, handle) }
         }
         guard started == 0 else {
-            self.handle = nil
+            apps.removeAll { $0.handle == handle }
+            current = previous
             return
         }
-        self.app = app
-        surface = (view, CGSize(width: CGFloat(window.width) / scale, height: CGFloat(window.height) / scale))
         showContainer()
     }
 
@@ -223,18 +244,22 @@ final class Navigator: ObservableObject {
         log.notice("nav: launcher root")
     }
 
-    private func taskMoved(front: Bool, byHost: Bool) {
+    private func update(_ app: OpaquePointer?, _ change: (inout RunningApp) -> Void) {
+        guard let i = apps.firstIndex(where: { $0.handle == app }) else { return }
+        change(&apps[i])
+    }
+
+    private func taskMoved(_ app: OpaquePointer?, front: Bool, byHost: Bool) {
         // Dine's own moves updated the UI already: a late echo must not undo what the user did since
-        guard !byHost, !front else { return }
+        guard app == current, !byHost, !front else { return }
         dismissContainer("back")
         popToRoot()
     }
 
-    private func exited() {
-        app = nil
-        handle = nil
-        surface = nil
-        keepScreenOn = false
+    private func exited(_ app: OpaquePointer?) {
+        apps.removeAll { $0.handle == app }
+        guard app == current else { return }
+        current = nil
         dismissContainer("exit")
     }
 
@@ -244,7 +269,8 @@ final class Navigator: ObservableObject {
 
     /// notes/nav-gestures.md, pt as dp; the window starts below the status bar: nothing at its top
     func sendInsets(safeArea: UIEdgeInsets) {
-        guard let handle else { return }
+        guard let index = currentIndex else { return }
+        let handle = apps[index].handle
         let settings = NavigationSettings.current
         func strip(_ edge: String, _ width: CGFloat) -> Float {
             let bound = ["inward", "down"].contains { (settings.bindings["\(edge).\($0)"] ?? .none) != .none }
@@ -252,8 +278,8 @@ final class Navigator: ObservableObject {
         }
         let left = strip("left", settings.stripWidth.left), right = strip("right", settings.stripWidth.right)
         let bottom = Float(safeArea.bottom)
-        guard insetsSent != [left, right, bottom] else { return }
-        insetsSent = [left, right, bottom]
+        guard apps[index].insetsSent != [left, right, bottom] else { return }
+        apps[index].insetsSent = [left, right, bottom]
         var insets = atl_window_insets()
         insets.system_gestures = atl_edges(left: left, top: 0, right: right, bottom: bottom)
         insets.mandatory_gestures = atl_edges(left: 0, top: 0, right: 0, bottom: bottom)

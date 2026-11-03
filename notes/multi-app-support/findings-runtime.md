@@ -63,25 +63,27 @@ phone. The one-runtime rule and the second-VM options are in
 - New threads take their creator's group (`Thread.java:405`). Native threads attached through JNI
   go to the main group unless `JavaVMAttachArgs.group` is set (`art/runtime/thread.cc:1136,1209`,
   `java_vm_ext.cc:464`). C
-- One FinalizerDaemon runs every app's finalizers (`libcore/libart/src/main/java/java/lang/
-  Daemons.java:195`). Its watchdog sends SIGQUIT and then exits the process with status 2 when a
-  `finalize()` runs longer than 10 s (`:40,398-419`). C. A frozen app's finalizer blocked on a lock
-  of one of its suspended threads would trip it: U.
+- Each app's finalizers and `Cleaner`s run on its own cleanup thread (`CleanupDomain`); ART's
+  FinalizerDaemon (`libcore/libart/src/main/java/java/lang/Daemons.java:195`) runs those of objects
+  of no app. Its watchdog sends SIGQUIT and then exits the process with status 2 when a
+  `finalize()` on FinalizerDaemon runs longer than 10 s (`:40,398-419`); it doesn't watch the
+  cleanup threads. C
 
 ## Native libraries per class loader
 
-- The library table is keyed by path. A load from a second class loader fails with `Shared
-  library "<path>" already opened by ClassLoader ...` (`java_vm_ext.cc:900-981`). On iOS the path
-  is the bare `libfoo.so`, so two apps clash on the name alone. C
+- The library table is keyed by (path, class loader): each loader that loads a path gets its own
+  entry (`java_vm_ext.cc:302`), and `JNI_OnLoad_<lib>` runs again for it over the one copy of the
+  library's C statics. C (`dine-0007-native-libs`); the effect per library U.
 - On Apple the handle is `dlopen(NULL)`, the main image, and `JNI_OnLoad_<lib>` must exist
-  (`java_vm_ext.cc:1014-1021`). Native method lookup searches the libraries of the declaring
-  loader (`:316-330`); since every handle is the main image, once a loader has loaded any library
-  `dlsym` finds every `Java_*` symbol linked into Dine for that loader's classes. C (code reading)
-- With a per-loader key, `JNI_OnLoad_<lib>` would run again over the one copy of the library's C
-  statics. C; effect per library U.
+  (`java_vm_ext.cc:1008`). Native method lookup searches the libraries of the declaring loader
+  (`:344`); since every handle is the main image, `dlsym` would find every `Java_*` symbol linked
+  into Dine. A library resolves only the names of a list registered with
+  `art_register_jni_symbols` (`:104`), none without one on Apple; artbridge registers each
+  force-loaded archive's `Java_*` names, which `tools/libexec/jni-symbols.sh` lists at build time:
+  openjdk 132, wolfssljni 243, translation_layer_main 343 (the dev build). C
 - After a GC, `UnloadNativeLibraries` drops the entries of collected loaders and calls
-  `JNI_OnUnload_<lib>` (`java_vm_ext.cc:342-375`). There is no `dlclose` (`:100-105`), and boot
-  libraries are never unloaded (`:354-356`). C
+  `JNI_OnUnload_<lib>` (`java_vm_ext.cc:378`). There is no `dlclose` (`:993`), and boot
+  libraries are never unloaded (`:271`). C
 - artbridge's `gLoaders` (`native/artbridge/dev.cpp:124-139`) is dev-only, on the art screen's
   path, and holds its loaders for the VM's lifetime. C
 
@@ -210,6 +212,15 @@ phone. The one-runtime rule and the second-VM options are in
   shared mutator lock with no thread suspended, took 3 to 5 ms over a 47 MB heap. M
 - Java thread stacks: 1 MB plus a 16 KiB guard by default (`thread.cc:726-763`); artbridge's own
   threads are 8 MiB (`artbridge.cpp:98,147`). Only touched pages are resident. C
+- An app's cost in one VM, headless on Linux (x86_64, WSL2, `-Xint`; the widgets, nav and dialog
+  test APKs idle on their main activity, measured 10 s after the last `onResume`): one app 60.4 MB
+  RSS, 1679 MB VmSize, 11 threads; its 8 MiB main-thread stack had 44 kB resident (`smaps`). Each
+  further app added 11.7 to 11.8 MB RSS, 152 to 218 MB VmSize and one thread (two apps 72.2 MB,
+  three 83.9 MB). An idle app's cleanup thread doesn't exist until it has something to clean. M
+- On the phone (dev build, `atl probe` lines): `phys_footprint` 20 MiB before the VM, 39 MiB once
+  the VM exists with the first app starting (demo_app), 48 to 50 MiB as a second app starts
+  beside it (views, widgets). An idle app's own footprint after it settles: U (no probe then). M
+  (phone)
 - Trim hooks are push-only: `Heap::Trim`, `VMRuntime.trimHeap`, `requestConcurrentGC`,
   `clampGrowthLimit`, `-XX:LowMemoryMode` (`dalvik_system_VMRuntime.cc:729-760`,
   `runtime_options.def:73`). ART gets no OS memory-pressure signal. C

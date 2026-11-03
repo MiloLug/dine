@@ -23,7 +23,11 @@ touches. Commands and setup live in `tools/dine <group> --help`, `README.md` and
 - gtk build (after `source env.sh`):
   `DINE_PREFIX=$PWD/out/linux/appdata android-translation-layer <apk> -l <pkg/path/Activity> -X -Xint`.
 - The headless build isn't installed: run it from `out/linux/build/dine-atl-headless` with
-  `RUN_FROM_BUILDDIR=1`.
+  `RUN_FROM_BUILDDIR=1`. It runs several apps in one VM, each on its own main thread: each
+  `-l <Activity>` or `--instrument <Class>` starts the next app, whose APKs follow it
+  (`-l a/Main a.apk -l b/Main b.apk`; APKs before the first one belong to the first app); the
+  process exits after the last app ends. Groupless JNI
+  attaches have no app then, and `-c` (commands on stdin) takes one app only.
 - Test hooks (meson `test_hooks`, default on; off in the iOS release build):
   `ATL_DUMP_VIEWTREE=1` prints the view tree on stdout at first layout;
   `ATL_DUMP_DISPLAYLIST=1` prints a drawing view's display list after each of its draws (records
