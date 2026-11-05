@@ -24,9 +24,9 @@ listener (`task_moved`, `exited`), artbridge, `AppContainerController`, the edge
 the default bindings, the launcher's `NavigationStack(path:)`, the placeholder list, the
 accessibility actions, agent `ui action`, smoke `atl-nav` (steps 2-4 and 7-9, step 8 taps
 "back to app"), `atl-demo` ending with Home and `atl-looper` waiting for the exit dismissal.
-Dialogs follow the task: `task_move` calls `Dialog.atlTaskMoved` before the lifecycle, which closes
-shown dialogs on back and shows them again on front; a dialog shown in the back waits for the front,
-and backend results count only while it is drawn. The nav APK's A shows a list on its third
+Dialogs follow the task: the app's window registry shows a dialog only while its task is in front
+and its activity is shown, so it hides on back and shows again on front; one shown in the back
+waits for the front, and backend results count only while it is drawn. The nav APK's A shows a list on its third
 `onStop`; `run-nav.sh` and smoke `atl-nav` check it across front, Home and front.
 
 **Insets and exclusion: built 2026-10-21** ([Insets and exclusion](#insets-and-exclusion), as

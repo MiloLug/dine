@@ -188,7 +188,7 @@ CHECKS = [
     Check("text", "headless: widgets.apk's text fields take cli -c text lines through filters, watchers, a composition, a held report, focus moves and Back", _text),
     Check("draw", "headless: widgets.apk's Canvas view redraws on invalidate, not on a same-size layout; display lists (clips, a PNG bitmap, a scrolled background, text, paths, arcs, gradients, a layer, nine-patches) match the golden", _draw),
     Check("draw-gtk", "gtk: the same view draws through gsk", _draw_gtk),
-    Check("windows", "headless: windows.apk's window brightness reaches the host while it shows, then the screen's own", _windows),
+    Check("windows", "headless: windows.apk's window brightness reaches the host while it shows, the screen's own after Home and the last finish", _windows),
 ]
 
 

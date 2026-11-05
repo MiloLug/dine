@@ -1148,20 +1148,17 @@ As built:
   XmlPullParserException without one).
 - Color filters and tints on bitmaps: BitmapDrawable and NinePatchDrawable keep a color filter, a
   tint list and a tint mode on their native drawable (a filter wins over the tint, as AOSP's draws;
-  PorterDuff filters only). ImageView keeps its color filter (`setColorFilter(int)` is SRC_ATOP) and
-  image tint and puts them on its drawable as AOSP's `applyColorMod` and `applyImageTint`.
-  coregraphics draws a filtered bitmap in a transparency layer with the mode's blend; MULTIPLY
-  modulates, exact except at partial alpha. gsk draws a bitmap drawable through a paintable that
-  keeps its filter, a color matrix for CLEAR, SRC, DST, SRC_IN, DST_IN, SRC_OUT, DST_OUT, SRC_ATOP
-  and MULTIPLY. `linux smoke draw` has a filtered BitmapDrawable and a tinted ImageView; the phone
+  a blend mode and color, or a color matrix). ImageView keeps its color filter (`setColorFilter(int)`
+  is SRC_ATOP) and image tint and puts them on its drawable as AOSP's `applyColorMod` and
+  `applyImageTint`. Every backend applies a filter in Skia's order and formulas (`notes/decisions.md`,
+  blend modes). `linux smoke draw` has a filtered BitmapDrawable and a tinted ImageView; the phone
   shows both tinted.
 - gtk frees a view's padding, background and text color CSS providers when it replaces them (no
   check counts them).
 - Open: the callbacks that print an exception and go on stay so (measure, draw, input, click,
   dialog result; the layout upcall exits): multi-app's per-app handler takes them up, and uikit's
   input prints where gtk's signal callbacks exit. Region's `setPath` rasterizes every row of the
-  path's bounds when no clip limits them. gsk draws the PorterDuff modes a color matrix can't
-  express as SRC_IN ([ATL-33](bug-tracker.md#atl-33)).
+  path's bounds when no clip limits them.
 
 ### M6b: breadth
 
@@ -1226,7 +1223,8 @@ gtk's min-lines height after the theme change, and the activity lifecycle callba
 
 As built:
 - ActionBar: AOSP 10's abstract API; `getActionBar()` is a per-activity `ATLActionBar` that
-  keeps its values and draws nothing ([ATL-42](general-todo.md#atl-42)).
+  keeps its values and draws nothing ([ATL-42](general-todo.md#atl-42)), null when the theme's
+  window features have no action bar (`windowNoTitle`, `windowActionBar`, as PhoneWindow).
 - Level: `ro.build.version.sdk` 29 in `SystemProperties.java`; bionic still says 21
   ([ATL-44](bug-tracker.md#atl-44)). `requestPermissions` answers through
   `onRequestPermissionsResult` from `checkSelfPermission`; `Context.getColor` and
@@ -1235,12 +1233,17 @@ As built:
 - Lifecycle callbacks: native lifecycle calls go through `Activity.atlPerform*`, which call the
   application's and the activity's API 29 pre and post callbacks around the app's method; the base
   `on*` methods call the plain ones (androidx's lifecycle needs both).
-- Bitmaps: a `gfx_bitmap` changes in place on every backend (gsk a holder of the texture, record
-  premultiplied pixels drawn by cairo, coregraphics a CGImage; gsk's and coregraphics' swap under a
-  lock that guards only the pointer, and readers take their own ref). A Picture records into a
-  bitmap that `drawPicture` and PictureDrawable play back. Canvas(Bitmap) records and `getTexture` renders the list over the pixels; every Bitmap
-  native is shared. Headless bitmaps draw no text ([ATL-46](bug-tracker.md#atl-46)); a
-  Canvas(Bitmap) draws no views or Layout text ([ATL-47](bug-tracker.md#atl-47)).
+- Text after the M6b review: `TextView.setText` keeps AOSP's buffer types and ChangeWatcher, `Html`
+  is AOSP 10's over TagSoup, and `View.layout` takes `setFrame`'s rule (any changed coordinate).
+- Blend modes are SkBlendMode's on every draw, layer, ComposeShader and color filter
+  (`notes/decisions.md`); phone views approximate four of them ([ATL-52](bug-tracker.md#atl-52)).
+- Bitmaps: a `gfx_bitmap` is shared premultiplied words on
+  every backend (`src/shared/bitmap.c`), stored per config as Android 10 does; display images are
+  copies per change. A Canvas(Bitmap) draws into the words at once through its own context: record
+  and gsk with cairo, CoreGraphics a CGBitmapContext with per-pixel blends where CG has none. A
+  Picture records the Canvas calls and replays them. Headless bitmaps draw no text
+  ([ATL-46](bug-tracker.md#atl-46)); a Canvas(Bitmap) draws no views or Layout text
+  ([ATL-47](bug-tracker.md#atl-47)).
 - Shaders and drawables: BitmapShader and ComposeShader on record, gsk and coregraphics (their
   approximations: [ATL-48](bug-tracker.md#atl-48)); AOSP's AdaptiveIconDrawable draw; Scale,
   Inset, Clip, Rotate, AnimatedRotate, AnimatedStateList and Transition drawables from XML; color
@@ -1249,7 +1252,7 @@ As built:
   invalidate without a layout; uikit pushes frames moved outside a layout pass. Records cache text
   measures (512 slots under a mutex, keyed on every input and the text runs; the frame stats line counts
   the cached ones).
-- Styled text: AOSP 10's `Html` over `ATLHtmlReader`; TextView sends its CharacterStyles as runs
+- Styled text: AOSP 10's `Html` with its TagSoup parser; TextView sends its CharacterStyles as runs
   (`ui_text_set_styled`), drawn as Pango attributes on gtk and attributed strings on uikit;
   headless prints `textruns:`. allCaps keeps the runs when the length stays. Links take no taps
   ([ATL-49](general-todo.md#atl-49)); string resources stay plain ([ATL-50](general-todo.md#atl-50)).
@@ -1264,12 +1267,12 @@ As built:
 
 #### M6b2: windows
 
-- Window attributes and screen brightness on every build: `Window.setAttributes`, `setLayout`,
-  `setGravity` and `setDimAmount` through the ui slot; brightness (`LayoutParams.screenBrightness`)
-  as window state of the shown activity, sent through the host slot as keep-screen-on is. The gtk
-  host sets the desktop's through GNOME's power settings over D-Bus, else `/sys/class/backlight`;
-  Dine ignores it ([DINE-11](general-todo.md#dine-11)): iOS 27 gives no way back to the user's
-  level.
+- Window attributes and screen brightness on every build: `Window.setAttributes`, `setLayout` and
+  `setGravity` through the ui slot (with the dim amount); brightness
+  (`LayoutParams.screenBrightness`) as window state of the shown activity, sent through the host
+  slot as keep-screen-on is. The gtk host sets the desktop's through GNOME's power settings over
+  D-Bus, else `/sys/class/backlight`; on iOS it's a no-op ([DINE-11](general-todo.md#dine-11)): no
+  public API withdraws an app's request, so the user's level wouldn't come back.
 - A second layout root over the container on records, for Dialogs with a content view (they show
   nothing on headless and uikit): laid out, drawn and touched over the activity in the app
   window's pass. Showing it on uikit is [M6b3](#m6b3-windows-continued)'s.
@@ -1281,7 +1284,7 @@ passes; both builds build.
 
 **Status: done (2026-11-03).** Built: AOSP 10's `WindowManager.LayoutParams` (constants, fields,
 constructors), `ui_window_set_layout`, `host_screen_brightness` on every host (the gtk host saves
-and restores the desktop's level; Dine logs and ignores it, DINE-11); records lay out a shown
+and restores the desktop's level; the embedded host's is a no-op, DINE-11); records lay out a shown
 Dialog's content view over the activity (Gravity.apply, a floating window's least width, the
 window's frame to Java, touch routing with outside touches to a touch-modal dialog, the dump's
 `window dialog` line), the cli's `dump` and `tap <text>`, AOSP's dialog and alert dialog themes,
@@ -1294,6 +1297,13 @@ places and sizes a dialog's window itself), the apps and package suites, `linux 
 are window-local while `getLocationOnScreen` adds the window's origin (`struct atl_pointer` has no
 raw coordinates).
 
+After the M6b review, dialogs are windows in each app's registry (`notes/decisions.md`): AOSP's
+token rule (BadTokenException, WindowLeaked at the activity's destroy), shown with their activity
+and task; gtk draws them inside the app's window, so `DialogTest`'s centering and least-width cases
+pass there. Checks after the review fixes: framework headless, gtk and one VM 312 of 313 (1
+expected), apps 4/5 (1 expected) and 5/5 on gtk, package 48/48, `linux smoke` 18, `test unit`; on
+the iPhone 13 `dbg smoke` 16 with `widgets pixels ok`, `widgets blend ok`, `widgets layers ok`.
+
 #### M6b3: windows, continued
 
 - Showing a Dialog's content view on uikit: an overlay container over the app surface, the dim,
@@ -1302,8 +1312,8 @@ raw coordinates).
   backend (UIKit, GTK, fixed metrics on headless).
 - Dialog windows get what the shown activity's window has: keep-screen-on and fullscreen,
   ViewTreeObserver observations, insets for Dialog and WindowManager roots, exclusion rects.
-- PopupWindow, `WindowManager.addView`, ListPopupWindow, AutoCompleteTextView's drop-down;
-  PopupMenu (a native menu), Toast.
+- PopupWindow, `WindowManager.addView` (as entries of the window registry), ListPopupWindow,
+  AutoCompleteTextView's drop-down; PopupMenu (a native menu), Toast.
 - Configuration changes: no resize or trait-change relayout (portrait only).
 - The UIKit pieces the uikit backend adds around Android's views match the iPhone's own in light
   and dark: the Done bar above the number and phone pads (M4c) looks off next to the keyboard

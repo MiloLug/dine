@@ -401,13 +401,6 @@ last unref in `hold()` can run on an app thread.
 - State: unchecked: read from the code, not seen failing.
 - Where: `dine-atl/src/backends/ui/records/ui.c` (`schedule_draw`, `schedule_layout`, `hold`).
 
-### ATL-33
-
-**gsk draws some PorterDuff color filters as SRC_IN.** A paint's or bitmap drawable's color filter
-is a color matrix over unpremultiplied colors, which can't express SRC_OVER, DST_OVER, DST_ATOP,
-XOR, DARKEN, LIGHTEN, SCREEN, ADD and OVERLAY.
-- Where: `dine-atl/src/backends/gfx/gsk/paint.c` `gfx_paint_set_color_filter`.
-
 ### ATL-34
 
 **Intent filters keep only the data scheme.** `PackageParser` reads only `android:scheme` of a
@@ -488,14 +481,17 @@ Code that takes it as "am I on the main thread" then touches UI state from that 
 **An app with no theme that targets API 24 or more gets `Theme_DeviceDefault` (dark), not AOSP
 10's `Theme_DeviceDefault_Light_DarkActionBar`.** `Resources.selectDefaultTheme` has the pre-N
 steps only.
-- State: open; ATL's own test APKs set no theme, so the fix changes how they look.
+- State: open; ATL's own test APKs set no theme, so the fix changes how they look. Seen
+  2026-11-05: the widgets draw app (targetSdk 27) shows a `#1A1B20` background on the phone and a
+  light one on Android (in dark mode too), so its translucent `saveLayerAlpha` square looks dark on
+  the phone; its pixels match a 50% layer over `#1A1B20` exactly.
 - Where: `dine-atl/src/api-impl/android/content/res/Resources.java` `selectSystemTheme`.
 
 ### ATL-46
 
 **On headless a Canvas(Bitmap) draws no text, a sweep gradient as 72 wedges and a hairline 1 unit
 wide.** The record backend measures text with fixed metrics and has no font; cairo
-(`dine-atl/src/backends/gfx/record/raster.c`) has no conic gradient or device-space hairline.
+(`dine-atl/src/backends/gfx/record/painter.c`) has no conic gradient or device-space hairline.
 - State: open; only bitmap pixels on headless (the display list keeps the text op).
 
 ### ATL-47
@@ -512,13 +508,89 @@ view's Java drawing only.
 
 ### ATL-48
 
-**BitmapShader and ComposeShader are approximate on gsk and CoreGraphics.** CLAMP draws the bitmap
-once without extending its edges; MIRROR repeats; on gsk a ComposeShader's modes other than
-SRC_IN, DST_IN and the separable blends (DARKEN, LIGHTEN, MULTIPLY, SCREEN, OVERLAY) draw as
-SRC_OVER, on cairo (headless) a bitmap shader tiles both axes as x.
+**BitmapShader is approximate on gsk and CoreGraphics.** CLAMP draws the bitmap once without
+extending its edges; MIRROR repeats; on cairo (headless) a bitmap shader tiles both axes as x.
 - State: open; `graphics/BitmapShaderTest` checks what is exact (CLAMP inside the bitmap, REPEAT,
   SRC_IN).
-- Where: `dine-atl/src/backends/gfx/{gsk/canvas.c,coregraphics/draw.c,record/raster.c}`.
+- Where: `dine-atl/src/backends/gfx/{gsk/canvas.c,coregraphics/draw.c,record/painter.c}`.
+
+### ATL-52
+
+**On the phone a view draws MODULATE as multiply, and COLOR_DODGE, COLOR_BURN and SOFT_LIGHT with
+CoreGraphics' own formulas (paint, layer and ComposeShader).** CoreAnimation replays a view's list
+into a context whose pixels can't be read, and CoreGraphics has no blend mode for these; it differs
+from Skia by up to 46 of 255 per channel. Bitmaps are exact on every backend (the painter blends
+these per pixel), and gsk is exact everywhere through GSK's arithmetic node.
+- State: open by choice (2026-11-05, the user: "Leave iOS views approximate"; drawing such a view
+  into an image on the Android thread was the exact option).
+- Where: `dine-atl/src/backends/gfx/coregraphics/draw.c` (`cg_blend_exact`, `cg_draw`,
+  `cg_begin_layer`, `draw_compose`), replayed by uikit's `ATLDrawLayer`.
+
+### ATL-53
+
+**A Canvas(Bitmap) on headless and gtk clips DIFFERENCE with a path as even-odd against a large box,
+so a path that crosses itself keeps its overlaps.** cairo has no inverted clip;
+`cpainter_clip_path` adds the box and the path with the even-odd rule. gsk views clip exactly (an
+inverted mask).
+- State: open; found in the phase 4 plan review, 2026-11-05.
+- Where: `dine-atl/src/backends/gfx/cairo/painter.c` `clip`.
+
+### ATL-54
+
+**`new Canvas(bitmap)` takes an immutable bitmap; AOSP 10 throws `IllegalStateException`
+("Immutable bitmap passed to Canvas constructor").** `Canvas.setBitmap` already throws.
+- State: open; checked against AOSP 10's `Canvas.java`, 2026-11-05. Throwing breaks apps that rely
+  on ATL's leniency.
+- Where: `dine-atl/src/api-impl/android/graphics/Canvas.java` `Canvas(Bitmap)`.
+
+### ATL-55
+
+**`Bitmap.createBitmap(src, x, y, width, height, matrix, filter)` keeps `width x height` and the
+source's config.** AOSP 10 sizes the result to the matrix's mapped rect, translates by its corner,
+and picks ARGB_8888 (or the source's config) by its own rules.
+- State: open; checked against AOSP 10's `Bitmap.java` (`deviceR`, `newConfig`), 2026-11-05.
+- Where: `dine-atl/src/api-impl/android/graphics/Bitmap.java`.
+
+### ATL-56
+
+**`BitmapFactory` with `inBitmap` gives the target bitmap new native pixels (`transferFrom`), so a
+Canvas made over it beforehand keeps drawing into the old ones.** AOSP decodes into the same
+memory.
+- State: open, unchecked against an app.
+- Where: `dine-atl/src/api-impl/android/graphics/Bitmap.java` `transferFrom`.
+
+### ATL-57
+
+**gtk may keep showing a bitmap's old pixels in a GtkPicture (ImageView, a background) after a
+Canvas draws into the bitmap.** Its texture is made per change (`gsk_bitmap_texture`), but nothing
+invalidates the paintable when the pixels change; only the view's own redraw makes a new one.
+- State: unchecked; suspected while reviewing phase 4, 2026-11-05.
+- Where: `dine-atl/src/backends/gfx/gsk/bitmap.c` (`BitmapPaintable`).
+
+### ATL-58
+
+**On the phone a Canvas(Bitmap) lays text out at scale 1: the text size in px as points, where
+`measureText` and views use px per point.** Widths in bitmaps may differ from `measureText`.
+- State: open, unchecked on the device; found 2026-11-05 (the user: "Log it as a new ATL entry").
+- Where: `dine-atl/src/backends/gfx/coregraphics/painter.c` (`cg_draw(..., 1, ...)`) and
+  `text.c` `cg_text_line`.
+
+### ATL-59
+
+**`Canvas.setMatrix` can't leave a singular matrix, and `setMatrix(null)` throws
+NullPointerException; Android 10 sets the matrix (null: identity).** ATL concats the inverse of the
+current matrix, then the new one; the gfx slot has no call that sets a matrix. After `scale(0, 0)`
+nothing draws until the `restore`.
+- State: open; found in the phase 4 review, 2026-11-05. A clip under a singular matrix follows
+  Skia's rule (DIFFERENCE keeps the clip) on bitmap canvases, unobservable until this is fixed.
+- Where: `dine-atl/src/api-impl/android/graphics/Canvas.java` `setMatrix`, `src/slots/gfx.h`.
+
+### ATL-60
+
+**`Bitmap.compress` throws the stream's IOException; Android 10 returns false.** AOSP's stream
+adaptor clears the exception and fails the encode.
+- State: open; found in the phase 4 review, 2026-11-05.
+- Where: `dine-atl/src/api-impl/android/graphics/Bitmap.java` `compress`.
 
 ## DINE
 
@@ -605,3 +677,7 @@ one.**
 ### ATL-4
 
 **framework-res said 3-button navigation.** 2026-11-03, M6b1, dine-atl cff73b6f.
+
+### ATL-33
+
+**gsk drew some PorterDuff color filters as SRC_IN.** 2026-11-04, M6b review, dine-atl 73077776.

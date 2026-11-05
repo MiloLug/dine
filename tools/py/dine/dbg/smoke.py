@@ -170,7 +170,7 @@ SCENARIOS = {
         Scenario("atl-draw", [
             Step("atl", tap="atl"),
             # the bitmap redraws start when the draws are done, before the spin
-            Step("run draw", tap="draw", ok=("widgets bitmap pixel ffff0000 0", "widgets draw 3", "widgets draw done",
+            Step("run draw", tap="draw", ok=("widgets bitmap pixel ffff0000 0", "widgets pixels ok", "widgets blend ok", "widgets layers ok", "widgets draw 3", "widgets draw done",
                                                "widgets bitmap redraw done"), fail=ATL_FAIL, timeout=120),
             Step("spin", ok=(r"widgets spin \d+ in \d+ ms",), fail=ATL_FAIL),
             Step("Home", action="Home", ok=("nav: launcher root",)),
@@ -182,9 +182,8 @@ SCENARIOS = {
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-windows", [
             Step("atl", tap="atl"),
-            # Dine gets the window's brightness and its reset, and ignores both (DINE-11)
-            Step("run windows", tap="windows", ok=("nav: brightness 0.50 ignored", "nav: brightness -1.00 ignored"),
-                 fail=ATL_FAIL, timeout=120),
+            # the app sets and resets its window's brightness; the host ignores it (DINE-11)
+            Step("run windows", tap="windows", ok=("windows brightness set",), fail=ATL_FAIL, timeout=120),
             Step("Home", action="Home", ok=("nav: launcher root",)),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-gd", [

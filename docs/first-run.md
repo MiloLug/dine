@@ -89,6 +89,8 @@ paru -S --needed swift-bin ipsw-bin wolfssl-jni bsd-compat-headers android-sdk-b
 - `sway` and `grim` give the gtk build a hidden display: `linux smoke`, `test framework --gtk` and
   `dbg start-server --target gtk` run ATL in a headless sway, and `grim` takes the debug server's
   screenshots there.
+- The desktop ATL build needs gtk4 4.22 or later (its blend modes use GSK's composite, copy and paste
+  nodes); Arch ships it.
 - `cairo` draws the headless ATL build's bitmaps (`Canvas(Bitmap)` pixels); the desktop build has
   it through gtk4 already.
 - The desktop ATL build links pacman's `graphene`; the headless and iOS builds clone graphene

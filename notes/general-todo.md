@@ -218,20 +218,6 @@ again. It should be disabled with a footer that says why. M8a builds the same st
   stripped; those would be Apache 2.0 and shrink a rewrite;
 - uploading without a Mac, and the Xcode license (`notes/meta.md`).
 
-### DINE-11
-
-**An app's screen brightness on iOS.** Dine ignores `LayoutParams.screenBrightness` (the user,
-2026-11-03: "it seems like we won't be able to really fix brightness - it has too many things
-going into that. I think let's just make it noop and document for now"); ATL still sends it to
-Dine's `listener.screen_brightness`, which only logs `nav: brightness <value> ignored`. Found on
-the iPhone 13, iOS 27.0.1: the screen follows `UIScreen.brightness` requests, but the getter reads
-back the app scene's own request (0.0 before any), from SpringBoard's echo of the scene setting,
-so the user's level can't be saved; the setter writes the scene client settings
-`preferredScreenBrightness` and `brightnessLevel`, and no public call withdraws them. Giving the
-screen back needs UIKit's private withdrawal of that request; candidates and the probe's
-findings: `~/.claude/plans/dine-brightness-restore.md`. Android applies a window's brightness only
-while it shows.
-
 ## TOOL
 
 ### TOOL-4
@@ -273,3 +259,8 @@ failures. Reasons per test: `dine-art/tests/runtime/expectations/linux-x86_64.js
 ### ATL-23
 
 **BitmapShader and ComposeShader didn't shade.** 2026-11-03, M6b1, dine-atl cff73b6f.
+
+### DINE-11
+
+**An app's screen brightness on iOS.** 2026-11-04, a no-op: no public API withdraws an app's
+request (findings: `~/.claude/plans/dine-brightness-restore.md`); dine-atl 73077776.

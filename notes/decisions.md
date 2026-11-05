@@ -7,6 +7,23 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - Our delta: `git diff upstream/master...dine`. Local `master` lags upstream.
 - Upstream isn't merged: read its commits since the last merge and reimplement the wanted ones
   by hand.
+- Bitmaps are ours: `struct gfx_bitmap` (`src/shared/bitmap.c`) holds premultiplied ARGB words
+  that never move, stored per config as Android 10's Skia does (lowp rounding; ARGB_4444 made as
+  ARGB_8888 except by `copy`). A Canvas(Bitmap) draws into them at once through its own context
+  (`gfx_canvas_new_bitmap`): record and gsk with cairo (`src/backends/gfx/cairo/`, gsk's content as
+  GSK nodes), CoreGraphics a CGBitmapContext with its own layers and per-pixel blends. Display
+  images are copies per change; nothing locks the pixels, as on Android. Row bytes are Skia's (width
+  x bytes per pixel), `Config.nativeInt` AOSP's; every Bitmap native is shared. Picture records
+  Canvas calls in Java. Upstream's GdkTexture bitmaps and `getTexture()` are gone: port Bitmap fixes
+  onto the shared words.
+- Blend modes are SkBlendMode's numbers everywhere (`enum gfx_blend`; `PorterDuff.Mode.nativeInt` as
+  AOSP's), and every draw, layer, ComposeShader and color filter takes them; `src/shared/blend.h`
+  holds Skia's formulas for the CPU paths. A view's blend mode reaches only the view's own drawing
+  (on gsk its children's too), a layer by default: gsk isolates each Java-drawn view
+  (`WrapperWidget`), CoreGraphics draws each view in its own layer. Android without a layer reaches
+  the window (the draw app's CLEAR rect shows black on a device). gsk's PLUS and MODULATE are GSK's
+  arithmetic node, which GTK makes only through its node parser (`parse_arithmetic`). Gaps: ATL-52
+  (phone views).
 - Several apps per VM: the loop slot has an instance per Android main thread (`struct loop_main`,
   `app->loop`; glib keeps one, gtk runs one app); the cli host runs each `-l`/`--instrument` group
   on its own thread, artbridge each later `dine_atl_run`. An app ends through `host_app_end`
@@ -63,15 +80,8 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   Upstream's Pango Layout natives and Paint text natives are gone: port upstream text fixes there.
   Key listeners are AOSP's (`text/method/`), TextView's line limits AOSP's modes over
   `ui_text_set_lines`.
-- Bitmap's handle is a `gfx_bitmap` whose pixels change in place (gsk: a holder of the
-  GdkTexture, swapped under a mutex, readers taking a ref; record: premultiplied words drawn with cairo; coregraphics: a CGImage
-  swapped under a lock the replay shares), so drawables and lists made before see new pixels. A
-  Canvas(Bitmap) records into a `gfx_canvas` that `getTexture` renders over the pixels
-  (`gfx_bitmap_render`); every Bitmap native is shared, upstream's are gone. Row bytes are
-  Skia's (width x bytes per pixel, no padding). `Config.nativeInt` is AOSP's, mapped by
-  `gsk/memory_format.h`. BitmapDrawable's paintable is `gfx_bitmap_drawable_new`.
 - View's and ViewGroup's draw natives (`native_drawBackground`, `native_drawContent`,
-  `native_drawChildren`, `native_drawChild`) and `Drawable.native_draw` are shared behind
+  `native_drawChildren`, `native_drawChild`) and `ATLCanvas.native_drawDrawable` are shared behind
   `ui_view_draw_*` and `gfx_canvas_draw_drawable`; gtk's bodies are in
   `src/backends/ui/gtk/view.c` and `src/backends/gfx/gsk/canvas.c`. `native_drawBackground` and
   `native_drawContent` return whether the toolkit drew: on records Java draws the background
@@ -82,8 +92,8 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   child without a state.
 - A bitmap or nine-patch drawable's color filter and tint live on its native drawable
   (`PaintableFilter`, `gfx_drawable_set_color_filter`); gsk's bitmap drawable is a paintable over
-  the texture that keeps the filter. A color filter is a `struct gfx_color_filter` (PorterDuff mode
-  and color, or a 4x5 matrix) from `ColorFilter.atlMode/atlColor/atlMatrix`, on paints and drawables.
+  the texture that keeps the filter. A color filter is a `struct gfx_color_filter` (blend mode and
+  color, or a 4x5 matrix) from `ColorFilter.atlMode/atlColor/atlMatrix`, on paints and drawables.
 - The `coregraphics` gfx backend (iOS) is record's display list (`src/backends/gfx/record/`) plus a
   CoreGraphics replay and ImageIO bitmaps; uikit replays each view's list in a layer and paces
   draw passes with a CADisplayLink.
@@ -159,7 +169,8 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   callback skips collected views.
 - meson `test_hooks` (default on): `ATL_DIALOG_ANSWERS` and the view-tree dump live in
   `src/shared/test_hooks.c` and `src/backends/ui/{records,gtk}/dump.c`; callers see inline no-ops
-  from `test_hooks.h` without it. Dine's iOS release build turns it off. With
+  from `test_hooks.h` without it. Dine's iOS release build turns it off; `android.atl.ATLTestHooks`
+  stays in the jar, which every build shares, and throws UnsatisfiedLinkError there. With
   `ATL_DUMP_VIEWTREE`, records backends also print `viewfreed:`, `dialogfreed:` and
   `drawablefreed: record` lines; gsk's paintables print `drawablefreed: <GType name>`. With
   `ATL_DUMP_DISPLAYLIST`, records backends print each draw's `displaylist:` lines.
@@ -167,10 +178,13 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   surrogates); the `src/shared/` text natives use it. `attribute_set_get_string` returns its
   result, so callers `free()` it (gtk `Button.c` too). Upstream's gtk-only text natives keep
   `GetStringUTFChars`.
-- Dialogs follow the task: `task_move` calls the static `Dialog.atlTaskMoved`
-  (`handle_cache.dialog`) before the lifecycle; `Dialog.nativeTaskFront` reads `activity.c`'s task
-  state. `show()` in the back waits for the front; results count only while drawn; `shown` is a
-  `LinkedHashSet`.
+- Windows over activities are ours: a Dialog's Window joins its app's registry
+  (`src/shared/windows.c`, `Window.nativeAddSubwindow`) with its activity as the token, or as an
+  application overlay. The registry shows a window while the task is in front and, for a token
+  window, its activity is the shown one; it places windows as WindowManager would, gives the ui slot the
+  shown roots (`ui_window_set_roots`) and answers BadTokenException and "not attached to window
+  manager". Results count only while the dialog is drawn. Port upstream Dialog show and dismiss
+  edits onto the registry.
 - Natives moved into `src/shared/` or `src/backends/` take upstream edits as ports, not merges:
   e.g. `View.native_constructor` is `src/shared/android_view_View.c` + `ui_view_new`.
 - JavaWidget is defined in `src/backends/ui/gtk/view.c`; legacy `View.c` and `ViewGroup.c` only
@@ -222,7 +236,7 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   lay out a node's children only then; `offsetTopAndBottom`/`offsetLeftAndRight` move and
   invalidate without a layout. Port upstream layout edits onto the flag. Records cache text
   measures (`records/ui.c`, keyed on every input, runs included) for every app in the VM.
-- Styled text is ours: `Html` is AOSP 10's over `ATLHtmlReader` (no TagSoup), and TextView sends
+- Styled text is ours: `Html` is AOSP 10's with its TagSoup parser (`doc/AOSP.md`), and TextView sends
   its CharacterStyles as runs (`ui_text_set_styled`: gtk Pango attributes, records' runs, uikit
   attributed strings). Upstream's markup path (`Html.fromHtml` keeping tags, `ui_text_set_markup`)
   is gone; port upstream span edits onto the runs.
