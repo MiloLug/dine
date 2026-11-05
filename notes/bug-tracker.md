@@ -592,6 +592,30 @@ adaptor clears the exception and fails the encode.
 - State: open; found in the phase 4 review, 2026-11-05.
 - Where: `dine-atl/src/api-impl/android/graphics/Bitmap.java` `compress`.
 
+### ATL-61
+
+**On WSLg the gtk build writes an uninitialised screen size into the config at startup.**
+`update_config_for_window` asks for the window's monitor right after `gtk_window_present`; WSLg's
+Weston reports it only at `enter-monitor`, so `gdk_display_get_monitor_at_surface` returns NULL
+(`Gdk-CRITICAL … GDK_IS_MONITOR (monitor)`) and `monitor_size` reads a stack `GdkRectangle` GDK
+never filled: `screenWidthDp`/`screenHeightDp` hold garbage until the monitor enters.
+- State: open, low priority; found 2026-11-05 (Flower Finder on WSLg). The hidden sway display
+  doesn't show it.
+- Where: `dine-atl/src/backends/ui/gtk/display.c` `update_config_for_window`, `monitor_size`.
+- Fix: skip the upcall for a NULL monitor; `enter-monitor` sets the size.
+
+### ATL-62
+
+**`tools/dine dbg attach` can't attach to a gtk-target ATL that hangs before its window has a
+width.** The `prctl(PR_SET_PTRACER, PR_SET_PTRACER_ANY)` that lets the server's lldb attach under
+Yama `ptrace_scope=1` runs in `agent_start()`, which `hacky_on_window_focus_changed_callback`
+calls only once the window is non-zero wide.
+- State: open, low priority; found 2026-11-05 (Flower Finder's first frame hung in Mesa d3d12).
+- Where: `dine-atl/src/backends/ui/gtk/agent.c` `agent_start`,
+  `dine-atl/src/main-executable/main.c` `hacky_on_window_focus_changed_callback`.
+- Workaround: start ATL as a child of the debugging process, or `ptrace_scope=0` (sudo).
+- Fix: the prctl at startup when `ATL_DBG_AGENT` is set.
+
 ## DINE
 
 ### DINE-1

@@ -261,7 +261,9 @@ DINE_PREFIX=$PWD/out/linux/appdata \
 
 Third-party test APKs: `third_party/apks`, never committed (`docs/first-run.md` lists them).
 
-Run by hand, ATL's gtk build opens its window on WSLg (Wayland). `linux smoke`, `test framework
+Run by hand, ATL's gtk build opens its window on WSLg (Wayland). On WSL `env.sh` sets
+`GALLIUM_DRIVER=llvmpipe`: with Mesa's d3d12 driver, a first frame with many textures (Flower
+Finder) hangs and the window never shows. `linux smoke`, `test framework
 --gtk` and the [gtk debug target](#gtk-target) run it on a hidden display instead: a headless sway
 of their own (1920x1080, windows floating at ATL's size, no input devices) that nothing on the
 Windows desktop shows, closed when they finish. ART here builds with gcc for x86_64;

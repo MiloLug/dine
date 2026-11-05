@@ -46,3 +46,6 @@ export PATH
 export PKG_CONFIG_PATH="$DINE_LINUX_PREFIX/lib/pkgconfig:$DINE_LINUX_PREFIX/share/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
 # ATL rpaths assume bionic_translation libs (libdl_bio, libc_bio, ...) live in a system lib dir.
 case ":${LD_LIBRARY_PATH:-}:" in *":$DINE_LINUX_PREFIX/lib:"*) ;; *) export LD_LIBRARY_PATH="$DINE_LINUX_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ;; esac
+# WSL's /dev/dxg makes Mesa pick d3d12, which deadlocks on itself in its slab allocator during
+# GSK's texture uploads (mesa 26.2.5): ATL's window never maps. llvmpipe doesn't.
+if [[ -e /dev/dxg ]]; then export GALLIUM_DRIVER="${GALLIUM_DRIVER:-llvmpipe}"; fi
