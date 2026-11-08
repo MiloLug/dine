@@ -189,6 +189,21 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   around the decor (`setView`, choice lists, `setAdapter`, ProgressDialog), decided at `show`; the
   panel sets the width (`ui_dialog_chrome`), the theme's window background and least width don't
   apply. Upstream's AlertController layouts aren't used.
+- `WindowManager.addView` windows are registry entries too (`Window.atlAddView`): the added view is
+  the root, with a `WindowViewParent`. Tokens are per Window (`Window.Token`, `View.getWindowToken`);
+  a sub-panel (1000-1999) attaches to the token's window, lays out in its frame, layers above it and
+  goes with it; toasts and overlays layer above application windows. Upstream's GtkPopover
+  `WindowManagerImpl` and `PopupWindow` natives are gone: PopupWindow is AOSP 10's over the
+  registry; gtk draws its roots in the app window's overlay. Port upstream PopupWindow fixes onto
+  that copy.
+- A window's keep-screen-on, fullscreen, brightness and exclusion rects are stored per window; the
+  drawn windows' together reach the host (`windows_state_changed`). Insets reach each drawn window,
+  clipped by its frame.
+- PopupMenu and text toasts are native per backend (`ui_menu_show`, `ui_toast_show`): GtkPopoverMenu
+  and an OSD label on gtk, a UIMenu and a glass capsule in its own window above the alerts on iOS.
+  Upstream's GMenu natives are gone; `PopupMenu` keeps its `MenuImpl`. An open PopupMenu takes
+  Back (`ATLLoadedApp.open_menu`), as Android's focused popup window would. Each app's toasts queue
+  on its main thread (`Toast.Queue`); a toast shows only while its app is in front.
 - Natives moved into `src/shared/` or `src/backends/` take upstream edits as ports, not merges:
   e.g. `View.native_constructor` is `src/shared/android_view_View.c` + `ui_view_new`.
 - JavaWidget is defined in `src/backends/ui/gtk/view.c`; legacy `View.c` and `ViewGroup.c` only

@@ -157,6 +157,13 @@ def _windows() -> str | None:
             or _script("run-windows.sh", HEADLESS_TESTS / "run-windows.sh", HEADLESS_BUILD, WINDOWS_APK))
 
 
+def _windows_gtk() -> str | None:
+    if not GTK_BUILD.is_dir():
+        raise DineError(f"no {GTK_BUILD}: run tools/dine linux build atl")
+    return (_script("apk.py", sys.executable, paths.ROOT / "tests/harness/apk.py", HEADLESS_TESTS / "windows", WINDOWS_APK)
+            or _script("run-windows.sh", HEADLESS_TESTS / "run-windows.sh", "--gtk", GTK_BUILD, WINDOWS_APK, env=_gtk_env()))
+
+
 def _draw() -> str | None:
     _need_headless()
     return _widgets_apk() or _script("run-draw.sh", HEADLESS_TESTS / "run-draw.sh", "--headless", HEADLESS_BUILD,
@@ -188,7 +195,8 @@ CHECKS = [
     Check("text", "headless: widgets.apk's text fields take cli -c text lines through filters, watchers, a composition, a held report, focus moves and Back", _text),
     Check("draw", "headless: widgets.apk's Canvas view redraws on invalidate, not on a same-size layout; display lists (clips, a PNG bitmap, a scrolled background, text, paths, arcs, gradients, a layer, nine-patches) match the golden", _draw),
     Check("draw-gtk", "gtk: the same view draws through gsk", _draw_gtk),
-    Check("windows", "headless: windows.apk's window brightness reaches the host while it shows, the screen's own after Home and the last finish", _windows),
+    Check("windows", "headless: windows.apk's window state from an activity and a dialog, the order of WindowManager windows, a popup, an AutoCompleteTextView's drop-down, a menu and toasts", _windows),
+    Check("windows-gtk", "gtk: a popup below its anchor, a native menu and a toast", _windows_gtk),
 ]
 
 

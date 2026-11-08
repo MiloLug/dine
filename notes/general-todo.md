@@ -180,8 +180,8 @@ or UIKit's scroll physics fed into the Java scrolling. RecyclerView ships inside
 **Spinner's drop-down off gtk.** `Spinner` is a gtk widget (`native_constructor`,
 `native_setAdapter`, `Spinner.java:34-35`, legacy natives built only with ui=gtk), so a layout with
 a Spinner throws `UnsatisfiedLinkError` on headless and uikit. M6b3b's PopupWindow and
-ListPopupWindow on the window registry are the path AOSP's Spinner takes (`DropdownPopup`); the
-user left it out of M6b3 (2026-11-07).
+ListPopupWindow on the window registry are the path AOSP's Spinner takes (`DropdownPopup`); they
+work on every backend since M6b3b (2026-11-08). The user left it out of M6b3 (2026-11-07).
 
 ### ATL-65
 
@@ -191,6 +191,15 @@ show and dismiss); ATL's has none, so an app that calls `create()` or overrides 
 dialogs, DialogFragment) gets a NoSuchMethodError or no callback.
 - Found 2026-11-07 (M6b3a review).
 - Where: `dine-atl/src/api-impl/android/app/Dialog.java`.
+
+### ATL-68
+
+**Glass drop-downs on iOS.** ListPopupWindow, AutoCompleteTextView's drop-down and Spinner fall back
+to the theme's `popupBackground` when the app sets none; on uikit that default could be a glass
+material behind the app's rows, as the dialog panels mirror iOS's alert. A popup whose app set a
+background keeps it. Lowest priority (the user, 2026-11-08).
+- Where: `dine-atl/src/api-impl/android/widget/PopupWindow.java` (`setBackgroundDrawable`),
+  `src/backends/ui/uikit/view.m` (the window containers).
 
 ## DINE
 

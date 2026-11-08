@@ -31,8 +31,8 @@ its row here changes when that block does.
 | [M6b2](#m6b2-windows) | breadth: windows | done |
 | [M6b3](#m6b3-windows-continued) | breadth: windows, continued | in progress |
 | [M6b3a](#m6b3a-dialogs-on-the-phone) | dialogs on the phone | done |
-| [M6b3b](#m6b3b-window-state-and-popups) | window state and popups | next |
-| [M6b3c](#m6b3c-keyboard-screen-edges-config) | keyboard, screen edges, config | planned |
+| [M6b3b](#m6b3b-window-state-and-popups) | window state and popups | done |
+| [M6b3c](#m6b3c-keyboard-screen-edges-config) | keyboard, screen edges, config | next |
 | [M6c](#m6c-search-ahead-of-m7) | search ahead of M7 | planned |
 | [M7](#m7-os-features) | OS features, items in `notes/os-features.md` | planned |
 | [M8a](#m8a-apk-import-and-launch) | APK import and launch | planned |
@@ -219,7 +219,7 @@ is extracted:
 | `Paint.measureText` width estimate | text measurement from the gfx slot (done) | M5c |
 | AlertDialog's three toolkit-bound Buttons | dialog content as data (see M2) | M2 |
 | `GTK_FILE_CHOOSER_ACTION_*` ints in Activity | file-picker request kinds of the `os` slot | M7 (file picker) |
-| Toast sent as a desktop notification | a ui-slot toast | M6b3 |
+| Toast sent as a desktop notification | a ui-slot toast (done) | M6b3b |
 | `"xdgportal"` location provider name | provider name from the `os` slot's location | M7 (location) |
 | external intents sent over D-Bus from ContextImpl | the `os` slot's open links and files | M7 (open links and files) |
 
@@ -1416,6 +1416,54 @@ the Status block.
 **Done when:** `linux smoke windows windows-gtk views-gtk gd` pass with the state, popup, menu
 and toast steps; the framework `windows` suite passes on headless, gtk and one VM; on the phone
 `dbg smoke` passes with `atl-popup` and the extended `atl-windows`; both builds build.
+
+**Status: done (2026-11-08).** Plan: `~/.claude/plans/humble-knitting-firefly.md`. Built:
+- Window state per window: a dialog's keep-screen-on, fullscreen, brightness and exclusion rects
+  are kept from its `onCreate` on; the drawn windows' together reach the host (any keeps the
+  screen on, the topmost brightness, every rect offset by its window's frame). A dialog's
+  ViewTreeObservers fire in the app window's pass while it shows. Insets reach each drawn window,
+  clipped by its frame (none before its first placement).
+- `WindowManager.addView`: the view is the root of a registry window (`Window.atlAddView`) with
+  AOSP's token rules; tokens are per Window (`View.getWindowToken`, `getApplicationWindowToken`,
+  `WindowManagerGlobal.getWindowView`). A sub-panel lays out in its parent's frame, layers above
+  it, hides with it and goes when it is removed; one on the activity stays under the windows over
+  it; toasts and overlays layer above application windows. Watching windows get `ACTION_OUTSIDE` (records, gtk, and on uikit also from native
+  controls). On uikit a touch-modal window without a dim catches the touches outside it, and a
+  `NOT_TOUCHABLE` one lets them through.
+- PopupWindow is AOSP 10's (no transitions); ListPopupWindow and AutoCompleteTextView have their
+  stubbed lines back; `dispatchKeyEventPreIme` runs before the IME takes Back, so Back closes a
+  drop-down first.
+- PopupMenu is native per backend: a UIMenu at the anchor (Experiment B's first candidate:
+  a clear button with `performPrimaryAction`), a GtkPopoverMenu, `menu:` lines on headless
+  answered from `ATL_DIALOG_ANSWERS`. Disabled, checkable and submenu items; an open menu takes
+  Back.
+- Toast: AOSP 10's API; each app's queue shows one at a time for 2 or 3.5 s; text toasts are a
+  glass capsule in a window of their own above the alerts on iOS, an OSD label on gtk, `toast:`
+  lines on headless; `setView` toasts are TYPE_TOAST windows. A toast made while its app is in the
+  back never shows, and one up goes when its app goes to the back or its window closes.
+- Upstream's gtk-only WindowManagerImpl, PopupWindow and PopupMenu natives are gone.
+- `src/api-impl/meson.build` lists every api-impl Java source: one it misses compiles only through
+  javac's source path, and an edit to it rebuilds nothing.
+- Tests: framework `WindowStateTest`, `WindowManagerTest`, `PopupWindowTest`, `PopupMenuTest`,
+  `ToastTest`; windows APK `StateActivity`, `OverlayActivity`, `PopupActivity`, `MenuActivity`,
+  `ToastActivity`, `SelfActivity` (`run-windows.sh`, new `linux smoke windows-gtk`); `dbg smoke`
+  `atl-windows` runs StateActivity, new `atl-popup`. Each new check failed under its mutation.
+- Checks (2026-11-08): framework 373/374 on headless, gtk and one VM (the `windows` suite 51/51),
+  apps 4/5 and 5/5, package 48/48, `linux smoke` 19, runtime as before, `test unit`; on the iPhone
+  13 `dbg smoke` 22 with `atl-popup` (a toast that goes with its app's window included) and
+  `atl-windows`; dev and release builds, the release library without the `menu:` and `toast:`
+  test lines.
+- Hand checks (iPhone 13, dark mode): the menu (Paste greyed, Bold checked, More with its
+  chevron); Copy picked by hand: UIKit runs the item's action at the tap, 1.2 s before the end
+  animation completes, so Java gets the item, then the dismissal (the debug agent can't pick
+  UIMenu items); the toast capsule bottom-centre with Dine's status-bar strip unchanged. Not done:
+  light mode, a toast over a plain alert, VoiceOver.
+- Open: a `setView` toast draws under a presented plain alert; popups and drop-downs ignore the
+  keyboard until M6b3c; on iOS the agent's accessibility taps still reach Android views under an
+  open menu (real touches close it); a text toast whose app comes back to the front mid-toast stays
+  hidden; on gtk the toast's label goes above an application overlay (AOSP keeps toasts under
+  them); a popup that goes with its removed dialog keeps its tree observers on the app window;
+  [ATL-67](bug-tracker.md#atl-67).
 
 ##### M6b3c: keyboard, screen edges, config
 

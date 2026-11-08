@@ -33,6 +33,8 @@ struct AtlView: View {
                 tile("widgets", activity: "dev/dine/widgets/DrawStayActivity", title: "draw")
                 tile("widgets", activity: "dev/dine/widgets/ListsActivity", title: "lists")
                 tile("windows", activity: "dev/dine/windows/MainActivity")
+                tile("windows", activity: "dev/dine/windows/StateActivity", title: "windows state")
+                tile("windows", activity: "dev/dine/windows/PopupActivity", title: "windows popup")
                 tile("org.happysanta.gd_29", activity: "org/happysanta/gd/GDActivity", title: "gravity")
                 tile("AdaptiveIconDemo", activity: "com/example/adaptiveicondemo/MainActivity", title: "adaptive icon")
                 tile("views_widgets_samples_flower_finder", activity: "com/example/recyclersample/flowerList/FlowersListActivity", title: "flowers")

@@ -182,9 +182,31 @@ SCENARIOS = {
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-windows", [
             Step("atl", tap="atl"),
-            # the app sets and resets its window's brightness; the host ignores it (DINE-11)
-            Step("run windows", tap="windows", ok=("windows brightness set",), fail=ATL_FAIL, timeout=120),
-            Step("Home", action="Home", ok=("nav: launcher root",)),
+            # a dialog's window state: keep-screen-on, its exclusion rect at the left edge and its
+            # share of the insets; its brightness reaches the host, which ignores it (DINE-11)
+            Step("run windows state", tap="windows state",
+                 ok=("state dialog shown", "state dialog laid out", "nav: keep screen on true",
+                     "nav: exclusion left 1 right 0", r"state insets [1-9]\d* 0 0 0"),
+                 fail=ATL_FAIL, timeout=120),
+            Step("Home", action="Home", ok=("nav: launcher root", "nav: keep screen on false")),
+        ], uses_vm=True, needs_clean=True, alive=True),
+        Scenario("atl-popup", [
+            Step("atl", tap="atl"),
+            Step("run windows popup", tap="windows popup", ok=("popup activity created",), fail=ATL_FAIL, timeout=120),
+            Step("anchor", tap="anchor", ok=("popup shown",), ui=("one", "two"), fail=ATL_FAIL),
+            Step("one", tap="one", ok=("popup row one",), fail=ATL_FAIL),
+            # outside the popup: it closes (ACTION_OUTSIDE) and the tap still reaches the activity
+            Step("elsewhere", tap="elsewhere", ok=("popup dismissed", "popup elsewhere"), fail=ATL_FAIL),
+            # PopupMenu as iOS's own menu; the agent can't pick its items (a hand check), Back closes it
+            Step("menu", tap="menu", ok=("menu: presented",), ui=("Copy", "Paste", "Bold", "More"), fail=ATL_FAIL),
+            Step("Back closes the menu", back=True, ok=("menu dismissed",), fail=ATL_FAIL + ("nav: container dismissed",)),
+            Step("toast", tap="toast", ok=('toast: shown "toasted"',), fail=ATL_FAIL),
+            # the drop-down doesn't take the keys: the field keeps the keyboard while it shows
+            Step("type into fruit", type=("fruit", "ap"), ok=("actv dropdown shown",), ui=("apple", "apricot"), fail=ATL_FAIL),
+            Step("apple", tap="apple", ok=("actv text apple",), fail=ATL_FAIL),
+            # the app ends (its last activity finishes) while its toast shows: the toast goes with its window
+            Step("bye", tap="bye", ok=("toast: gone with its window",), fail=ATL_FAIL),
+            Step("back", back=True),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-gd", [
             Step("atl", tap="atl"),

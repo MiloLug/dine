@@ -64,6 +64,7 @@ final class Navigator: ObservableObject {
                 MainActor.assumeIsolated {
                     navigator.update(app) { $0.keepScreenOn = on }
                     navigator.updateIdleTimer()
+                    log.notice("nav: keep screen on \(on)")
                 }
             }
         }

@@ -631,6 +631,14 @@ the inner toggle.
 - Where: `dine-atl/src/backends/ui/uikit/view.m` `ATLButton`, `src/backends/ui/gtk/view.c`
   `ui_view_set_padding`, `src/api-impl-jni/widgets/android_widget_Spinner.c`.
 
+### ATL-67
+
+**uikit's keyboard field is one per process.** `keyboard_field`, the edit view that holds the
+keyboard, is a static of `view.m`, not per app: with two apps running, a window one app shows over
+its activity (a dialog, a popup) can give the keys back to the other app's field.
+- State: unchecked; found 2026-11-08 (M6b3b's planning, code read only).
+- Where: `dine-atl/src/backends/ui/uikit/view.m` (`keyboard_field`, `root_take_responder`).
+
 ## DINE
 
 ### DINE-1

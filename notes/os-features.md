@@ -245,8 +245,8 @@ Native paths below are under `dine-atl/src/api-impl-jni/`.
 ## 18. Notifications
 
 - Today: `app/android_app_NotificationManager.c` sends GApplication desktop notifications, with
-  actions as GVariant intents. `Service.stopForeground(true)` cancels through it. Toast belongs to
-  the ui slot (M6b3).
+  actions as GVariant intents. `Service.stopForeground(true)` cancels through it. Toast is the ui
+  slot's (`ui_toast_show`, M6b3b).
 - `none`: `notify` does nothing; `areNotificationsEnabled` false.
 - `ios`: UNUserNotificationCenter local notifications, after the iOS permission prompt. Whether a
   free account gets the permission is open (`notes/background-tasks.md`, question 5); M8d's
