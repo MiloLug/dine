@@ -229,6 +229,17 @@ and so may the color behind the window (`Window.backgroundColor`, from the theme
 - Where: `dine-atl/src/api-impl/android/content/res/Resources.java` (`Theme.rebase`,
   `Theme.applyStyle`, `ThemeKey`); the night change in `ATLLoadedApp.applyNight`.
 
+### ATL-74
+
+**`WindowInsets.java`'s AOSP blocks have no notice.** The file has two marked blocks and neither a
+"Portions Copyright" header nor a `doc/AOSP.md` row, which `doc/AOSP.md` asks for:
+`Builder.setSystemWindowInsets` (`/* Copyright (C) 2019 … */`, ours, 407f24fd, 2026-10-21's insets
+work) and `Type` (`/* Copyright (C) 2014 … */`, upstream ATL's, 9ab58e47). Which AOSP tag each came
+from is unchecked; if `Builder` came with API 29 and `Type` with API 30, ours may be from
+`android-security-10.0.0_r75` and upstream's from a later tag.
+- Found 2026-11-08 (M6b3c review).
+- Where: `dine-atl/src/api-impl/android/view/WindowInsets.java`, `dine-atl/doc/AOSP.md`.
+
 ## DINE
 
 ### DINE-6
