@@ -39,7 +39,8 @@ touches. Commands and setup live in `tools/dine <group> --help`, `README.md` and
 - The cli host's `-c` reads commands on stdin: `back`, `home`, `front`, `insets`, `dump` (the
   view tree of the window and its shown dialogs, test hooks only), `tap <text>` (a down and an up
   at the middle of the shown text view with that text, a dialog's first; prints `tap: <text> <x>,<y>`
-  or `tap: no <text>`), `touch down|move|up|cancel <id> <x> <y>` (window px), `key down|up <code> [<meta> [<unicode>]]`,
+  or `tap: no <text>`), `answer <label>` (a tap on that button or row of the last shown alert;
+  prints `answer: <label>` or `answer: no <label>`), `touch down|move|up|cancel <id> <x> <y>` (window px), `key down|up <code> [<meta> [<unicode>]]`,
   and text lines for the field that has the keyboard: `text commit|compose <text>` (`\n` a
   newline), `text delete <before> <after>`, `text select <start> <end>` (UTF-16 code units),
   `text tap <x> <y>` (the field there takes the keyboard as a toolkit's own tap gives it),

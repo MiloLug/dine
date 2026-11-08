@@ -234,6 +234,56 @@ SCENARIOS = {
             Step("Sure", tap="Sure", ok=("keep onClick -1", "keep done", "nav: container dismissed exit"), fail=ATL_FAIL),
             Step("back", back=True),
         ], uses_vm=True, needs_clean=True, alive=True),
+        Scenario("atl-dialog-content", [
+            Step("atl", tap="atl"),
+            # a Dialog with a content view: drawn over the activity, its dim over the status bar too
+            Step("run dialog content", tap="dialog content", ok=("content shown", r"nav: status dim 0\.[1-9]"),
+                 ui=("content text", "Close", "Dismiss"), fail=ATL_FAIL, timeout=120),
+            Step("Close", tap="Close", ok=("content click", "content dismissed", "content shown"), fail=ATL_FAIL),
+            # the dim's activate is a tap outside the dialog: the second one cancels and the activity ends
+            Step("Dismiss", tap="Dismiss", ok=("content canceled", "content dismissed", "nav: container dismissed exit"),
+                 fail=ATL_FAIL),
+            Step("back", back=True),
+        ], uses_vm=True, needs_clean=True, alive=True),
+        Scenario("atl-dialog-view", [
+            Step("atl", tap="atl"),
+            # setView content in the alert's panel: the field takes the keyboard, the panel's OK answers
+            Step("run dialog view", tap="dialog view", ok=("view shown", r"dialog: chrome measured .* ok"),
+                 ui=("View test", "Inner", "OK", "Cancel"), fail=ATL_FAIL + ("dialog: chrome measured .* differs",), timeout=120),
+            Step("Inner", tap="Inner", ok=("view inner click",), fail=ATL_FAIL),
+            Step("type into name", type=("name", "hey"), fail=ATL_FAIL),
+            Step("OK", tap="OK", ok=('view ok "hey"', "view dismissed", "nav: container dismissed exit"), fail=ATL_FAIL),
+            Step("back", back=True),
+        ], uses_vm=True, needs_clean=True, alive=True),
+        Scenario("atl-dialog-choice", [
+            Step("atl", tap="atl"),
+            # the panel's own rows; Blue opens a plain alert over the panel, which waits under it
+            Step("run dialog choice", tap="dialog choice", ok=(r"dialog: chrome measured .* ok",), ui=("Pick one", "Red", "Blue", "OK"),
+                 fail=ATL_FAIL + ("dialog: chrome measured .* differs",), timeout=120),
+            Step("Blue", tap="Blue", ok=("choice single 2", "dialog: presented"), ui=("Blue is taken", "Okay"), fail=ATL_FAIL),
+            Step("Okay", tap="Okay", ok=("dialog: closed",), ui=("Pick one", "OK"), fail=ATL_FAIL),
+            Step("OK", tap="OK", ok=("choice single ok 2",), ui=("Pick some", "Salt"), fail=ATL_FAIL),
+            Step("Salt", tap="Salt", ok=("choice multi 0 true",), fail=ATL_FAIL),
+            Step("OK multi", tap="OK", ok=("choice multi ok 0,1", "choice adapter shown"), ui=("Apple", "Pear", "Skip"), fail=ATL_FAIL),
+            Step("Pear", tap="Pear", ok=("choice adapter 1", "choice done", "nav: container dismissed exit"), fail=ATL_FAIL),
+            Step("back", back=True),
+        ], uses_vm=True, needs_clean=True, alive=True),
+        Scenario("atl-dialog-progress", [
+            Step("atl", tap="atl"),
+            Step("run dialog progress", tap="dialog progress", ok=("progress spinner shown true", "progress bar shown", "progress 5/10",
+                                                                   "progress done", "nav: container dismissed exit"),
+                 fail=ATL_FAIL, timeout=120),
+            Step("back", back=True),
+        ], uses_vm=True, needs_clean=True, alive=True),
+        Scenario("atl-dialog-stack", [
+            Step("atl", tap="atl"),
+            # a non-touch-modal dialog: an activity started over it hides it, Back brings both back
+            Step("run dialog stack", tap="dialog stack", ok=("stack resumed",), ui=("next", "line 0", "under"),
+                 fail=ATL_FAIL, timeout=120),
+            Step("next", tap="next", ok=("stack cover resumed",), fail=ATL_FAIL),
+            Step("Back", action="Back", ok=("stack resumed",), ui=("next", "line 0"), fail=ATL_FAIL),
+            Step("Home", action="Home", ok=("nav: launcher root",)),
+        ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-nav", [
             Step("atl", tap="atl"),
             # px at 3x: 20 pt side strips, the home indicator at the bottom; B excludes 200-300 px of its right edge

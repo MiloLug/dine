@@ -29,7 +29,10 @@ its row here changes when that block does.
 | [M6a](#m6a-triage-and-fixes) | triage and fixes | done |
 | [M6b1](#m6b1-content) | breadth: content | done |
 | [M6b2](#m6b2-windows) | breadth: windows | done |
-| [M6b3](#m6b3-windows-continued) | breadth: windows, continued | planned |
+| [M6b3](#m6b3-windows-continued) | breadth: windows, continued | in progress |
+| [M6b3a](#m6b3a-dialogs-on-the-phone) | dialogs on the phone | done |
+| [M6b3b](#m6b3b-window-state-and-popups) | window state and popups | next |
+| [M6b3c](#m6b3c-keyboard-screen-edges-config) | keyboard, screen edges, config | planned |
 | [M6c](#m6c-search-ahead-of-m7) | search ahead of M7 | planned |
 | [M7](#m7-os-features) | OS features, items in `notes/os-features.md` | planned |
 | [M8a](#m8a-apk-import-and-launch) | APK import and launch | planned |
@@ -716,8 +719,7 @@ keyboard, the keyboard after Home and front. As built:
   `text`, smoke `atl-text`.
 - Open: keyboard avoidance (M6b3); Java's click and touch listeners on a field or a selectable
   TextView where the toolkit takes its touches (gtk; on iOS unchecked); a hardware keyboard types
-  only into the field with the keyboard (no KeyListener); gtk multi-line; a Dialog's EditText
-  (M6b3's content dialogs on uikit); ClipboardManager (M7); `onCreateInputConnection` on EditText,
+  only into the field with the keyboard (no KeyListener); gtk multi-line; ClipboardManager (M7); `onCreateInputConnection` on EditText,
   BaseInputConnection (a stub whose own `Editable` class shadows `android.text.Editable`) and
   `onKeyPreIme`;
   AutoCompleteTextView's drop-down (PopupWindow, M6b3); on headless a field whose activity another
@@ -778,8 +780,8 @@ graphics suite's Matrix and Paint tests pass on headless and on gtk (`tools/dine
   requests a layout only for a change to or from GONE). `View.atlDraw` runs `draw()` into a fresh
   list and clears the canvas after. An invalidate inside `onDraw` draws in the next pass, unpaced
   (M5b).
-  Dialog windows lay out and draw in the app window's pass on records (M6b2); uikit shows them in
-  M6b3.
+  Dialog windows lay out and draw in the app window's pass on records (M6b2), on uikit in an
+  overlay container over the activity roots (M6b3a).
 - record: each op keeps a copy of its paint and the matrix it was drawn under (Paint and Matrix
   free their native state on the FinalizerDaemon). `ATL_DUMP_DISPLAYLIST=1` prints `displaylist:`
   lines after each draw (`test_hooks`).
@@ -1275,7 +1277,7 @@ As built:
   public API withdraws an app's request, so the user's level wouldn't come back.
 - A second layout root over the container on records, for Dialogs with a content view (they show
   nothing on headless and uikit): laid out, drawn and touched over the activity in the app
-  window's pass. Showing it on uikit is [M6b3](#m6b3-windows-continued)'s.
+  window's pass. [M6b3a](#m6b3a-dialogs-on-the-phone) shows it on uikit.
 
 **Done when:** `linux smoke dialog windows` pass, the dialog check with its content run
 (`dialog-content.viewtree`); the framework `windows` suite passes on headless, gtk and one VM;
@@ -1288,8 +1290,8 @@ and restores the desktop's level; the embedded host's is a no-op, DINE-11); reco
 Dialog's content view over the activity (Gravity.apply, a floating window's least width, the
 window's frame to Java, touch routing with outside touches to a touch-modal dialog, the dump's
 `window dialog` line), the cli's `dump` and `tap <text>`, AOSP's dialog and alert dialog themes,
-the floating window layout and `Window.shouldCloseOnTouch`. uikit keeps content dialogs out of its
-overlays and touch routing until M6b3 draws them. Checks: the framework suites (headless and one
+the floating window layout and `Window.shouldCloseOnTouch`; uikit draws content dialogs from
+M6b3a on. Checks: the framework suites (headless and one
 VM 245/246, gtk with `DialogTest`'s centering and least-width cases as expected failures: gtk
 places and sizes a dialog's window itself), the apps and package suites, `linux smoke` (18, with
 `windows` and the dialog content run), `test unit`; on the iPhone 13 `dbg smoke` (16, with
@@ -1333,6 +1335,99 @@ framework `windows` suite passes on headless, gtk and one VM; `dialog-gtk`, `win
 pass; every earlier suite passes against expectations that weren't loosened; on the phone
 `dbg smoke` passes with a content dialog, a choice dialog, a popup, a menu, a toast, window state
 and the immersive steps, and both builds build; the hand checks are listed in the Status block.
+
+Split into three sub-stages built in order (the user's choice, 2026-11-07); the Done-when above is
+their union. Plan: `~/.claude/plans/glowing-singing-raccoon.md`.
+
+##### M6b3a: dialogs on the phone
+
+- uikit shows the registry's roots: an overlay container over the app surface, a dim, touches,
+  the first responder for a dialog's fields, Dine's status-bar strip dimmed.
+- AlertDialog's `setView`, single and multi choice, `setAdapter`, `setCustomTitle` and
+  ProgressDialog, with native chrome per backend. The user: "try your best to make the dialogs
+  native-looking for the modern ios (glass etc)". Plain alerts stay `UIAlertController`; the
+  others get a glass panel that mirrors it, with native rows and checkmarks for string choice
+  lists and native progress views.
+- Gravity Defied calls `Builder.setSingleChoiceItems`, `setView`, ProgressDialog and Toast
+  (dexdump, 2026-11-07); `gd` passes because its smoke reaches none of them.
+
+**Done when:** `linux smoke dialog dialog-gtk` pass with the view, choice and progress runs; the
+framework `windows` suite passes on headless, gtk and one VM; `gd` and every earlier suite pass
+against expectations that weren't loosened; on the phone `dbg smoke` passes with
+`atl-dialog-content` and `atl-dialog-choice`, `atl-dialog` and `atl-dialog-keep` unchanged; both
+builds build and the release build has none of the new test lines; the hand checks are listed in
+the Status block.
+
+**Status: done (2026-11-07).** Built:
+- uikit draws the registry's roots: an overlay container is the surface's top subview, activity
+  roots go below it; one container per window holds its dim, an alert's panel and the root at
+  its records frame. Touches on the dim are the window's outside touches; its accessibility element
+  "Dismiss" taps outside the window. VoiceOver stays in the topmost touch-modal window. A root
+  takes the keys while it is the topmost focusable window; Dine dims its status-bar strip by the
+  dims' amount (`ATLSurface atlDimChanged:`).
+- AlertDialog: AOSP 10's Builder and AlertDialog API; plain or panel at the first show (the
+  `notes/decisions.md` registry entry). Panels: glass, iOS 27's alert metrics measured on the phone
+  (320 pt, 34 pt corners, left-aligned Headline title and Subheadline message, 48 pt capsule
+  buttons in the tertiary fill, side by side when two fit, the system dim), rows with the system
+  checkmark for string choice lists, `UIActivityIndicatorView` / `UIProgressView` for ProgressDialog;
+  `setView`, `setAdapter` and `setCustomTitle` content is Android's, 16 pt in from the panel's sides.
+  Rows past the screen scroll; Android content keeps half the height. gtk draws a panel box in the
+  app window's overlay, headless fixed metrics with `dialog:` lines and the cli's `answer <label>`.
+  The panel's light or dark look follows the Android theme (`isLightTheme`), so its content stays
+  readable. ProgressDialog: AOSP's API; progress from any thread.
+- Dialog runs `onCreate` once, as AOSP's `dispatchOnCreate`.
+- Backgrounds pad and size their views as Android 10's
+  ([ATL-64](bug-tracker.md#atl-64), 2026-11-08): `setBackgroundDrawable` takes the drawable's
+  padding and an XML padding attribute wins edge by edge; a view is at least its background's
+  least size, toolkit-measured text views and images included (`minWidth` applies to them);
+  padding changes lay out again. Layer-lists nest or stack (ripples stack), selectors report
+  padding; a window's padding is its background's and the theme's background goes on once, so a
+  plain `Dialog` shows its card behind the whole content. On the iPhone a Button with a background
+  and Android padding drops UIKit's own insets; one without padding keeps them
+  ([ATL-66](bug-tracker.md#atl-66)). Tests: `graphics` `DrawablePaddingTest` and
+  `BackgroundPaddingTest`, three `DialogTest` cases, `run-controls.sh`'s "framed" button and
+  `dialog-content.viewtree`, each failed under its mutation.
+- Checks (2026-11-08, with the background fix): framework 349/350 on headless, gtk and one VM
+  (the `windows` suite 27/27, with `AlertContentTest`), apps 4/5 and 5/5, package 48/48,
+  `linux smoke` 18 (`dialog` with the choice, progress and view runs, `-c` panel runs and
+  `dialog-view.viewtree`; `dialog-gtk`),
+  runtime and `test unit` as before; on the iPhone 13 `dbg smoke` 21 with `atl-dialog-content`,
+  `atl-dialog-view`, `atl-dialog-choice`, `atl-dialog-progress`, `atl-dialog-stack`; dev and
+  release builds, the release library without the `dialog: chrome measured` line.
+- The chrome check (`dialog: chrome measured … ok`) catches drift between records' measure and the
+  shown panel's layout, not UIKit's own fitting.
+- Hand checks: screenshots in dark mode of a content dialog, a `setView` panel, an adapter list and
+  a progress bar. Not done: light mode, VoiceOver, Dynamic Type, a long list on the phone.
+- Open: "Dismiss" shows also when the dialog doesn't cancel on an outside touch; an app's own
+  `getListView().setItemChecked` after the show doesn't reach the native rows; a panel ignores
+  `Window.setLayout`'s width; AppCompat and Material dialogs draw Android's own layouts;
+  `Dialog.create`, `onStart` and `onStop` are missing ([ATL-65](general-todo.md#atl-65)); a
+  panel's field isn't kept above the keyboard until M6b3c.
+
+##### M6b3b: window state and popups
+
+- Dialog windows get the shown activity's window state: keep-screen-on, fullscreen, brightness,
+  ViewTreeObserver observations, insets clipped by their frame, exclusion rects.
+- `WindowManager.addView` roots, PopupWindow, ListPopupWindow and AutoCompleteTextView's
+  drop-down as registry entries on every backend; PopupMenu as a native menu; Toast.
+  PopupWindow puts its background straight on the app's content view today, so a padded popup
+  background replaces the content's padding; AOSP's background wrapper view fixes that.
+
+**Done when:** `linux smoke windows windows-gtk views-gtk gd` pass with the state, popup, menu
+and toast steps; the framework `windows` suite passes on headless, gtk and one VM; on the phone
+`dbg smoke` passes with `atl-popup` and the extended `atl-windows`; both builds build.
+
+##### M6b3c: keyboard, screen edges, config
+
+- The Done bar becomes a round glass button.
+- `atl_window_insets` gets IME and status-bar edges; the window size is per app.
+- Keyboard avoidance (`softInputMode`), immersive mode and status-bar insets, night changes
+  delivered to running apps (with a dev agent verb that switches the appearance).
+
+**Done when:** `linux smoke keyboard nav config` pass with their new goldens; the framework
+`windows` suite passes on headless, gtk and one VM; on the phone `dbg smoke` passes with
+`atl-keyboard` (or its hand check), `atl-config`, the extended `atl-nav`, and `atl-text`
+unchanged; both builds build; the hand checks are listed in the Status block.
 
 ### M6c: search ahead of M7
 

@@ -184,7 +184,11 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   window, its activity is the shown one; it places windows as WindowManager would, gives the ui slot the
   shown roots (`ui_window_set_roots`) and answers BadTokenException and "not attached to window
   manager". Results count only while the dialog is drawn. Port upstream Dialog show and dismiss
-  edits onto the registry.
+  edits onto the registry. An AlertDialog's window is its decor plus its ui-slot alert: plain
+  (title, message, buttons, `setItems`) the backend shows by itself, else a panel the backend draws
+  around the decor (`setView`, choice lists, `setAdapter`, ProgressDialog), decided at `show`; the
+  panel sets the width (`ui_dialog_chrome`), the theme's window background and least width don't
+  apply. Upstream's AlertController layouts aren't used.
 - Natives moved into `src/shared/` or `src/backends/` take upstream edits as ports, not merges:
   e.g. `View.native_constructor` is `src/shared/android_view_View.c` + `ui_view_new`.
 - JavaWidget is defined in `src/backends/ui/gtk/view.c`; legacy `View.c` and `ViewGroup.c` only

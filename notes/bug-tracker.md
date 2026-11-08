@@ -616,6 +616,21 @@ calls only once the window is non-zero wide.
 - Workaround: start ATL as a child of the debugging process, or `ptrace_scope=0` (sudo).
 - Fix: the prctl at startup when `ATL_DBG_AGENT` is set.
 
+### ATL-66
+
+**Native-look buttons treat an app's padding differently per backend.** A Button with no app
+background keeps the toolkit's look. On uikit the app's padding is space outside the gray capsule
+(`ATLButton` lays the UIButton out in the padded frame, and the configuration's own content insets
+stay inside it). On gtk it is space inside the button (CSS padding), and a button without app
+padding gets none at all, because the View constructor always sends its padding, zeros included.
+ATL's Button takes no theme style, so it has none of Android's default button padding; on uikit a
+push or toggle button with an app background keeps UIKit's insets until that background (or the app)
+gives it padding. Also: gtk's Spinner gets its padding on the dropdown while its background goes on
+the inner toggle.
+- State: open; found 2026-11-08 (ATL-64's fix, code read only).
+- Where: `dine-atl/src/backends/ui/uikit/view.m` `ATLButton`, `src/backends/ui/gtk/view.c`
+  `ui_view_set_padding`, `src/api-impl-jni/widgets/android_widget_Spinner.c`.
+
 ## DINE
 
 ### DINE-1
@@ -705,3 +720,7 @@ one.**
 ### ATL-33
 
 **gsk drew some PorterDuff color filters as SRC_IN.** 2026-11-04, M6b review, dine-atl 73077776.
+
+### ATL-64
+
+**A background drawable gave its view no padding.** 2026-11-08, before the M6b3a commit, uncommitted.

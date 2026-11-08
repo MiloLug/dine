@@ -175,6 +175,23 @@ while ListView and RecyclerView scroll in their own Java code, so on iOS they la
 and bounce. The approach is open: a scroll node per list, a native list view (UICollectionView),
 or UIKit's scroll physics fed into the Java scrolling. RecyclerView ships inside the app (androidx).
 
+### ATL-63
+
+**Spinner's drop-down off gtk.** `Spinner` is a gtk widget (`native_constructor`,
+`native_setAdapter`, `Spinner.java:34-35`, legacy natives built only with ui=gtk), so a layout with
+a Spinner throws `UnsatisfiedLinkError` on headless and uikit. M6b3b's PopupWindow and
+ListPopupWindow on the window registry are the path AOSP's Spinner takes (`DropdownPopup`); the
+user left it out of M6b3 (2026-11-07).
+
+### ATL-65
+
+**`Dialog.create`, `onStart` and `onStop`.** Android 10's Dialog has them (`create` runs `onCreate`
+early, so `findViewById` and `getButton` work before `show`; `onStart` and `onStop` come with each
+show and dismiss); ATL's has none, so an app that calls `create()` or overrides them (AppCompat's
+dialogs, DialogFragment) gets a NoSuchMethodError or no callback.
+- Found 2026-11-07 (M6b3a review).
+- Where: `dine-atl/src/api-impl/android/app/Dialog.java`.
+
 ## DINE
 
 ### DINE-6

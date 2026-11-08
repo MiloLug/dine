@@ -294,12 +294,18 @@ final class AppSurfaceView: UIView, ATLSurface {
     private(set) var frameColor: UIColor?
     private(set) var lightFrame = false
     private(set) var fullscreen = false
+    private(set) var dim: CGFloat = 0
     var frameChanged: (@MainActor () -> Void)?
 
     func atlFrameChanged(_ color: UIColor?, light: Bool, fullscreen: Bool) {
         frameColor = color
         lightFrame = light
         self.fullscreen = fullscreen
+        frameChanged?()
+    }
+
+    func atlDimChanged(_ amount: CGFloat) {
+        dim = amount
         frameChanged?()
     }
 }
@@ -309,6 +315,11 @@ final class AppSurfaceView: UIView, ATLSurface {
 final class AppContainerController: UIViewController {
     private let surface: AppSurfaceView
     private let statusBar = UIView()
+    private let statusDim: UIView = { // a dialog's dim over the status bar
+        let dim = UIView()
+        dim.alpha = 0
+        return dim
+    }()
     private let size: CGSize
     private unowned let navigator: Navigator
     private var edges: EdgeGestureRecognizer?
@@ -337,13 +348,21 @@ final class AppContainerController: UIViewController {
         matchFrame()
         surface.translatesAutoresizingMaskIntoConstraints = false
         statusBar.translatesAutoresizingMaskIntoConstraints = false
+        statusDim.translatesAutoresizingMaskIntoConstraints = false
+        statusDim.backgroundColor = .black
+        statusDim.isUserInteractionEnabled = false
         view.insertSubview(surface, at: 0)
+        view.insertSubview(statusDim, at: 0)
         view.insertSubview(statusBar, at: 0)
         NSLayoutConstraint.activate([
             statusBar.topAnchor.constraint(equalTo: view.topAnchor),
             statusBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             statusBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             statusBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            statusDim.topAnchor.constraint(equalTo: statusBar.topAnchor),
+            statusDim.leadingAnchor.constraint(equalTo: statusBar.leadingAnchor),
+            statusDim.trailingAnchor.constraint(equalTo: statusBar.trailingAnchor),
+            statusDim.bottomAnchor.constraint(equalTo: statusBar.bottomAnchor),
             surface.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
             surface.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             surface.widthAnchor.constraint(equalToConstant: size.width),
@@ -381,6 +400,10 @@ final class AppContainerController: UIViewController {
 
     private func matchFrame() {
         statusBar.backgroundColor = surface.fullscreen ? .black : surface.frameColor
+        if statusDim.alpha != surface.dim {
+            statusDim.alpha = surface.dim
+            log.notice("nav: status dim \(Double(self.surface.dim), format: .fixed(precision: 2), privacy: .public)")
+        }
         setNeedsStatusBarAppearanceUpdate()
         log.notice("nav: frame fullscreen \(self.surface.fullscreen)")
     }
