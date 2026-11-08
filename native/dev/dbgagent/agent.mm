@@ -11,6 +11,8 @@
 //   back             accessibility escape (VoiceOver's back gesture), also run after the reply
 //   action "NAME"    the first accessibility custom action named NAME up from the walk, as back
 //                    searches; also run after the reply
+//   appearance light|dark|system  the key window's overrideUserInterfaceStyle, as the system's dark
+//                    mode switch would change it; also run after the reply
 //   settle MS        waits until the last tap/back ran, no transition runs and the labels hold still,
 //                    or MS pass (at most 10 s): {"labels", "settled", "ran",
 //                    "result": tap's or action's BOOL (action: null when none has the name), or
@@ -19,6 +21,7 @@
 
 #import <UIKit/UIKit.h>
 #include <arpa/inet.h>
+#include <dlfcn.h>
 #include <errno.h>
 #include <netinet/in.h>
 #include <objc/message.h>
@@ -246,6 +249,19 @@ void Back(int fd) {
   Reply(fd, @{@"ok": @YES});
 }
 
+void Appearance(int fd, UIUserInterfaceStyle style) {
+  OnMain(^{
+    Walk();
+    gBefore = gLabels;
+    gResult = nil;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      KeyWindow().overrideUserInterfaceStyle = style;
+      gResult = @YES;
+    });
+  });
+  Reply(fd, @{@"ok": @YES});
+}
+
 // The minimum wait when the screen looks unchanged: a push can start a frame or two after the
 // activation.
 void Settle(int fd, NSInteger ms) {
@@ -293,6 +309,10 @@ void Handle(int fd) {
     Reply(fd, @{@"labels": labels});
   } else if ([line isEqualToString:@"back"]) {
     Back(fd);
+  } else if (words.count == 2 && [words[0] isEqualToString:@"appearance"]) {
+    NSDictionary *styles = @{@"light": @(UIUserInterfaceStyleLight), @"dark": @(UIUserInterfaceStyleDark),
+                             @"system": @(UIUserInterfaceStyleUnspecified)};
+    if (styles[words[1]]) Appearance(fd, (UIUserInterfaceStyle)[styles[words[1]] integerValue]);
   } else if (words.count == 2 && [words[0] isEqualToString:@"settle"] && Digits(words[1])) {
     Settle(fd, MIN(words[1].integerValue, 10000));
   } else if (words.count >= 2 && [words[0] isEqualToString:@"action"]) {
@@ -356,6 +376,13 @@ void dine_dbg_agent_start(void) {
   const char *env = getenv("DINE_DBG_AGENT_PORT");
   int port = env ? atoi(env) : 0;
   if (port <= 0) return;
+  // SwiftUI builds the tree the walk reads only with app accessibility on, which iOS can leave off
+  // for new launches; this sets it for this process
+  auto set_ax = (void (*)(int))dlsym(RTLD_DEFAULT, "_AXSApplicationAccessibilitySetEnabled");
+  if (set_ax)
+    set_ax(1);
+  else
+    os_log_error(Log(), "dbg agent: no _AXSApplicationAccessibilitySetEnabled: the walk may see no SwiftUI labels");
   pthread_t thread;
   if (pthread_create(&thread, nullptr, Serve, (void *)(intptr_t)port) == 0) pthread_detach(thread);
 }

@@ -18,6 +18,7 @@ class Step:
     back: bool = False
     action: str | None = None  # an accessibility custom action's name
     type: tuple[str, str] | None = None  # (label, text): the text typed into that field
+    appearance: str | None = None  # light, dark or system: the key window's interface style
     declined: bool = False      # the tap must be declined (a disabled control or alert action)
     ok: tuple[str, ...] = ()    # regexes that must all show up in the app's syslog
     ui: tuple[str, ...] = ()    # accessibility labels that must all show up, after ok
@@ -190,6 +191,27 @@ SCENARIOS = {
                  fail=ATL_FAIL, timeout=120),
             Step("Home", action="Home", ok=("nav: launcher root", "nav: keep screen on false")),
         ], uses_vm=True, needs_clean=True, alive=True),
+        Scenario("atl-keyboard", [
+            Step("atl", tap="atl"),
+            # adjustResize: with the keyboard up the window lays out above it, so its bottom insets go
+            # a window below the status bar keeps the size Dine started it with: no resize on the show
+            Step("run keyboard resize", tap="keyboard resize", ok=(r"keyboard: resize ime 0 nav [1-9]\d* size",),
+                 ui=("resize field",), fail=ATL_FAIL + ("nav: window size",), timeout=120),
+            Step("type into the field", type=("resize field", "a"), ok=(r"keyboard: resize ime 0 nav 0 size",), fail=ATL_FAIL),
+            Step("Home", action="Home", ok=("nav: launcher root",)),
+        ], uses_vm=True, needs_clean=True, alive=True),
+        Scenario("atl-config", [
+            Step("atl", tap="atl"),
+            Step("run config", tap="config", ok=("config: activity created color",), fail=ATL_FAIL, timeout=120),
+            # from light, whatever the phone's own: a dark switch is then a change
+            Step("light first", appearance="light"),
+            Step("dark", appearance="dark", ok=("config: application night 32", "config: activity night 32 color #ffaabbcc",
+                                                "config: view night 32"), fail=ATL_FAIL),
+            Step("light", appearance="light", ok=("config: application night 16", "config: activity night 16 color #ff112233"),
+                 fail=ATL_FAIL),
+            Step("system", appearance="system"),
+            Step("Home", action="Home", ok=("nav: launcher root",)),
+        ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-popup", [
             Step("atl", tap="atl"),
             Step("run windows popup", tap="windows popup", ok=("popup activity created",), fail=ATL_FAIL, timeout=120),
@@ -311,7 +333,7 @@ SCENARIOS = {
             # px at 3x: 20 pt side strips, the home indicator at the bottom; B excludes 200-300 px of its right edge
             Step("run nav", tap="nav", ok=("nav: B onResume", "nav: container shown nav",
                                           r"nav: B insets 60 0 60 [1-9]\d* 0 0 0 [1-9]\d* 0 0 0 [1-9]\d*",
-                                          "nav: exclusion left 0 right 1"), fail=ATL_FAIL, timeout=120),
+                                          "nav: exclusion left 0 right 1"), fail=ATL_FAIL + ("nav: window size",), timeout=120),
             Step("Back", action="Back", ok=("nav: B onDestroy", "nav: A onResume", "nav: exclusion left 0 right 0"),
                  fail=ATL_FAIL),
             Step("back on the task root", back=True,
@@ -332,6 +354,15 @@ SCENARIOS = {
             Step("Odd item", tap="Odd ��\U0001f600��", ok=("dialog: closed", "nav: list 1"),
                  fail=ATL_FAIL + ("nav: list canceled",)),
             Step("Home at the end", action="Home", ok=("nav: A onStop", "nav: launcher root"), fail=ATL_FAIL),
+        ], uses_vm=True, needs_clean=True, alive=True),
+        Scenario("atl-immersive", [
+            Step("atl", tap="atl"),
+            # nav.apk's ImmersiveActivity: the window grows under the status bar, the home indicator hides
+            Step("run nav immersive", tap="nav immersive",
+                 ok=("nav: I onResume", "nav: frame fullscreen false cover true hide navigation true immersive true",
+                     r"nav: window size \d+x\d+", r"nav: I edges status 0 [1-9]\d* 0 0 ime 0 0 0 0 hidden", r"nav: I size \d+x\d+"),
+                 fail=ATL_FAIL, timeout=120),
+            Step("Home", action="Home", ok=("nav: I onStop", "nav: launcher root"), fail=ATL_FAIL),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("art", [
             Step("art", tap="art", ok=("art probe done",)),
@@ -356,7 +387,8 @@ def listing(app: str) -> str:
         lines.append(f"{sc.name}" + (f" ({', '.join(flags)})" if flags else ""))
         for st in sc.steps:
             what = f"tap {st.tap!r}" if st.tap else f"type {st.type[1]!r} into {st.type[0]!r}" if st.type else \
-                f"action {st.action!r}" if st.action else "back" if st.back else st.title
+                f"action {st.action!r}" if st.action else f"appearance {st.appearance}" if st.appearance else \
+                "back" if st.back else st.title
             lines.append(f"  {what}" + (f"; wait for {', '.join(st.ok)}" if st.ok else "")
                          + (f"; shows {', '.join(map(repr, st.ui))}" if st.ui else "")
                          + (" [--network]" if st.network else ""))
@@ -400,10 +432,11 @@ def run(app: str, names: list[str], network: bool, relaunch: Callable[[], int], 
                 out(f"{sc.name}: {st.title}: skipped (needs --network)")
                 continue
             t = time.monotonic()
-            if st.tap or st.type or st.back or st.action:
+            if st.tap or st.type or st.back or st.action or st.appearance:
                 resp = client.call("ui_tap", {"arg": st.tap}, timeout=30) if st.tap else \
                     client.call("ui_type", {"arg": st.type[0], "text": st.type[1]}, timeout=30) if st.type else \
                     client.call("ui_action", {"arg": st.action}, timeout=30) if st.action else \
+                    client.call("ui_appearance", {"arg": st.appearance}, timeout=30) if st.appearance else \
                     client.call("ui_back", {}, timeout=30)
                 declined = bool(resp["code"]) and "declined the activation" in resp["text"]
                 if st.declined != declined or (resp["code"] and not declined):

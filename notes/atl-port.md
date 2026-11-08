@@ -29,10 +29,10 @@ its row here changes when that block does.
 | [M6a](#m6a-triage-and-fixes) | triage and fixes | done |
 | [M6b1](#m6b1-content) | breadth: content | done |
 | [M6b2](#m6b2-windows) | breadth: windows | done |
-| [M6b3](#m6b3-windows-continued) | breadth: windows, continued | in progress |
+| [M6b3](#m6b3-windows-continued) | breadth: windows, continued | done |
 | [M6b3a](#m6b3a-dialogs-on-the-phone) | dialogs on the phone | done |
 | [M6b3b](#m6b3b-window-state-and-popups) | window state and popups | done |
-| [M6b3c](#m6b3c-keyboard-screen-edges-config) | keyboard, screen edges, config | next |
+| [M6b3c](#m6b3c-keyboard-screen-edges-config) | keyboard, screen edges, config | done |
 | [M6c](#m6c-search-ahead-of-m7) | search ahead of M7 | planned |
 | [M7](#m7-os-features) | OS features, items in `notes/os-features.md` | planned |
 | [M8a](#m8a-apk-import-and-launch) | APK import and launch | planned |
@@ -717,7 +717,7 @@ keyboard, the keyboard after Home and front. As built:
 - Debug agent: `ui type <label> <text>` (`insertText:`; no marked text).
 - Tests: `run-text.sh` (`linux smoke text`, the widgets APK's `TextActivity`), the framework suite
   `text`, smoke `atl-text`.
-- Open: keyboard avoidance (M6b3); Java's click and touch listeners on a field or a selectable
+- Open: Java's click and touch listeners on a field or a selectable
   TextView where the toolkit takes its touches (gtk; on iOS unchecked); a hardware keyboard types
   only into the field with the keyboard (no KeyListener); gtk multi-line; ClipboardManager (M7); `onCreateInputConnection` on EditText,
   BaseInputConnection (a stub whose own `Editable` class shadows `android.text.Editable`) and
@@ -1339,6 +1339,8 @@ and the immersive steps, and both builds build; the hand checks are listed in th
 Split into three sub-stages built in order (the user's choice, 2026-11-07); the Done-when above is
 their union. Plan: `~/.claude/plans/glowing-singing-raccoon.md`.
 
+**Status: done (2026-11-08):** M6b3a, M6b3b and M6b3c below.
+
 ##### M6b3a: dialogs on the phone
 
 - uikit shows the registry's roots: an overlay container over the app surface, a dim, touches,
@@ -1402,7 +1404,8 @@ the Status block.
   `getListView().setItemChecked` after the show doesn't reach the native rows; a panel ignores
   `Window.setLayout`'s width; AppCompat and Material dialogs draw Android's own layouts;
   `Dialog.create`, `onStart` and `onStop` are missing ([ATL-65](general-todo.md#atl-65)); a
-  panel's field isn't kept above the keyboard until M6b3c.
+  panel's field pans above the keyboard by the dialog theme's adjustPan (M6b3c), unchecked on
+  the phone.
 
 ##### M6b3b: window state and popups
 
@@ -1458,12 +1461,12 @@ and toast steps; the framework `windows` suite passes on headless, gtk and one V
   animation completes, so Java gets the item, then the dismissal (the debug agent can't pick
   UIMenu items); the toast capsule bottom-centre with Dine's status-bar strip unchanged. Not done:
   light mode, a toast over a plain alert, VoiceOver.
-- Open: a `setView` toast draws under a presented plain alert; popups and drop-downs ignore the
-  keyboard until M6b3c; on iOS the agent's accessibility taps still reach Android views under an
-  open menu (real touches close it); a text toast whose app comes back to the front mid-toast stays
-  hidden; on gtk the toast's label goes above an application overlay (AOSP keeps toasts under
-  them); a popup that goes with its removed dialog keeps its tree observers on the app window;
-  [ATL-67](bug-tracker.md#atl-67).
+- Open: a `setView` toast draws under a presented plain alert; popups and drop-downs follow their
+  anchor in a panned or resized window (M6b3c), unchecked on the phone; on iOS the agent's
+  accessibility taps still reach Android views under an open menu (real touches close it); a text
+  toast whose app comes back to the front mid-toast stays hidden; on gtk the toast's label goes
+  above an application overlay (AOSP keeps toasts under them); a popup that goes with its removed
+  dialog keeps its tree observers on the app window; [ATL-67](bug-tracker.md#atl-67).
 
 ##### M6b3c: keyboard, screen edges, config
 
@@ -1476,6 +1479,76 @@ and toast steps; the framework `windows` suite passes on headless, gtk and one V
 `windows` suite passes on headless, gtk and one VM; on the phone `dbg smoke` passes with
 `atl-keyboard` (or its hand check), `atl-config`, the extended `atl-nav`, and `atl-text`
 unchanged; both builds build; the hand checks are listed in the Status block.
+
+**Status: done (2026-11-08).** Plan: `~/.claude/plans/sequential-growing-pancake.md`. Built:
+- The pads' return key is a round glass button (`glassButtonConfiguration`) above the pad's
+  top-right corner, in a clear accessory, with a symbol per action (Done `checkmark`, Next
+  `arrow.down`, Go `arrow.right`, Search `magnifyingglass`, Send `arrow.up`, else `return`); its
+  accessibility label is the action's title.
+- `atl_window_insets` has status-bar and IME edges. Each app has its window size and night
+  (`struct atl_app`): every app's embedded config sets them, `atl_nav_set_window_size` and
+  `atl_nav_set_night` change them. records, the inset clip, exclusion and the uikit panel cap read
+  the app's size; `getWindowVisibleDisplayFrame` leaves out the bars and the keyboard.
+- Keyboard avoidance: Dine sends the keyboard's overlap as the IME inset of the app in front.
+  `softInputMode` comes from the manifest, the theme (dialogs) and `Window.setSoftInputMode`;
+  unspecified resizes while a scroll container shows (AOSP's flag; ScrollView takes
+  `scrollViewStyle`, as AOSP's). adjustResize lays the window out above the keyboard and clips its insets
+  there, and ScrollView scrolls a focused child that showed into the smaller room (AOSP's
+  `onSizeChanged`). adjustPan moves the root by a per-window offset (`windows.c`: draw, touch,
+  `getLocationInWindow`), from a port of `scrollToRectOrFocus` for the focused view.
+- Immersive: `setSystemUiVisibility`'s flags, `setDecorFitsSystemWindows` and `InsetsController`'s
+  `hide`, `show` and behavior reach Dine in `struct ui_frame` (fullscreen, `cover_top`, hide
+  navigation, immersive). With `cover_top` Dine pins the window to the screen's top and sends its
+  size and the status-bar inset (`notes/nav-gestures.md` Immersive mode); the home indicator hides
+  with hide navigation, and immersive defers the hidden bars' edges instead (on iOS 27 a hidden
+  indicator lets the first swipe through the deferral). A hidden bar's visible inset is 0.
+  `getWindowSystemUiVisibility` and `OnSystemUiVisibilityChangeListener` are real.
+- Behind the window uikit paints the shown activity's background color (its ColorDrawable, else
+  the theme's `colorBackground`, in `struct ui_frame`), so a keyboard's rounded corners show the
+  app's color, not Dine's.
+- Night reaches running apps. "Night" is Android's name for dark mode: the night bits of
+  `Configuration.uiMode`, `UI_MODE_NIGHT_YES` (0x20, 32) dark and `UI_MODE_NIGHT_NO` (0x10, 16)
+  light, which `values-night` resources and AppCompat's DayNight follow; ATL's API and the test
+  lines keep Android's name and values. Dine's key window trait change goes to every running app, gtk's
+  portal to its app, the cli's `night 0|1` to its app. The app's configuration and every Resources
+  it made take it, then Application and its registered `ComponentCallbacks`, and the activities
+  whose manifest covers uiMode with their view tree; the others log that they keep their
+  configuration. The Resources caches get Java change bits and drop a drawable on any change
+  (`CONFIG_NATIVE_BITS` is empty, so native bits would be 0). Dev agent:
+  `ui appearance light|dark|system`.
+- Tests: framework `windows` `SoftInputTest`, `SystemUiTest` (also the frame's background),
+  `ConfigTest`; windows APK
+  `PanActivity`, `ResizeActivity`, `UnspecifiedActivity`, `ConfigActivity`, `PlainConfigActivity`
+  (`run-keyboard.sh` with `keyboard-pan.viewtree` and `keyboard-resize.viewtree`, `run-config.sh`;
+  `linux smoke keyboard config`); nav APK `ImmersiveActivity` (orange and teal bands at its top
+  and bottom) and `run-nav.sh`'s edges, size and immersive steps; `dbg smoke` `atl-keyboard`, `atl-config` and `atl-immersive` (the extended
+  `atl-nav`: a second nav tile would only bring the running nav app to the front); `atl-keyboard`
+  and `atl-nav` also fail when a container's show resizes a window below the status bar. Each new
+  check failed under its mutation, on the phone a Dine build without the keyboard observer, the
+  night sends or the size send; the glass button has no automated check.
+- Checks (2026-11-08): framework 384/385 on headless, gtk and one VM (the `windows` suite 62/62),
+  apps 4/5 and 5/5, package 48/48, `linux smoke` 21, runtime as before, `test unit` 79; on the
+  iPhone 13 `dbg smoke` 25 with `atl-keyboard`, `atl-config`, `atl-immersive`, `atl-nav` and
+  `atl-text` unchanged; dev and release builds, the release library without the new test hooks.
+- Hand checks (iPhone 13): from the agent's screenshots, the round button in light and dark, no
+  bar; a panned field above the keyboard (2340 to 1356 px under a 984 px keyboard); a resized
+  window (2391 to 1407 px) with the field above the keyboard. By the user: content under the notch
+  (the orange band to the screen's top, the clock over it); with the indicator's auto-hide turned
+  off by the debugger, the indicator stays away, the first swipe up only reveals it and the second
+  goes home; the keyboard
+  animation; a real touch on a panned field; VoiceOver on the round button; a dark/light flip in
+  Control Center. One switch reached three running apps (windows, widgets and nav) in the phone's
+  log. Not done: the swipe and the keyboard corners on the build with their fixes; the top edge's
+  deferral with the status bar hidden.
+- Open: theme attributes keep their values after a night change
+  ([ATL-73](general-todo.md#atl-73)), and an activity without uiMode keeps its look until
+  recreation (multi-app MA5); an app's Resources share one AssetManager, so a configuration
+  context that overrides night resolves at the app's;
+  non-sticky immersive never clears (iOS reports no revealed indicator); a text cursor's
+  `requestRectangleOnScreen` doesn't pan; no cutout shape ([ATL-69](general-todo.md#atl-69));
+  a popup's own soft input mode is unchecked; the IME inset includes a pad's return button;
+  `waitForIdleSync` waits for nothing ([ATL-70](bug-tracker.md#atl-70)); [ATL-71](bug-tracker.md#atl-71),
+  [ATL-72](bug-tracker.md#atl-72).
 
 ### M6c: search ahead of M7
 

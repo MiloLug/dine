@@ -160,6 +160,13 @@ class IosTarget(AgentUi, LldbCommands, Target):
             raise CmdError(f"{arg!r} declined")
         return f"ran {arg!r}" + tail
 
+    def do_ui_appearance(self, arg=None, timeout=60):
+        if arg not in ("light", "dark", "system"):
+            raise CmdError("usage: tools/dine dbg ui appearance light|dark|system")
+        self._agent(f"appearance {arg}")
+        tail, _ = self._settle()
+        return f"appearance {arg}" + tail
+
     def do_ui_screenshot(self, arg=None):
         d = self.store.dir / "screenshots"
         d.mkdir(exist_ok=True)

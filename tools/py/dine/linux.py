@@ -157,6 +157,18 @@ def _windows() -> str | None:
             or _script("run-windows.sh", HEADLESS_TESTS / "run-windows.sh", HEADLESS_BUILD, WINDOWS_APK))
 
 
+def _keyboard() -> str | None:
+    _need_headless()
+    return (_script("apk.py", sys.executable, paths.ROOT / "tests/harness/apk.py", HEADLESS_TESTS / "windows", WINDOWS_APK)
+            or _script("run-keyboard.sh", HEADLESS_TESTS / "run-keyboard.sh", HEADLESS_BUILD, WINDOWS_APK))
+
+
+def _config() -> str | None:
+    _need_headless()
+    return (_script("apk.py", sys.executable, paths.ROOT / "tests/harness/apk.py", HEADLESS_TESTS / "windows", WINDOWS_APK)
+            or _script("run-config.sh", HEADLESS_TESTS / "run-config.sh", HEADLESS_BUILD, WINDOWS_APK))
+
+
 def _windows_gtk() -> str | None:
     if not GTK_BUILD.is_dir():
         raise DineError(f"no {GTK_BUILD}: run tools/dine linux build atl")
@@ -197,6 +209,8 @@ CHECKS = [
     Check("draw-gtk", "gtk: the same view draws through gsk", _draw_gtk),
     Check("windows", "headless: windows.apk's window state from an activity and a dialog, the order of WindowManager windows, a popup, an AutoCompleteTextView's drop-down, a menu and toasts", _windows),
     Check("windows-gtk", "gtk: a popup below its anchor, a native menu and a toast", _windows_gtk),
+    Check("keyboard", "headless: windows.apk's fields under an IME inset: adjustPan moves the window up, adjustResize and an unspecified mode with a ScrollView lay it out above the keyboard (keyboard-pan.viewtree, keyboard-resize.viewtree)", _keyboard),
+    Check("config", "headless: windows.apk under night changes from cli -c: an activity whose manifest covers uiMode, its view and the Application hear them and resolve night resources; one that doesn't keeps its configuration", _config),
 ]
 
 

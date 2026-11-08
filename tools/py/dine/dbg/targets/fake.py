@@ -120,6 +120,9 @@ class FakeTarget(Target):
     def do_ui_action(self, arg=None, timeout=10):
         return f"ran {arg!r}\nscreen: {agent.screen(self._labels())}"
 
+    def do_ui_appearance(self, arg=None, timeout=10):
+        return f"appearance {arg}\nscreen: {agent.screen(self._labels())}"
+
     def do_fake(self, action: str, text: str = "", delay: float = 0.0):
         def fire():
             if action == "log":

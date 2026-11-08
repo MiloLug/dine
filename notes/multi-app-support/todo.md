@@ -207,8 +207,8 @@ while each VM still runs one app; MA2b runs several apps in one VM. The record m
   makes the handle before the start (`dine_atl_app_new`), so insets still go in before it.
 - `[x]` The notes follow the code: no note but a findings file describes a primary app.
 - Not in MA2a: the gtk host keeps its one window and app handle, and gtk's C IME context and
-  MediaSession stay per process (one app per gtk process); the screen's size and density stay
-  VM-wide until a window per task (MA6); the headless and uikit input state (touch, scroll, edit
+  MediaSession stay per process (one app per gtk process); the screen's density stays VM-wide,
+  the window size is per app (M6b3c) and per task with MA6; the headless and uikit input state (touch, scroll, edit
   target) stays per process (MA2b).
 - Done when: today's suites pass at baseline on headless and gtk, both iOS builds build, `dine-atl/src`
   keeps none of the primary app's fields. Met 2026-11-02, and `dbg smoke` passes on the phone.
@@ -314,9 +314,11 @@ while each VM still runs one app; MA2b runs several apps in one VM. The record m
   iOS ends Dine.
 - `[ ]` Linux: the same Bundle files; a clean end (window closed, crash, SIGTERM at logout)
   deletes them, a start that finds them restores (`design.md` "Holes in the static model").
-- `[ ]` `onTrimMemory` (`TRIM_MEMORY_UI_HIDDEN`, `TRIM_MEMORY_BACKGROUND`), `onLowMemory`,
-  `registerComponentCallbacks`.
-- `[ ]` Configuration changes: `onConfigurationChanged` or recreation with saved state.
+- `[ ]` `onTrimMemory` (`TRIM_MEMORY_UI_HIDDEN`, `TRIM_MEMORY_BACKGROUND`), `onLowMemory`.
+  `registerComponentCallbacks` is real (the Application keeps them, M6b3c).
+- `[ ]` Configuration changes: recreation with saved state. A night change reaches
+  `onConfigurationChanged` of the activities that cover uiMode (M6b3c); the others keep their
+  configuration.
 - Done when: a test APK's activity state survives a drop and a reload in the headless test mode,
   and a `kill -9` of its headless process and a restart.
 

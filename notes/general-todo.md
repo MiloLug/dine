@@ -201,6 +201,34 @@ background keeps it. Lowest priority (the user, 2026-11-08).
 - Where: `dine-atl/src/api-impl/android/widget/PopupWindow.java` (`setBackgroundDrawable`),
   `src/backends/ui/uikit/view.m` (the window containers).
 
+### ATL-69
+
+**Report the display cutout's shape.** Android apps read the notch through
+`WindowInsets.getDisplayCutout()` (API 28: safe insets and bounding rects; Developer options
+"Simulate a display with a cutout" fakes one). ATL has a `DisplayCutout` stub that is always
+`NO_CUTOUT` (`Display.java:72`), and `WindowInsets.getDisplayCutout()` returns null, so a window
+that takes the notch (M6b3c's `cover_top` with `SHORT_EDGES`) can put content under it. The user
+(2026-11-08): it must depend on the iPhone model, or better use an iPhone cutout API if one exists.
+iOS has no public notch-shape API: `safeAreaInsets` gives only the strip's height. A private
+`-[UIScreen _exclusionArea]` is reported to return the notch's rect (unverified on iOS 27); else a
+table keyed on the device model (`utsname.machine`). Dine would send it with the insets.
+- Found 2026-11-08 (M6b3c planning).
+- Where: `dine-atl/src/api-impl/android/view/DisplayCutout.java`, `WindowInsets.java`, `Display.java`;
+  Dine's `Navigator.sendInsets`.
+
+### ATL-73
+
+**`Resources.Theme.rebase`.** Android's re-applies the styles a theme was built from against its
+Resources' current configuration, so `?attr` colors and drawables follow a night change. ATL's is
+empty, and `Theme.applyStyle` doesn't record its styles in the theme's `ThemeKey` (`mKey.append`),
+so there is nothing to re-apply yet. After an M6b3c night change, Resources lookups re-resolve
+but an existing theme's attributes keep their day values, also in the activities that cover uiMode,
+and so may the color behind the window (`Window.backgroundColor`, from the theme's
+`colorBackground` when the root has no color drawable; unchecked).
+- Found 2026-11-08 (M6b3c).
+- Where: `dine-atl/src/api-impl/android/content/res/Resources.java` (`Theme.rebase`,
+  `Theme.applyStyle`, `ThemeKey`); the night change in `ATLLoadedApp.applyNight`.
+
 ## DINE
 
 ### DINE-6
@@ -275,6 +303,22 @@ needs `hprof-conv`, `141-class-unload` and `150-loadlibrary` need upstream's nat
 `libarttest` (which 100 skipped tests need too). `071-dexfile-map-clean`, `677-fsi` and
 `707-checker-invalid-profile` need dex2oat, which dine-art never runs: they stay expected
 failures. Reasons per test: `dine-art/tests/runtime/expectations/linux-x86_64.json`.
+
+### TOOL-8
+
+**Evaluate XCUITest for phone UI checks.** The debug agent (`native/dev/dbgagent`) walks the
+accessibility tree and activates elements; it can't synthesize touches, so taps at a point, a
+real touch on a field and swipes stay hand checks. Apple's UI automation (XCUITest, which
+Appium's WebDriverAgent also runs on) synthesizes taps and swipes at coordinates, and its test
+daemon should turn app accessibility on for each session. Our agent needs that flag too
+(`_AXSApplicationAccessibilityEnabled`): on 2026-11-08 it read 0 after a VoiceOver test, SwiftUI
+built no tree and `dbg ui` found nothing (the VoiceOver link is a guess from the log's timing);
+the agent now sets it for its own process at start.
+- Unchecked: building and signing an XCTest runner without Xcode (xtool builds apps; the runner
+  is a second app, one of a free Apple ID's three app IDs per 7 days); starting a session from
+  Linux (pymobiledevice3's testmanagerd client); whether a synthesized swipe triggers iOS's own
+  edge gestures (Home, Control Center); whether the daemon turns the flag on by itself on iOS 27.
+- Found 2026-11-08 (M6b3c's hand checks; the user asked to note it).
 
 ## Done
 

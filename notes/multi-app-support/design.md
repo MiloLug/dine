@@ -111,9 +111,9 @@ Everything that holds app state lives in the record:
   names of its own archive, listed at build time. Target SDK and package name per app are MA3's:
   ART keeps one VM-wide value of each, which ATL never sets.
 
-The screen (size, density, night) is the VM's: Dine shows every app in one container size, and a
-window with its own size comes with a window per task (MA6). `DisplayMetrics.DENSITY_DEVICE` is the
-device's.
+The screen's density is the VM's; each app's window has its own size and night (`struct atl_app`,
+`atl_nav_set_window_size`, `atl_nav_set_night`, M6b3c), and a window per task comes with MA6.
+`DisplayMetrics.DENSITY_DEVICE` is the device's.
 
 No primary app, on every backend (decided; the user: "it hast to stop assuming we have any kind of
 primary app. These functions are app-runtime-timed, they are not some global magic, like
@@ -141,9 +141,9 @@ primary app. These functions are app-runtime-timed, they are not some global mag
 - A Linux process runs one record, and that record is no more primary than any other.
 
 Shared state that stays shared: interned strings, class metadata of boot classes, the okhttp
-connection pool (`Address.equals` already separates apps' TLS setups), the display configuration,
-the records text-measure cache (M6b1, `records/ui.c`: a result depends only on its key, which holds
-every measure input).
+connection pool (`Address.equals` already separates apps' TLS setups), the display configuration
+new apps copy (`Context.sys_config`), the records text-measure cache (M6b1, `records/ui.c`: a result
+depends only on its key, which holds every measure input).
 
 ## Containment
 

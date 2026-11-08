@@ -180,8 +180,8 @@ same model.
 ### Host to ATL
 
 `void atl_nav_set_insets(struct atl_app *app, const struct atl_window_insets *insets)` (`nav.h`)
-takes `float` dp for three edge sets (`struct atl_edges`): system gestures, mandatory system
-gestures and navigation bars. The navigation bars are also the system window insets apps read
+takes `float` dp for five edge sets (`struct atl_edges`): system gestures, mandatory system
+gestures, navigation bars, status bars and the IME. The navigation bars are also the system window insets apps read
 before API 30, the only ones that reach androidx at ATL's level. It works from any thread and also
 before the app starts: shared C (`src/shared/insets.c`) stores the values in the app's record under
 a mutex and, while the app runs, posts a dispatch to its shown activity; every show dispatches the
@@ -197,10 +197,13 @@ Dine sends (`Navigator.sendInsets`, before the start and on the container's safe
 | top | 0: the window starts below the status bar | 0 | 0 |
 | bottom | the safe area's bottom (the home indicator) | same | same |
 
-Dine treats 1 pt as 1 dp. Since M3 the ATL window on iOS runs from below the status bar to the
-screen's bottom at density 160 × screen scale (1 dp = 1 pt): its side and bottom edges are the
-screen's, its top is the safe area's, so the top insets it gets are 0 until it covers the status
-bar too.
+Status bars: the safe area's top while the window runs under the status bar (`cover_top`), else 0.
+IME: the keyboard's end frame's overlap with the window, sent to the app in front and zeroed when
+the keyboard hides or the app leaves the front (`UIKeyboardWillChangeFrameNotification`).
+Dine treats 1 pt as 1 dp. The ATL window on iOS runs from below the status bar to the screen's
+bottom at density 160 × screen scale (1 dp = 1 pt): its side and bottom edges are the screen's, its
+top is the safe area's, or the screen's while the shown activity runs under the status bar; Dine
+then sends the new size (`atl_nav_set_window_size`) and the status-bar inset.
 
 ### Java
 
@@ -242,13 +245,26 @@ more androidx calls `getOnBackInvokedDispatcher`, which ATL lacks
 
 ### Immersive mode
 
-Planned: M6b3, the Dine-wide setting M8c. `SYSTEM_UI_FLAG_HIDE_NAVIGATION` and the immersive flags
-map to the container's `prefersHomeIndicatorAutoHidden` and
-`preferredScreenEdgesDeferringSystemGestures` (a first swipe at a deferred edge only reveals). A
-Dine setting forces `prefersHomeIndicatorAutoHidden` on for every app, so the indicator doesn't
+Built in M6b3c; the Dine-wide setting is M8c's. The shown windows' flags reach Dine in
+`struct ui_frame` (`ATLSurface atlFrameChanged:`): the immersive flags map to
+`preferredScreenEdgesDeferringSystemGestures` (`.bottom` with the navigation bar hidden, `.top` with
+the status bar hidden: a first swipe there only reveals), and `SYSTEM_UI_FLAG_HIDE_NAVIGATION`
+without them to the container's `prefersHomeIndicatorAutoHidden`. On iOS 27 a hidden indicator lets
+the first swipe through a deferred bottom edge, and the deferral alone keeps the indicator away
+until a swipe (both seen on the phone, 2026-11-08). `InsetsController`'s `hide`, `show` and
+`setSystemBarsBehavior` map onto the same flags. A hidden bar's visible inset is 0, its maximum kept
+(`getInsetsIgnoringVisibility`).
+
+`cover_top`, from the shown activity's window: a layout-fullscreen window
+(`SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN`, `FLAG_LAYOUT_NO_LIMITS`, `setDecorFitsSystemWindows(false)`)
+unless its cutout mode is `NEVER`, or a fullscreen one whose cutout mode is `SHORT_EDGES` or `ALWAYS`
+(the user: "Extend under the notch"). Dine then pins the window to the screen's top. Fullscreen
+alone (`FLAG_FULLSCREEN`) hides the status bar and keeps the window below the notch, Android's
+default cutout mode. Apps get no cutout shape yet ([ATL-69](general-todo.md#atl-69)).
+
+A Dine setting forces `prefersHomeIndicatorAutoHidden` on for every app, so the indicator doesn't
 cover apps on iPhones that keep it shown (newer iOS hides it by default); it lives in the
-[settings](#settings) store, next to the bindings. Fullscreen (`FLAG_FULLSCREEN`) only hides the
-status bar, with the window kept below the notch (Android's default cutout mode).
+[settings](#settings) store, next to the bindings.
 
 ## Interfaces
 
@@ -277,6 +293,8 @@ before the start; the cli and gtk hosts keep the one they run).
 | `bool atl_nav_home(struct atl_app *)` | posts task to back; no-op while in the back |
 | `bool atl_nav_front(struct atl_app *)` | posts task to front; no-op while in the front |
 | `void atl_nav_set_insets(struct atl_app *, ...)` | stores insets, posts their dispatch ([Host to ATL](#host-to-atl)) |
+| `void atl_nav_set_window_size(struct atl_app *, float w, float h)` | stores the window's size in dp, posts a dispatch that lays the windows out again |
+| `void atl_nav_set_night(struct atl_app *, int night)` | stores the night mode (`Configuration.UI_MODE_NIGHT_*`), posts the app's configuration change |
 
 The `bool` functions work from any thread and return false when the app isn't running or the post
 failed. `atl_nav_back` replaces `current_activity_back_pressed`. The gtk header button calls it;
@@ -285,7 +303,10 @@ failed. `atl_nav_back` replaces `current_activity_back_pressed`. The gtk header 
 `nav.h` also defines the types the host sees:
 
 ```c
-struct atl_gesture_insets { float left, top, right, bottom; };          /* dp */
+struct atl_edges { float left, top, right, bottom; };                   /* dp */
+struct atl_window_insets {
+	struct atl_edges system_gestures, mandatory_gestures, navigation_bars, status_bars, ime;
+};
 struct atl_span { float top, bottom; };                                 /* dp, window */
 #define ATL_EXCLUSION_SPANS_MAX 16
 struct atl_gesture_exclusion {
@@ -386,8 +407,9 @@ flag, from its first `onResume`. Both log their lifecycle and register an
 
 - **cli host option `-c`:** a reader thread takes commands on stdin for the app it runs and calls
   `atl_nav_*`: `back`,
-  `home`, `front`, and `insets` with 12 dp (system gestures, mandatory gestures, navigation bars,
-  each left top right bottom); M4a's `touch` and `key` lines go to the headless backend. The loop
+  `home`, `front`, `insets` with 12 or 20 dp (system gestures, mandatory gestures, navigation bars,
+  then status bars and the IME, each left top right bottom), `size W H` (dp) and `night 0|1`; M4a's
+  `touch` and `key` lines go to the headless backend. The loop
   slot has no fd watch, hence the thread. It is opt-in, so `run-looper.sh` and other runs that
   inherit a terminal's stdin are unaffected.
 - **`run-nav.sh`** drives the APK through a coproc, like `run-demo.sh`, and checks in order. A
@@ -400,7 +422,10 @@ flag, from its first `onResume`. Both log their lifecycle and register an
   5. `back` (nothing), then `front`: `host: task front host`, A's `onRestart`, `onStart`, `onResume`
   6. `front` (nothing), then `home`: `host: task back host`, A's `onPause` and `onStop`
   7. `home` and `front` with A's list shown in the back, then `back`: the list cancels and closes
-  8. kill ATL, like `run-demo.sh`
+  8. `insets` with a status bar and an IME edge: A's edges line; `size 200 300`: A's size line
+  9. a second run with `ImmersiveActivity` (I): its frame line's flags, the flags its views hear,
+     its navigation-bar inset 0 while hidden, the status inset, a size that grows it
+  10. kill ATL, like `run-demo.sh`
 - Register `nav` in `tools/py/dine/linux.py` next to gd, demo and looper. The demo golden doesn't
   change.
 

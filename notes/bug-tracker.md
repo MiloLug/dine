@@ -639,6 +639,33 @@ its activity (a dialog, a popup) can give the keys back to the other app's field
 - State: unchecked; found 2026-11-08 (M6b3b's planning, code read only).
 - Where: `dine-atl/src/backends/ui/uikit/view.m` (`keyboard_field`, `root_take_responder`).
 
+### ATL-70
+
+**`Instrumentation.waitForIdleSync` waits for nothing.** Its body is commented out, so a test that
+calls it right after `runOnMainSync` sees none of what that runnable posted (a Handler post, an
+insets dispatch). M6b3c's `SystemUiTest` and `ConfigTest` use a second `runOnMainSync` as the
+barrier instead.
+- State: open; found 2026-11-08 (M6b3c, `SystemUiTest`'s listener case).
+- Where: `dine-atl/src/api-impl/android/app/Instrumentation.java` `waitForIdleSync`.
+
+### ATL-71
+
+**`ScrollView.setFillViewport` does nothing, and HorizontalScrollView skips its default style.**
+A form in a fill-viewport ScrollView that is shorter than the screen keeps its own height, so
+content meant to sit at the bottom sits under the rest. `HorizontalScrollView(Context)` and
+`(Context, AttributeSet)` pass no `horizontalScrollViewStyle` (ScrollView's pass `scrollViewStyle`).
+- State: open; found 2026-11-08 (M6b3c's keyboard tests, code read only).
+- Where: `dine-atl/src/api-impl/android/widget/ScrollView.java`, `HorizontalScrollView.java`.
+
+### ATL-72
+
+**`PackageManager.getActivityInfo` replaces an activity's `configChanges` with uiMode.** It sets
+`info.configChanges = CONFIG_UI_MODE` for AppCompat's own check, which drops every flag the manifest
+has; `NativeActivity` reads them from there. M6b3c's night dispatch reads the manifest's
+(`PackageParser.Activity.info`) for this reason.
+- State: open; found 2026-11-08 (M6b3c planning, code read only).
+- Where: `dine-atl/src/api-impl/android/content/pm/PackageManager.java:1632`.
+
 ## DINE
 
 ### DINE-1

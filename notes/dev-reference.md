@@ -68,14 +68,19 @@ transition, labels unchanged).
 - `type <label> <text>` makes the element the first responder if it edits text and inserts the text
   with `insertText:`, as a keyboard's committed text; no marked text. It can't press return: a
   UITextField takes an inserted newline as a space ([TOOL-4](general-todo.md#tool-4)).
+- `appearance light|dark|system` sets the key window's `overrideUserInterfaceStyle`, which Dine
+  hears as a trait change and sends to every running app as its night (`atl_nav_set_night`).
+- The walk sees the key window only: a keyboard's `inputAccessoryView` (the pads' round return
+  button) sits in the keyboard's window, so `ls` doesn't list it and a screenshot may not show it.
 - It listens on the phone's loopback only when the app gets `DINE_DBG_AGENT_PORT` in its
   environment, which `ios launch` passes; the server reaches it through a usbmux connection. A
   home-screen launch has no agent, so `dbg ui` asks for a relaunch.
 - Host-side AX `perform_press` is ignored by our apps, and the host AX inspector's walk
   (`developer accessibility list-items`) highlights every element on the phone as it moves its
   focus. UI work goes through the agent.
-- The agent needs no accessibility switch: after a phone reboot with no host AX client since
-  boot, its walk still sees every SwiftUI label.
+- SwiftUI builds the tree the walk reads only while app accessibility is on, and iOS can leave it
+  off for new launches (2026-11-08, after a VoiceOver session: no labels on three launches). The
+  agent turns it on for its own process at start (`_AXSApplicationAccessibilitySetEnabled`).
 
 The gtk target runs headless sway with the pixman renderer, not Xvfb (GTK's X11 path, while WSLg
 uses Wayland) or Broadway (another GDK backend, with a browser in the loop).

@@ -33,8 +33,8 @@ enum EdgeGesture {
     static let commitVelocity: CGFloat = 600
 
     /// The edge whose strip `point` is in, between the safe area's top and bottom, unless the app
-    /// excluded that part of it; the app's window starts at the safe area's top.
-    static func edge(at point: CGPoint, in bounds: CGRect, safeArea: UIEdgeInsets, settings: NavigationSettings,
+    /// excluded that part of it; the app's window starts `windowTop` down `bounds`.
+    static func edge(at point: CGPoint, in bounds: CGRect, safeArea: UIEdgeInsets, windowTop: CGFloat, settings: NavigationSettings,
                      exclusion: EdgeExclusion = EdgeExclusion()) -> Edge? {
         guard point.y >= bounds.minY + safeArea.top, point.y <= bounds.maxY - safeArea.bottom else { return nil }
         let edge: Edge
@@ -45,7 +45,7 @@ enum EdgeGesture {
         } else {
             return nil
         }
-        let y = point.y - bounds.minY - safeArea.top
+        let y = point.y - bounds.minY - windowTop
         return (edge == .left ? exclusion.left : exclusion.right).contains { $0.contains(y) } ? nil : edge
     }
 
@@ -82,16 +82,19 @@ final class EdgeGestureRecognizer: NSObject, UIGestureRecognizerDelegate {
     private let allows: (NavAction) -> Bool
     private let perform: (NavAction) -> Void
     private let exclusion: () -> EdgeExclusion
+    private let windowTop: () -> CGFloat
     private let pan = UIPanGestureRecognizer()
     private let indicator = UIImageView()
     private var edge: EdgeGesture.Edge?
     private var axis: EdgeGesture.Axis?
 
+    /// `windowTop`: where the app's window starts in the view, which its exclusion spans count from
     init(on view: UIView, allows: @escaping (NavAction) -> Bool, perform: @escaping (NavAction) -> Void,
-         exclusion: @escaping () -> EdgeExclusion = { EdgeExclusion() }) {
+         exclusion: @escaping () -> EdgeExclusion = { EdgeExclusion() }, windowTop: @escaping () -> CGFloat = { 0 }) {
         self.allows = allows
         self.perform = perform
         self.exclusion = exclusion
+        self.windowTop = windowTop
         super.init()
         pan.delegate = self
         pan.cancelsTouchesInView = true
@@ -110,7 +113,7 @@ final class EdgeGestureRecognizer: NSObject, UIGestureRecognizerDelegate {
         // a second finger mid-swipe must not reset it
         guard pan.state == .possible, let view = pan.view else { return false }
         edge = EdgeGesture.edge(at: touch.location(in: view), in: view.bounds, safeArea: view.safeAreaInsets,
-                                settings: .current, exclusion: exclusion())
+                                windowTop: windowTop(), settings: .current, exclusion: exclusion())
         axis = nil
         guard let edge else { return false }
         return [EdgeGesture.Axis.inward, .down].contains { axis in

@@ -7,6 +7,20 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - Our delta: `git diff upstream/master...dine`. Local `master` lags upstream.
 - Upstream isn't merged: read its commits since the last merge and reimplement the wanted ones
   by hand.
+- The keyboard is the host's IME inset (`atl_window_insets.ime`). adjustResize lays a window out
+  above it (`windows_area`) and clips its insets there; adjustPan moves its root by a per-window
+  offset in `windows.c`, which `View.getLocationInWindow` subtracts (AOSP's `mCurScrollY`);
+  unspecified resizes while a scroll container shows. Upstream IME or `softInputMode` code is ported
+  onto `Window`'s `sendSoftInput`/`updatePan`.
+- Bar flags reach the host in `struct ui_frame`: fullscreen, `cover_top` (the activity window runs
+  under the status bar: layout-fullscreen flags, or a cutout mode that takes the notch), hide
+  navigation, immersive; `InsetsController` maps onto the same flags. A hidden bar's visible inset
+  is 0, its maximum kept.
+- Night is per app (`atl_nav_set_night`, each host for each app): the app's configuration and every
+  Resources it made (a weak list in `ATLLoadedApp`) take it, then Application and the activities
+  whose manifest's `configChanges` covers uiMode hear it; others keep theirs (recreation: multi-app
+  MA5). The Resources caches get Java change bits, as AOSP 10's, and drop a drawable on any change,
+  since ATL's drawables keep no changing configurations (`CONFIG_NATIVE_BITS` is empty).
 - Bitmaps are ours: `struct gfx_bitmap` (`src/shared/bitmap.c`) holds premultiplied ARGB words
   that never move, stored per config as Android 10's Skia does (lowp rounding; ARGB_4444 made as
   ARGB_8888 except by `copy`). A Canvas(Bitmap) draws into them at once through its own context
@@ -217,9 +231,9 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - `Activity.onBackPressed` moves the task root to the back when the host allows (gtk doesn't);
   `moveTaskToBack` is public and real; `activity.c` keeps task state and an activity's `stopped`.
 - `DialogInterface.OnCancelListener.onCancel` added (upstream's is empty).
-- Task state and dialogs' task are per app (the app record, `struct atl_app`); the window config
-  is the VM's screen; both become per task with multi-app MA6
-  (`notes/multi-app-support/design.md`).
+- Task state, dialogs' task, the window size and night are per app (the app record, `struct
+  atl_app`); they become per task with multi-app MA6 (`notes/multi-app-support/design.md`). The
+  screen (`atl_screen`: density, the first window) stays the VM's.
 - `SDK_INT` is a device level set by hand: `ro.build.version.sdk` in `SystemProperties.java` (29),
   read by `Build.VERSION`; `RESOURCES_SDK_INT` = `SDK_INT`; `CODENAME` "REL". Upstream's derivation
   (`EarlyPackageParser`, `-DBuild.VERSION.SDK_INT`, `--sdk-int` and `create_vm`'s `sdk_int` in
