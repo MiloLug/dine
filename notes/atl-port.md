@@ -615,8 +615,9 @@ pass. Not checked by hand: the controls' look on gtk. Next stops on headless: fl
   text from its constructor; ImageButton is an ImageView node, focusable as in AOSP. `setAllCaps`
   upper-cases the shown text in Java (markup's tags and entities kept) and `getText` keeps the
   app's; `getTextAlignment` resolves INHERIT, and `ui_text_set_alignment` gets start, center or
-  end (GRAVITY is start: ATL ignores TextView gravity). `setCompoundDrawables` goes through
-  `ui_text_set_drawables` (gtk draws them; the records backends keep nothing before M5b).
+  end (GRAVITY is start: ATL ignores TextView gravity, [ATL-79](bug-tracker.md#atl-79)).
+  `setCompoundDrawables` goes through `ui_text_set_drawables` (gtk draws them; the records backends
+  keep nothing before M5b).
 - Dialogs: AlertDialog's Buttons (made on demand, GONE without a label) hold the label,
   visibility and enabled state; `ui_alert.disabled` and `ui_dialog_set_button` carry them to the
   backend, and a result for a disabled or hidden button is ignored. `atl_upcall_dialog_result`
@@ -914,9 +915,10 @@ shows its last lines with the cursor. As built:
   TextViews measure through it: UTF-16 units, word breaks, and a `\n` breaks a plain TextView's
   line. `OP_TEXT` keeps a copy of the text; the dump prints `text "…" x,y` with the paint, `size`,
   `serif` or `mono`, `bold`, `italic` and `align`.
-- gsk: Pango; the window's context on the main thread, a context from the thread's own default font
-  map elsewhere; ink bounds; default size 12; `Serif` and `Monospace` families, sans the context's
-  font. GSK draws text filled whatever the paint's style.
+- gsk: Pango; each thread's context from its own default font map, with GTK's text settings as a
+  label gets them (font, glyph rounding, font options), copied on GTK's thread at start and on each
+  GtkSettings change; tabular digits, as the labels; ink bounds; default size 12; `Serif` and
+  `Monospace` families, sans GTK's font. A fill draws the glyphs, a stroke their outline.
 - coregraphics: CoreText on the calling thread at the paint's size in points (px over the screen
   scale), measured back in px. `cg_font` is the one font source, uikit's labels included: the
   system font, Times New Roman for serif (CoreText has no public call for the system's serif
@@ -940,10 +942,10 @@ shows its last lines with the cursor. As built:
 - Line limits: TextView's `maxLines`, `lines`, `minLines`, `maxHeight`, `minHeight`, `height` and
   `singleLine`, one maximum and one minimum mode as in AOSP. Line counts go to the toolkit
   (`ui_text_set_lines`), pixels clamp in `TextView.onMeasure`. headless caps and pads its line
-  count; gtk caps the measured height at the line's Pango position and clips the box (GtkLabel's
-  own line limit counts per paragraph) and pads through the label's height request; uikit sets the
-  ATLLabel's `numberOfLines` with word wrapping (no ellipsis, as Android clips) and caps the
-  measure; a multi-line UITextView scrolls, so a capped or fixed-height field follows the cursor.
+  count; gtk caps the label's measured height at the line's Pango position, at the width GTK gives
+  the label (a layout manager on it; GtkLabel's own line limit counts per paragraph), clips the box
+  and pads through the label's height request; uikit sets the ATLLabel's `numberOfLines` with word
+  wrapping (no ellipsis, as Android clips) and caps the measure; a multi-line UITextView scrolls, so a capped or fixed-height field follows the cursor.
 - Metrics on the iPhone 13 (480 dpi) from DrawStayActivity's `widgets metric` lines: Paint's
   `ceil(measureText)` and line spacing beside a one-line TextView's measured size, and Roboto
   3.016's advances (no kerning) and hhea line spacing, px:
@@ -962,17 +964,16 @@ shows its last lines with the cursor. As built:
   Paint and the labels agree to the pixel. Against Roboto, iOS text is 3 to 6 % wider at 14 sp and
   0 to 3 % at 18 sp, and its lines 2 % taller: a layout sized in dp around Roboto text can wrap or
   cut a word on the phone.
-- Tests: the framework suite's `graphics` `TextTest` (relations only: each build has its own fonts)
-  and `InkBoundsTest` (expected to fail on headless), `text` `KeyListenerTest` and
-  `LineLimitTest`; DrawActivity's text and Layout ops in `draw.displaylist`; `run-text.sh`'s pin
-  letter and capped field.
-- Open: gtk labels take px as points ([ATL-8](bug-tracker.md#atl-8)); stroked text on gtk ([ATL-9](bug-tracker.md#atl-9));
-  line separators besides `\n` ([ATL-10](bug-tracker.md#atl-10)); gtk measuring off the main
-  thread ([ATL-11](bug-tracker.md#atl-11)); gtk's line cap width
-  ([ATL-12](bug-tracker.md#atl-12)); a capped field in a scroll view on iOS
-  ([ATL-14](bug-tracker.md#atl-14)); TextView's font family ([ATL-15](bug-tracker.md#atl-15));
-  Layout's spans and Builder (M9, [ATL-17](bug-tracker.md#atl-17)); iOS serif ([ATL-19](general-todo.md#atl-19)); Roboto widths
-  on iOS ([ATL-20](general-todo.md#atl-20)); TextKeyListener ([ATL-21](general-todo.md#atl-21));
+- Tests: the framework suite's `graphics` `TextTest` (relations only: each build has its own fonts),
+  `InkBoundsTest` (expected to fail on headless) and `BlendModeTest#testStrokedText`, `text`
+  `KeyListenerTest`, `LineLimitTest` and `TextViewTest` (a label's width against a Paint's on the
+  main thread and another one, line counts); DrawActivity's text and Layout ops in
+  `draw.displaylist`; `run-text.sh`'s pin letter and capped field.
+- Open: line separators besides `\n` ([ATL-10](bug-tracker.md#atl-10)); a capped field in a scroll
+  view on iOS ([ATL-14](bug-tracker.md#atl-14)); TextView's font family
+  ([ATL-15](bug-tracker.md#atl-15)); Layout's spans and Builder (M9,
+  [ATL-17](bug-tracker.md#atl-17)); iOS serif ([ATL-19](general-todo.md#atl-19)); Roboto widths on
+  iOS ([ATL-20](general-todo.md#atl-20)); TextKeyListener ([ATL-21](general-todo.md#atl-21));
   CoreText off UIKit's thread ([ATL-22](general-todo.md#atl-22)).
 
 #### M5d: paths, nine-patch, layers; Gravity Defied

@@ -301,28 +301,6 @@ don't clip them.**
 on gtk.** `View.getLocationInWindow` walks the parents and adds them up, so exclusion rects
 depend on it.
 
-### ATL-8
-
-**gtk TextViews take Java's px text size as points.** `ui_text_set_size` sets
-`pango_attr_size_new`, a size in points, and Java passes px: a TextView's text is 4/3 of its size
-at 96 dpi, and a Paint at the same size measures 3/4 of the label (DrawStayActivity's
-`widgets metric` lines on gtk: "Hello world" at 14 sp, Paint 76 px, label 101 px).
-- Where: `dine-atl/src/backends/ui/gtk/text.c`: `ui_text_set_size` and the span runs'
-  `UI_RUN_SIZE` both use `pango_attr_size_new`. `ui_text_get_size` answers in the same unit, and
-  without a set size it returns the label font's size in points; the TextView constructor sets
-  its Paint's size from it (`native_getTextSize`).
-- Fix: `pango_attr_size_new_absolute` at both sites and a px answer from `ui_text_get_size`, which
-  shrinks every gtk TextView, and the Paint of a default-sized one, to its Android size.
-
-### ATL-9
-
-**gtk draws stroked text filled.** A paint with `Style.STROKE` or `FILL_AND_STROKE` fills its
-text on gtk; the display list keeps the style and iOS strokes it.
-- Where: `dine-atl/src/backends/gfx/gsk/canvas.c` `gfx_canvas_draw_text`:
-  `gtk_snapshot_append_layout` only fills.
-- Fix: the layout as a path through `gtk_snapshot_append_stroke` (`gsk_path_builder_add_layout`,
-  GTK 4.14 and later; this system has 4.24.1).
-
 ### ATL-10
 
 **A lone `\r`, U+2028 and U+2029 break a Layout's lines on gtk and iOS, not on headless.** Layout
@@ -331,21 +309,6 @@ breaks only at spaces.
 - State: what Android 10's StaticLayout does with them is unchecked.
 - Where: `dine-atl/src/shared/android_text_Layout.c` (the paragraph split), each backend's
   `gfx_text_break_lines`.
-
-### ATL-11
-
-**gtk text measured off the main thread is in Sans, on the main thread in GTK's font.** Paint calls
-from a worker (async inflation, precomputed text) measure in another font than the view draws.
-- Where: `dine-atl/src/backends/gfx/gsk/text.c` `context()`: another thread's context gets the
-  family "Sans".
-- Fix: give those contexts the window context's font description, read on the main thread.
-
-### ATL-12
-
-**gtk's max-lines cap lays the label out at the whole view's width.** With compound drawables or
-padding the label is narrower, wraps elsewhere, and the cut can fall inside a line.
-- Where: `dine-atl/src/backends/ui/gtk/text.c` `text_cap_height`.
-- Fix: take the box's horizontal extra off `for_width`.
 
 ### ATL-14
 
@@ -662,13 +625,6 @@ has; `NativeActivity` reads them from there. M6b3c's night dispatch reads the ma
 - State: open; found 2026-11-08 (M6b3c planning, code read only).
 - Where: `dine-atl/src/api-impl/android/content/pm/PackageManager.java:1632`.
 
-### ATL-75
-
-**`TextView.getLineCount()` always returns 1.** It ignores the text, the width and the line caps;
-`getLayout().getLineCount()` counts the lines.
-- State: open; found 2026-11-09 (ATL-16's fix, code read only).
-- Where: `dine-atl/src/api-impl/android/widget/TextView.java` `getLineCount`.
-
 ### ATL-76
 
 **JobScheduler keeps a finished job pending, and a reused JobInfo can start twice.** A job whose
@@ -679,6 +635,386 @@ job marked running.
 - State: open; found 2026-11-09 (ATL-40's reviews, code read only).
 - Where: `dine-atl/src/api-impl/android/app/job/JobScheduler.java` `schedule`, `JobService.java`
   `jobFinished`.
+
+### ATL-77
+
+**On gtk the mouse wheel scrolls a RecyclerView by about 1 px per notch.**
+`ViewConfiguration.getScaledVerticalScrollFactor` and `getScaledHorizontalScrollFactor` return 1;
+Android 10 returns `config_verticalScrollFactor` and `config_horizontalScrollFactor` (64dp, both
+in our framework-res) in px. RecyclerView scrolls `(int)(AXIS_VSCROLL * factor)` px (flower_finder's
+androidx, through `ViewConfigurationCompat`), and `scroll_cb` divides a touchpad's surface-unit
+deltas by 32 first, so those truncate to 0. ScrollView is a GtkScrolledWindow and takes the wheel
+itself.
+- State: open; the user saw it in flower_finder on WSLg, 2026-11-09; the cause is from the code
+  and the APK's dex, not checked with a run.
+- Where: `dine-atl/src/api-impl/android/view/ViewConfiguration.java`,
+  `src/api-impl-jni/views/android_view_View.c` `scroll_cb`. Sibling: `AbsListView.java:3185`
+  scrolls a fixed 100 px per unit, not scaled by density.
+- Also in: [ATL-51](general-todo.md#atl-51): a native scroll node per list would take the wheel
+  from GTK, but that item is undecided.
+
+### ATL-78
+
+**On the phone a RecyclerView row deleted with its item animation stays drawn under the rows that
+move into its place.** flower_finder: after Lilac is removed in its detail screen, the list shows
+"10 Flowers" and Marigold drawn over Lilac in Lilac's slot. On gtk the row goes.
+- State: open, cause unchecked; seen 2026-11-09 (the user's phone screenshot).
+- Suspect (code read): ATL keeps a detached child in the native tree and hides it once, from a
+  posted runnable (`ViewGroup.detachViewFromParent`); a later `setAlpha`, `setVisibility` or
+  `setEnabled` sends Java's visibility through `native_setVisibility` and shows it again.
+  DefaultItemAnimator ends a remove with `setAlpha(1)`, and RecyclerView's
+  `ChildHelper.removeViewIfHidden` removes nothing for a view that isn't in the parent's children.
+  Gtk runs the same Java, so this doesn't explain why only the phone shows it.
+- Check: after the delete, whether Lilac's item view is in RecyclerView's `children`, in
+  `detachedChildren`, or only in UIKit's tree.
+- Where: `dine-atl/src/api-impl/android/view/ViewGroup.java` (`detachViewFromParent`,
+  `attachViewToParent`, `removeDetachedView`), `View.java` `setAlpha`,
+  `src/backends/ui/uikit/view.m` `records_child_removed`.
+
+### ATL-79
+
+**TextView ignores its gravity.** No build places a TextView's text by `setGravity` or the
+`gravity` attribute (M4b in `notes/atl-port.md`: GRAVITY alignment is start, a Button's text stays
+centered). Both reach View's fallback gravity for layout children, and `getGravity()` returns the
+private `gravity`, which nothing sets: always `Gravity.CENTER`. Material's TextInputLayout places
+its hint from `editText.getGravity()`, so the hint sits centered in the field (flower_finder's Add
+Flower screen on gtk).
+- State: open; ignored on purpose in M4b, to be implemented (the user, 2026-11-09).
+- Where: `dine-atl/src/api-impl/android/widget/TextView.java` (`gravity`, `getGravity`,
+  `getLayoutAlignment`), `src/api-impl/android/view/View.java` (`setGravity`, `setTextAlignment`),
+  the ui slot's `ui_text_set_alignment`.
+
+### ATL-80
+
+**Material text fields look wrong on gtk.** flower_finder's Add Flower screen (TextInputLayout
+around TextInputEditText): the hint stays on the text's line instead of floating above it, in the
+primary color in both fields, focused or not; a short dark segment sits under the hint at the
+field's center; the text sits right on the field's underline, with no filled box. The hint's
+horizontal place is [ATL-79](#atl-79).
+- State: open, cause unchecked; seen 2026-11-09 on gtk (the user's screenshot). The phone is
+  unchecked.
+- Suspect: TextInputLayout's focused underline grows from the center by the hint's expansion
+  fraction, so the short segment points at the hint's collapse animation (a ValueAnimator) not
+  running or not redrawing the layout.
+
+### ATL-81
+
+**Every start logs an NPE from the system package's certificates, and a finalizer NPE after it.**
+`ATLLoadedApp.getSystemApplication` calls `collectCertificates` on framework-res's Package, which
+has no archive path: `new JarFile(null)` throws in `new File(null)`
+(`W/PackageParser: Exception reading null`). The half-built ZipFile's finalizer then throws
+`Uncaught exception thrown by finalizer … CloseGuard.close() on a null object reference`: its
+`guard` initializer never ran, and dine-art's `ZipFile.close` doesn't null-check `guard`.
+- State: open; found 2026-11-09 (flower_finder on gtk). Other builds unchecked.
+- Where: `dine-atl/src/api-impl/android/atl/ATLLoadedApp.java:137`,
+  `src/api-impl/android/content/pm/PackageParser.java` `collectCertificates`;
+  `dine-art/libcore/ojluni/src/main/java/java/util/zip/ZipFile.java` `close`.
+- Fix: skip the call for the system package, or give it framework-res's path.
+
+### ATL-82
+
+**`AssetManager.destroy()` is a stub, so a closed or finalized AssetManager keeps its native
+AssetManager and ApkAssets.** `init` makes an `AssetManager_new` and `native_setApkAssets` loads
+every class path entry; the androidfw port has no call that frees either. flower_finder's run logged
+`AssetManager.destroy(): STUB` three times.
+- State: open; found 2026-11-09. Which code makes the AssetManagers that were freed here and how
+  much each keeps: unchecked (`AssetManager.forParsing`, used by PackageParser, is one source).
+- Where: `dine-atl/src/api-impl/android/content/res/AssetManager.java` `destroy`,
+  `src/api-impl-jni/android_content_res_AssetManager.c` `init`;
+  `dine-art/libandroidfw/include/androidfw/androidfw_c_api.h` (no free call).
+
+### ATL-83
+
+**Starting or finishing an activity stops the old one before the new one starts, and `onPostCreate`
+runs before `onStart`.** Android 10: A `onPause`, B `onCreate`, `onStart`, `onPostCreate`,
+`onResume`, then A `onStop`; finishing B pauses it, resumes A, then stops and destroys B. ATL
+pauses, stops and unfocuses the old activity first (`activity_update_current`), and calls
+`onPostCreate` right after `onCreate`. An app that hands a resource from one activity to the next
+(released in `onStop`, taken in `onStart`) sees them in the reverse order.
+- State: open; seen 2026-11-09 in flower_finder's log (gtk). Whether a test grades the current
+  order: unchecked.
+- Where: `dine-atl/src/shared/activity.c` (`activity_update_current`, the `onPostCreate` call).
+
+### ATL-84
+
+**gtk warns `Trying to measure WrapperWidget … for width of 0, but it needs at least N` on
+layouts.** `ui_view_measure` measures a height for width 0 when Java's width spec is EXACTLY 0, or
+AT_MOST 0 after the clamp. In flower_finder it fires for three views on each layout of the list
+(every frame of a drag); the sizes follow the header's three TextViews (the count's drops from 35
+to 18 when it goes from 10 to 9), and on each keystroke in Add Flower for a view of 240.
+- State: open; found 2026-11-09. Which parent passes the 0, and whether the measured height is
+  wrong beyond the warning: unchecked.
+- Where: `dine-atl/src/backends/ui/gtk/view.c` `ui_view_measure`.
+
+### ATL-85
+
+**Debug output on every run.** `Drawable.java:257` prints `updateTintFilter(…)` for each tint,
+`Activity.java:618` prints `onBackPressed() called`, `SystemProperties` logs `Grabbing … prop` at
+info level for each read (about 30 lines at startup), and gtk's `night_from_color_scheme` sets
+`gtk-application-prefer-dark-theme`, which GTK 4.24 reports as `Use
+GtkSettings:gtk-interface-color-scheme instead`.
+- State: open; found 2026-11-09 (flower_finder on gtk). The GTK warning is matched to
+  `display.c:33` by the property's name, not checked with a run.
+- Where: `dine-atl/src/api-impl/android/graphics/drawable/Drawable.java`,
+  `src/api-impl/android/app/Activity.java`, `src/api-impl/android/os/SystemProperties.java`,
+  `src/backends/ui/gtk/display.c`.
+
+### ATL-86
+
+**Compound drawables and a Button's drawables and tints aren't drawn on headless and iOS.**
+`setCompoundDrawables` reaches `ui_text_set_drawables`; gtk draws them, and the records backends
+(headless, uikit) have an empty body. M4b in `notes/atl-port.md` says they are drawn from M5b, whose
+section doesn't list them.
+- State: open; found 2026-11-09 (sweep of the notes for ignored features); the empty body is
+  code-checked.
+- Where: `dine-atl/src/backends/ui/records/ui.c` `ui_text_set_drawables`,
+  `src/shared/android_widget_TextView.c`.
+
+### ATL-87
+
+**An iOS Switch's thumb can't be dragged.** A tap toggles the switch.
+- State: discarded (2026-11-09, the user: "doesn't make sense, too hard"); not to be implemented.
+- Where: `dine-atl/src/backends/ui/uikit/view.m` (the `UISwitch` node).
+
+### ATL-88
+
+**On iOS an explicit start text alignment can't be told from none, and a view with INHERIT keeps its
+native alignment when its parent's changes.** `ui_text_set_alignment` takes start, center or end;
+start also means "not set", so a push button's text stays centered under
+`setTextAlignment(TEXT_ALIGNMENT_VIEW_START)`. A child that resolved INHERIT before its parent's
+alignment changed isn't updated. The gravity half is [ATL-79](#atl-79).
+- State: open; from M4b's Open line in `notes/atl-port.md`, not checked in code.
+- Where: `dine-atl/src/slots/ui.h` `ui_text_set_alignment`, `src/api-impl/android/view/View.java`
+  (`setTextAlignment`), `src/backends/ui/uikit/view.m`.
+
+### ATL-89
+
+**`clipRect` and `clipPath` with UNION, XOR, REVERSE_DIFFERENCE or REPLACE intersect.** `ATLCanvas`
+tells the gfx slot only whether the op is DIFFERENCE (`gfx_canvas_clip_rect`, `clipPath`), so every
+other op acts as INTERSECT on every build. Whether Android 10 still applies the other ops to an app
+with a low `targetSdkVersion`: unchecked (AOSP's `Canvas.checkValidClipOp`).
+- State: open; found 2026-11-09 (sweep of the notes for ignored features); `ATLCanvas.java`'s
+  DIFFERENCE-only test is code-checked.
+- Where: `dine-atl/src/api-impl/android/atl/ATLCanvas.java` (`clipRect`, `clipPath`), the gfx slot's
+  `gfx_canvas_clip_rect` and its backends.
+
+### ATL-90
+
+**Headless bitmaps decode PNG only.** The `record` gfx backend reads images with libpng; a JPEG,
+WebP or GIF has no decoder there. gsk (GdkPixbuf) and coregraphics (ImageIO) decode more formats.
+- State: open; libpng as the only decoder is code-checked; what `BitmapFactory` returns for a JPEG
+  on headless: unchecked.
+- Where: `dine-atl/src/backends/gfx/record/bitmap.c` (`gfx_bitmap_decode`).
+
+### ATL-91
+
+**In a dialog's content `getRawX` and `getRawY` are window-local.** `getLocationOnScreen` adds the
+window's origin and the raw coordinates don't, because `struct atl_pointer` carries none. An app
+that mixes the two in a dialog is off by the window's origin.
+- State: open; from M6b2's Open line in `notes/atl-port.md`, not checked in code.
+- Wayland (WSLg, the hidden sway): the user expects problems there (2026-11-09). A Wayland client
+  can't read or set its window's global position (xdg-shell has no call for it; unchecked here), so
+  a window origin that matches the screen may have no source on gtk. The origin
+  `getLocationOnScreen` adds is the frame ATL gave the window (`Window.frame_left`, `frame_top`).
+- Where: `dine-atl/src/shared/input.h` `struct atl_pointer`, `src/api-impl/android/view/MotionEvent.java`,
+  `src/api-impl/android/view/Window.java` (`atlFrameLeft`, `atlFrameTop`).
+
+### ATL-92
+
+**The panel dialog ignores some of the app's settings.**
+- "Dismiss" shows also when the dialog doesn't cancel on an outside touch.
+- An app's own `getListView().setItemChecked` after `show` doesn't reach the native rows.
+- It ignores the width in `Window.setLayout`.
+- State: open; from M6b3a's Open line in `notes/atl-port.md`, not checked in code.
+- Where: `dine-atl/src/backends/ui/uikit/panel.m`, `dialog.m`.
+
+### ATL-93
+
+**Popups and toasts: PopupWindow has no transitions, and four overlay cases are wrong.**
+- PopupWindow is AOSP 10's without its transitions.
+- A `setView` toast draws under a presented plain alert.
+- A text toast whose app comes back to the front mid-toast stays hidden.
+- On gtk a toast's label goes above an application overlay (AOSP keeps toasts under them).
+- A popup that goes with its removed dialog keeps its tree observers on the app window.
+- State: open; from M6b3b's Open line in `notes/atl-port.md`, not checked in code.
+- Where: `dine-atl/src/api-impl/android/widget/PopupWindow.java`,
+  `src/backends/ui/uikit/toast.m`.
+
+### ATL-94
+
+**A configuration context that overrides night resolves at the app's night.** An app's Resources
+share one AssetManager.
+- State: open; from M6b3c's Open line in `notes/atl-port.md`, not checked in code.
+- Where: `ATLLoadedApp.applyNight`, `dine-atl/src/api-impl/android/content/res/Resources.java`.
+
+### ATL-95
+
+**A text cursor's `requestRectangleOnScreen` doesn't pan, and the IME inset includes a pad's return
+button.**
+- State: open; from M6b3c's Open line in `notes/atl-port.md`, not checked in code.
+- Where: `dine-atl/src/api-impl/android/view/View.java` (`requestRectangleOnScreen`); the keyboard
+  inset in Dine's `Navigator`.
+
+### ATL-96
+
+**EditText leftovers.**
+- `onCreateInputConnection` on EditText, BaseInputConnection (a stub whose own `Editable` class
+  shadows `android.text.Editable`) and `onKeyPreIme` aren't implemented.
+- A hardware keyboard types only into the field that holds the keyboard (no KeyListener, which is
+  [ATL-21](general-todo.md#atl-21) in part).
+- Java's click and touch listeners on a field or a selectable TextView aren't reached where the
+  toolkit takes its touches (gtk; iOS unchecked).
+- Multi-line EditText on gtk: the notes name it as open and say no more.
+- On headless a field whose activity another one covers keeps the keyboard until Java's next Back
+  hides it.
+- State: open; from M4c's Open line in `notes/atl-port.md`, not checked in code.
+- Where: `dine-atl/src/api-impl/android/widget/EditText.java`,
+  `src/api-impl/android/view/inputmethod/BaseInputConnection.java`.
+
+### ATL-97
+
+**gtk behaviours the notes mark as open.**
+- Touches on popovers (M4a).
+- A GtkText's Tab moves GTK's focus, not Java's (M4a).
+- On gsk, ContainerPaintable keeps the selected child's paintable, so a child that swaps its
+  paintable later (`BitmapDrawable.setBitmap`) draws the old one until the container selects again
+  (M5a).
+- The activity's decor attaches before `onStart` and detaches before `onDestroy`: gtk's points, not
+  Android's; gtk has no `notify::root` path (M3).
+- A missing native's stack trace prints on every redraw of the view that calls it (M5b).
+- State: open; from the Open lines and Status text of M3, M4a, M5a and M5b in
+  `notes/atl-port.md`, not checked in code.
+- Where: `dine-atl/src/backends/ui/gtk/`, `src/backends/gfx/gsk/`.
+
+### ATL-98
+
+**coregraphics clips under a perspective matrix, and Choreographer is timer-based.** The notes name
+the clip as open without saying what goes wrong. Choreographer fires on a 10 ms timer, not on the
+display's frame clock.
+- State: open; from M5b's Open line in `notes/atl-port.md`, not checked in code.
+- Where: `dine-atl/src/backends/gfx/coregraphics/`,
+  `src/api-impl/android/view/Choreographer.java`.
+
+### ATL-99
+
+**A black bar across the top of Gravity Defied's screen on the phone.**
+- State: unchecked; from M5d's Open line in `notes/atl-port.md` ("not looked into").
+- Repro: Gravity Defied on the phone (`dbg smoke atl-gd`, or the AtlView tile by hand).
+
+### ATL-100
+
+**`JobScheduler.enqueue` returns `RESULT_SUCCESS` and schedules nothing.** `schedule` posts to the
+app's main Looper; `enqueue(JobInfo, JobWorkItem)` is `return 1`.
+- State: open; the body is code-checked. `notes/os-features.md` item 21 names the stub under
+  "Today", and no line of its `none` or `ios` text replaces it.
+- Where: `dine-atl/src/api-impl/android/app/job/JobScheduler.java` `enqueue`.
+
+### ATL-101
+
+**SoundPool ignores the volume, rate, loop and priority of `play`, and four calls only print a
+warning.** `play` passes the sound id to `nativePlay` and drops its other arguments.
+`setOnLoadCompleteListener`, `autoPause`, `autoResume` and `setVolume` print
+`WARNING: … not implemented yet`. `Builder.setAudioAttributes` and `setMaxStreams` store nothing.
+- State: open; code-checked.
+- Where: `dine-atl/src/api-impl/android/media/SoundPool.java`.
+- Also in: `notes/os-features.md` item 12 describes a silent, fixed-volume pool on `none` and
+  AVAudioEngine on `ios`, and names none of these calls.
+
+### ATL-102
+
+**The gtk D-Bus intent API loses an intent's flags, type and categories.** The inbound action's
+payload is `(sssa{sv}s)`, which has no place for them.
+- State: open; from `notes/multi-app-support/findings-hosting.md` (read in code when written), not
+  rechecked.
+- Where: `dine-atl/src/main-executable/actions.c`, `dine-atl/doc/DBusIntentApi.md`.
+- Also in: multi-app MA7 keeps this API.
+
+### ATL-107
+
+**On gtk a sans span uses fontconfig's "sans", not GTK's font.** `apply_attributes` gives a
+`UI_RUN_FAMILY` run of sans the family "sans", which fontconfig resolves to Liberation Sans here,
+while the label's own font is GTK's (`gtk-font-name`, Adwaita Sans): a span that names sans
+changes the face.
+- State: open; found 2026-11-09 (bugs step), from the code and `fc-match`, not seen on screen.
+- Where: `dine-atl/src/backends/ui/gtk/text.c` `apply_attributes`.
+
+### ATL-108
+
+**A gtk EditText ignores its text size.** `ui_text_set_size` and `ui_text_get_size` work on the
+handle's label, and an EditText's handle is a GtkText without one (`ui/gtk/edit.c` sets no font):
+`setTextSize` changes only the Paint.
+- State: open; found 2026-11-09 (bugs step), from the code.
+- Where: `dine-atl/src/backends/ui/gtk/text.c` `ui_text_set_size`, `ui/gtk/edit.c`.
+
+### ATL-109
+
+**On gtk a View constructed off the main thread makes its GTK widgets on that thread.** The
+constructor's `native_constructor` runs where the app constructs the view (an inflater's worker,
+an app thread); a TextView's also reads its label's Pango context (`ui_text_get_size`). GTK is
+main-thread only.
+- State: unchecked: read from the code, not seen failing.
+- Where: `dine-atl/src/api-impl/android/view/View.java` and `widget/TextView.java` constructors,
+  `src/backends/ui/gtk/`.
+- Also in: [ATL-28](#atl-28) (the records side).
+
+### ATL-110
+
+**TextView's compound-drawable extras are stubs.** `setCompoundDrawablesWithIntrinsicBounds`,
+`setCompoundDrawablesRelativeWithIntrinsicBounds` (all four overloads) and
+`setCompoundDrawablePadding` do nothing; `getCompoundDrawablePadding` and
+`getTotalPadding{Left,Top,Right,Bottom}` return 0. `getCompoundPadding*` and the Layout's width
+count the drawables' bounds and no drawable padding.
+- State: open; found 2026-11-09 (bugs step).
+- Where: `dine-atl/src/api-impl/android/widget/TextView.java`.
+
+### ATL-111
+
+**Unchecked: a capped gtk TextView may show part of line max+1 in its bottom padding.** The
+label's height ends at the top of line max+1, the label draws its whole layout, and the handle
+clips at its border box, padding included; Android clips at the padded content.
+- State: unchecked; from the code (bugs step, 2026-11-09).
+- Where: `dine-atl/src/backends/ui/gtk/text.c` `ui_text_set_lines` (the handle's overflow).
+
+### ATL-112
+
+**Unchecked: a gtk compound drawable takes its paintable's size, not its bounds.**
+`ui_text_set_drawables` puts the paintable in a GtkPicture, which GTK sizes from the paintable;
+`getCompoundPadding*` and AOSP use the drawable's bounds, so `getLineCount` and the label can
+wrap at different widths.
+- State: unchecked; from the code (bugs step, 2026-11-09).
+- Where: `dine-atl/src/backends/ui/gtk/text.c` `ui_text_set_drawables`.
+
+### ATL-113
+
+**Unchecked: after a GTK font change a TextView's Paint keeps the old default size.** The
+constructor seeds the Paint once from `ui_text_get_size`; the labels and every Paint's face follow
+GtkSettings, the size doesn't.
+- State: unchecked; from the code (bugs step, 2026-11-09).
+- Where: `dine-atl/src/api-impl/android/widget/TextView.java` constructor.
+
+### ATL-114
+
+**Headless measures a TextView's text at its own size, without its spans.** `text_extent` gives
+its Paint only `view->text_size`: a size span doesn't change the measured width.
+`TextViewTest#testSpanTakesPx` is expected to fail on headless for this.
+- State: open; found 2026-11-09 (bugs step).
+- Where: `dine-atl/src/backends/ui/headless/views.c` `text_extent`.
+
+### ATL-115
+
+**A gtk framework run can die with SIGSEGV on a `blocking-1` thread.** The thread name is
+glycin's (`libglycin-2.so.0`, Rust `blocking` crate), and the test is
+`BackgroundPaddingTest#testColorAfterImageLaysOutAgain`, which decodes a JPEG through gdk-pixbuf
+(`gsk/bitmap.c`; gdk-pixbuf 2.44.8, glycin 2.2.4). The report shows `pthread_mutex_lock(NULL)`
+called from an unnamed frame, and no more.
+- Trigger: a longer `text` suite run next to `graphics`; which part of it, unchecked. Counts on
+  2026-11-09, `tools/dine test framework --gtk -f 'text|graphics'`, 14 runs each:
+  - dine-atl 263452a9 with one 4 s sleep test added to `text`: 2 crashes;
+  - 263452a9 as committed: 0 (and 0 of 16 earlier gtk runs);
+  - 263452a9 as committed, with 16 busy loops: 0;
+  - `graphics` alone, with the bugs step's changes, 6 runs: 0.
+- State: open, cause unchecked. No core dump: ART's handler ends the process.
+- Where: `dine-atl/src/backends/gfx/gsk/bitmap.c` (`gdk_pixbuf_loader`), `/usr/lib/libglycin-2.so.0`.
 
 ## DINE
 
@@ -766,6 +1102,24 @@ one.**
 
 **framework-res said 3-button navigation.** 2026-11-03, M6b1, dine-atl cff73b6f.
 
+### ATL-8
+
+**gtk TextViews took Java's px text size as points.** 2026-11-09, bugs step, dine-atl c0784ce8.
+
+### ATL-9
+
+**gtk drew stroked text filled.** 2026-11-09, bugs step, dine-atl c0784ce8.
+
+### ATL-11
+
+**gtk text measured off the main thread was in Sans, on the main thread in GTK's font.** 2026-11-09,
+bugs step, dine-atl c0784ce8.
+
+### ATL-12
+
+**gtk's max-lines cap laid the label out at the whole view's width.** 2026-11-09, bugs step,
+dine-atl c0784ce8.
+
 ### ATL-13
 
 **`setInputType(TYPE_CLASS_NUMBER)` after `setKeyListener(DigitsKeyListener)` kept an EditText
@@ -792,3 +1146,7 @@ dine-atl e7a207c6.
 ### ATL-64
 
 **A background drawable gave its view no padding.** 2026-11-08, before the M6b3a commit, uncommitted.
+
+### ATL-75
+
+**`TextView.getLineCount()` always returned 1.** 2026-11-09, bugs step, dine-atl c0784ce8.

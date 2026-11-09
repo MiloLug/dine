@@ -240,6 +240,54 @@ from is unchecked; if `Builder` came with API 29 and `Type` with API 30, ours ma
 - Found 2026-11-08 (M6b3c review).
 - Where: `dine-atl/src/api-impl/android/view/WindowInsets.java`, `dine-atl/doc/AOSP.md`.
 
+### ATL-103
+
+**The `fs` slot and the Android path layer.** `notes/filesystem/proposal.md` designs it and says its
+stage is "to be added … when the fs todo is written": this entry is that todo, and the stage isn't
+planned. Built: the prefix root, the registry, `apps/<pkg>/` and `data/<pkg>/` (multi-app MA1). Not
+built:
+- the slot, with `linux` and `ios` backends and one native for every root, in place of
+  `ATLPaths.java`'s copy of the env logic;
+- the mapping between Android paths and host paths: `/sdcard`, `/data/data/<pkg>` and the like have
+  none, and Java file I/O, the headless build and iOS never see the gtk executable's libc override;
+- Context's dirs: `getExternalFilesDir(type)` returns `getFilesDir()` and ignores the type, and
+  `getCacheDir()` is `/tmp/atl_cache/<pkg>` on every build (both code-checked);
+- shared storage with Android's public dirs, and the hidden `Android/data`, `Android/obb` and
+  `Android/media`;
+- install-time storage permissions in place of today's grant to every app;
+- a `DocumentsProvider`: `createDocument` and `copyDocument` throw, and a tree URI from the picker
+  has no provider behind it;
+- later, platform things: `FileObserver` notifications, a MediaStore scan, iOS backup exclusion.
+
+Linux mounts and isolation between apps are [ATL-32](#atl-32). Items not marked code-checked are
+from `notes/filesystem/findings.md`, not rechecked.
+- Where: `dine-atl/src/api-impl/android/content/Context.java`,
+  `src/api-impl/android/atl/ATLPaths.java`; `notes/filesystem/`.
+
+### ATL-104
+
+**A camera bridge.** `notes/meta.md` lists camera among the platform bridges and says it has no item
+yet. No stage, `notes/os-features.md` item or entry covers it: a search of `notes/` for "camera"
+finds that one line. What ATL does for `android.hardware.Camera` today: unchecked.
+
+### ATL-105
+
+**SeekBar, DatePicker, TimePicker and MemoryFile exist only as gtk natives.** `dine-atl/meson.build`
+lists `android_widget_SeekBar.c`, `android_widget_DatePicker.c`, `android_widget_TimePicker.c` and
+`android_os_MemoryFile.c` under `legacy_srcs`, built only with ui=gtk. By the rule in
+`notes/atl-port.md` "How the interface grows", a call to one throws `UnsatisfiedLinkError` on
+headless and uikit (not run). Spinner is [ATL-63](#atl-63). For MemoryFile the plan is a small map
+in place of the GHashTable and a platform helper for `memfd_create` (`notes/atl-port.md` "Shared C
+without glib").
+- Where: `dine-atl/meson.build`, `src/api-impl-jni/widgets/`, `src/api-impl-jni/android_os_MemoryFile.c`.
+
+### ATL-106
+
+**The cli host doesn't unpack an APK's `lib/<arch>/`; only the gtk host does.** A native-library
+app's headless stop is that gap (`notes/atl-port.md` M9).
+- State: the gtk side is code-checked; the cli side is from the notes, not checked in code.
+- Where: `dine-atl/src/main-executable/main.c` (`extract_from_apk`); the cli host's APK loading.
+
 ## DINE
 
 ### DINE-6
@@ -282,6 +330,27 @@ again. It should be disabled with a footer that says why. M8a builds the same st
 - how many of the 505 dine-atl Java files without an AOSP header are AOSP copies with the headers
   stripped; those would be Apache 2.0 and shrink a rewrite;
 - uploading without a Mac, and the Xcode license (`notes/meta.md`).
+
+### DINE-12
+
+**Native code of an APK on iOS.** iOS can't load an APK's `.so` files and there is no JIT, so the
+`native` slot is `none` there. For the no-JIT case `notes/meta.md` plans to "substitute iOS builds of
+known libraries"; `notes/interpreter-optimization-thoughts/findings.md` studies interpreting the
+`.so` instead and says no stage owns it and nothing schedules it. Nothing decides between the two or
+builds either. TachiyomiSY's native dependencies to rebuild for iOS or replace are in
+`notes/meta.md`: SQLCipher, QuickJS, a libvips-based decoder, libarchive and zstd, and a WebGPU
+viewer for the optional renderer. JIT is [DINE-6](#dine-6).
+- Also in: M8a warns at import about an APK's native libraries (`notes/atl-port.md`).
+
+### DINE-13
+
+**A bridge from an app's own HTTP downloads to a background `URLSession`.**
+`notes/background-tasks.md` names a "split plan" as one way a conversational downloader continues in
+the background: the part that needs app logic runs while Dine is in front, and the images go to a
+background `URLSession` in one batch. It needs a bridge in Dine's HTTP layer, because the app does
+its own downloads. No Option in that file builds it (Option 1's `DownloadManager` backend serves apps
+that call `DownloadManager`; Option 4 documents the limit), and M8d's questions don't test it.
+- Where: `notes/background-tasks.md` "Split plan"; Dine's HTTP layer (not located).
 
 ## TOOL
 
@@ -330,6 +399,13 @@ the agent now sets it for its own process at start.
   Linux (pymobiledevice3's testmanagerd client); whether a synthesized swipe triggers iOS's own
   edge gestures (Home, Control Center); whether the daemon turns the flag on by itself on iOS 27.
 - Found 2026-11-08 (M6b3c's hand checks; the user asked to note it).
+
+### TOOL-9
+
+**`tools/dine dbg ui` sees the key window only.** The walk misses a keyboard's `inputAccessoryView`
+(the pads' round return button), which sits in the keyboard's window: `ls` doesn't list it and a
+screenshot may not show it (`notes/dev-reference.md` "Debug agent").
+- Where: `native/dev/dbgagent`.
 
 ## Done
 
