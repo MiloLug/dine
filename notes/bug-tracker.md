@@ -221,6 +221,18 @@ left `phys_footprint` where it was; `MADV_FREE_REUSABLE` lowers it.
 - Owner: `notes/multi-app-support/todo.md` MA4 (a dropped app's heap must leave the footprint).
 - Also in: `notes/multi-app-support/findings-runtime.md` "Memory".
 
+### ART-28
+
+**`LambdaProxy`'s default-method cache pins an app's class loader.** `defaultMethodHandles` is a
+static `ConcurrentHashMap<Method, MethodHandle>` in a boot class; each entry keys an app
+interface's `Method`, which holds its class and the app's loader, so a dropped app's loader stays.
+- State: open, unchecked. Reached only by undesugared dex calling a default method on a lambda;
+  d8 desugars by default, and no dex we ship or test holds an `invoke-custom`.
+- Where: `dine-art/libcore/ojluni/src/main/java/java/lang/invoke/LambdaProxy.java:62,148-156`
+  (upstream cf073354).
+- Fix: cache per call site (a map on `LambdaProxy.Factory`) instead of a boot static.
+- Owner: `notes/multi-app-support/todo.md` MA4 (dropping an app needs its loader unloaded).
+
 ## ATL
 
 ### ATL-1

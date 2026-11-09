@@ -20,11 +20,11 @@ Open runtime items are the `ART-` codes in `notes/bug-tracker.md` and `notes/gen
   text; the rest is debug info), `lib/java` 38 MB.
 - **Boot classpath:** 10 dex jars: `core-oj`, `core-libart`, `okhttp`, `bouncycastle`,
   `apache-xml`, `apachehttp`, `wolfssljni`, `core-junit`, `hamcrest`, `junit-runner`.
-- **Lambdas:** `LambdaMetafactory` isn't implemented, so desugaring is mandatory. dine-art's dex
-  is built with d8 (`--min-api 27`), which fixed libcore's own lambdas (test 656's
-  `BootstrapMethodError`). Side effect: every desugared boot jar contains R8's
-  `com.android.tools.r8.annotations.LambdaMethod`, and dex2oat warns
-  `Skipping class … previously found` once per jar. Harmless.
+- **Lambdas:** `LambdaMetafactory` works at runtime (upstream's `LambdaProxy`, on
+  `java.lang.reflect.Proxy`), so undesugared `invoke-custom` lambdas run. dine-art's dex is still
+  built with d8 (`--min-api 27`), which desugars them: no boot jar, ATL jar or test APK holds an
+  `invoke-custom`, and the runtime suite doesn't cover `LambdaMetafactory` (`714-…` is skipped,
+  `952-invoke-custom` needs ASM 6).
 - **Shutdown abort (fixed):** libcore's `JNI_OnUnload` called `GetEnv`, but ART 10 unloads boot
   libraries with no thread attached, so every VM exit aborted (exit 134). Fixed in
   `libcore/luni/src/main/native/Register.cpp`.
