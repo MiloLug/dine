@@ -35,11 +35,6 @@ that keeps the same fact as a rule or record).
 - Fix: the barrier on os_sync wait and wake. Moving the remaining locks onto os_sync turns
   `ConditionVariable::RequeueWaiters` (`FUTEX_REQUEUE`) into a wake-all.
 
-### ART-2
-
-**`Thread::GetCpuMicroTime` and `ThreadCpuNanoTime` log `unimplemented` on Apple and return -1.**
-- Where: `dine-art/art/runtime/thread.cc`, `art/libartbase/base/time_utils.cc`.
-
 ### ART-3
 
 **No tzdata on iOS: time zones fall back to GMT.**
@@ -56,27 +51,6 @@ that keeps the same fact as a rule or record).
   thread closes; without it that thread stays blocked.
 - Fix: a signal Darwin has that nothing else in the process uses.
 
-### ART-5
-
-**On iOS startup logs `Could not reserve sentinel fault page`.**
-- Where: `dine-art/art/runtime/runtime.cc` `Runtime::Init`: the page at `kSentinelAddr`
-  (0xebad6000) is mapped with `low_4gb`, which `MemMap` refuses on Apple arm64
-  (`libartbase/base/mem_map.cc`: the kernel's page zero covers the whole low 4 GB). Nothing reads
-  `protected_fault_page_` beyond the map and its reset.
-- Fix: skip the page on Apple arm64; no address inside the heap can be 0xebad6000.
-
-### ART-6
-
-**Startup logs `DexFile … is in boot class path but is not in a known location` once per boot
-jar: 7 in release builds, 10 in dev builds.**
-- Linux prints it too: 10 lines per framework-suite app (`out/tests/framework/runs/*/basics/stderr`,
-  2026-11-09).
-- Where: `dine-art/art/runtime/hidden_api.cc` `DetermineDomainFromLocation`: a location counts as
-  known under `$ANDROID_ROOT/framework/` or `/usr` (a fork patch). artbridge sets `ANDROID_ROOT` to
-  the resource dir and puts the jars directly in it; the Linux prefix (`out/linux/prefix`) isn't
-  under `/usr`. The jars are `kBootJars` in `native/artbridge/artbridge.cpp`, plus the junit jars
-  `DevVmArgs` adds in `native/artbridge/dev.cpp`. The branch returns `kPlatform` either way.
-
 ### ART-7
 
 **The Apple arm64 asm carries no CFI: lldb can't unwind through the quick stubs, and a C++ or ObjC
@@ -85,15 +59,6 @@ exception thrown inside a native can't unwind through the trampoline and termina
 - Where: `dine-art/art/runtime/arch/arm64/asm_symbols_arm64.h`: `CFI(...)` expands to nothing on
   Apple. Mach-O starts an atom at every label without an `L` prefix, CFI can't advance across
   atoms, and these files use `.L` labels.
-
-### ART-8
-
-**`art_quick_invoke_stub` sizes its frame from all of `x2`, while `args_size` is a `uint32_t`.**
-- State: unchecked. The upper half of `x2` is unspecified on both ABIs; clang may leave garbage
-  there where gcc didn't.
-- Where: `dine-art/art/runtime/arch/arm64/quick_entrypoints_arm64.S`, macro
-  `INVOKE_STUB_CREATE_FRAME` (`add x10, x2, …`); its copy loop uses `w2`.
-- Fix: size the frame from `w2`.
 
 ### ART-9
 
@@ -174,21 +139,6 @@ after the call doesn't move it.**
   time.
 - Also in: `notes/decisions.md` (dine-art).
 
-### ART-23
-
-**`OatFileAssistant::GetBestOatFile` still builds a dex2oat command and runs it through `Exec` when
-an oat file isn't up to date.**
-- State: unchecked whether any run reaches it. The dex open path
-  (`OatFileManager::OpenDexFilesFromOat`) never runs dex2oat. `GetBestOatFile` has three callers:
-  `class_loader_context.cc` (only after a context dex file failed to open),
-  `DexFile_getDexFileOutputPaths` (`native/dalvik_system_DexFile.cc`) and
-  `OatFileAssistant::GetOptimizationStatus` (from `DexFile_getDexFileStatus`). On Apple `Exec`
-  returns an error without forking; on Linux it forks and execs dex2oat.
-- Where: `dine-art/art/runtime/oat_file_assistant.cc` `OatFileAssistant::GetBestOatFile`.
-- Fix: never run dex2oat there either, as the open path does. Unchecked: whether every caller takes
-  a null result, and whether upstream's `GetBestInfo().ReleaseFileForUse()` would load oat files
-  that earlier dex2oat runs left on Linux.
-
 ### ART-24
 
 **On Apple, closing a socket doesn't wake a thread blocked reading it.**
@@ -232,6 +182,18 @@ interface's `Method`, which holds its class and the app's loader, so a dropped a
   (upstream cf073354).
 - Fix: cache per call site (a map on `LambdaProxy.Factory`) instead of a boot static.
 - Owner: `notes/multi-app-support/todo.md` MA4 (dropping an app needs its loader unloaded).
+
+### ART-29
+
+**On Apple `MilliTime`, `MicroTime` and `NanoTime` read the wall clock (`gettimeofday`), not a
+monotonic one.**
+- State: open, from a code read (2026-11-09). The `__linux__` guard predates `clock_gettime` on
+  Darwin, which iOS has had since 10; `NanoTime()` has 89 call sites outside tests in
+  `art/runtime`, `libartbase` and `openjdkjvmti`.
+- Effect (unchecked): a wall-clock change shifts the durations and deadlines ART computes from them.
+- Where: `dine-art/art/libartbase/base/time_utils.cc`.
+- Fix: `clock_gettime(CLOCK_MONOTONIC)` on every platform. Darwin's `CLOCK_MONOTONIC` counts device
+  sleep and Linux's doesn't (unchecked whether any caller cares).
 
 ## ATL
 
@@ -1135,6 +1097,31 @@ one.**
   (`notes/icons.md` Rendering).
 
 ## Fixed
+
+### ART-2
+
+**`Thread::GetCpuMicroTime` and `ThreadCpuNanoTime` logged `unimplemented` on Apple and returned -1;
+`ProcessCpuNanoTime` returned wall time.** 2026-11-09, bugs step, dine-art a29f9375.
+
+### ART-5
+
+**On iOS startup logged `Could not reserve sentinel fault page`.** 2026-11-09, bugs step, dine-art
+a29f9375.
+
+### ART-6
+
+**Startup logged `DexFile … is in boot class path but is not in a known location` once per boot
+jar.** 2026-11-09, bugs step, dine-art a29f9375.
+
+### ART-8
+
+**`art_quick_invoke_stub` sized its frame from all of `x2`, while `args_size` is a `uint32_t`.**
+2026-11-09, bugs step, dine-art a29f9375.
+
+### ART-23
+
+**`OatFileAssistant::GetBestOatFile` ran dex2oat through `Exec`, and crashed on a null oat file name
+when no dalvik cache dir existed.** 2026-11-09, bugs step, dine-art a29f9375.
 
 ### ATL-4
 

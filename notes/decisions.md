@@ -288,6 +288,10 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 
 ## dine-art
 
+- `OatFileAssistant::GetBestOatFile` returns null, like the dex open path: no oat file, no
+  dex2oat. Keep upstream's dex2oat block there (`79ab0c15`, `d58f96f9`) out on merges.
+- The "not in a known location" boot class path warning prints only on Android targets
+  (android12's gate in `hidden_api.cc`).
 - Cleanup per app: libcore's `java.lang.ref.CleanupDomain` (one cleanup thread per app group,
   `ThreadGroup.cleanupDomain`, a class loader may be its `Owner`) takes the finalizers and
   `sun.misc.Cleaner`s of an app's objects off ART's daemons (`FinalizerReference.add`,

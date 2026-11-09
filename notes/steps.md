@@ -12,8 +12,8 @@
 - atl-port::M6b3c - done
 - bugs::ATL-40, ATL-13, ATL-16, ATL-37 - done
 - bugs::ATL-8, ATL-12, ATL-11, ATL-9, ATL-75 - done
-- bugs::ART-6, ART-23, ART-5, ART-2, ART-8 - next
-- todos::TOOL-5, TOOL-4 - planned
+- bugs::ART-6, ART-23, ART-5, ART-2, ART-8 - done
+- todos::TOOL-5, TOOL-4 - next
 - atl-port::M6c - planned
 
 ...

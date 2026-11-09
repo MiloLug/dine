@@ -374,6 +374,8 @@ SCENARIOS = {
                  network=True, timeout=120),
             Step("run park", tap="run park", ok=("park ok", "art main returned"),
                  fail=("park failed", *ART_FAIL)),
+            Step("run cpu time", tap="run cpu time", ok=("thread cpu time ok", "art main returned"),
+                 fail=("thread cpu time failed", *ART_FAIL)),
             Step("back", back=True),
         ], uses_vm=True),
     ],

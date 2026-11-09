@@ -21,7 +21,7 @@ apks=("$ROOT"/out/tests/apks/*.apk)
 [[ ${#apks[@]} -gt 0 ]] || { echo "no test APKs in out/tests/apks: run tools/dine ios build-atl" >&2; exit 1; }
 jars=("$ROOT"/out/ios/share/art-junit/*.jar)
 [[ ${#jars[@]} -gt 0 ]] || { echo "no junit jars in out/ios/share/art-junit: run tools/dine ios build-art" >&2; exit 1; }
-for test in dine-0001-hello dine-0002-jni-args dine-0003-https dine-0004-park; do
+for test in dine-0001-hello dine-0002-jni-args dine-0003-https dine-0004-park dine-0008-thread-cpu-time; do
   jars+=("$ROOT/out/tests/runtime/build/$test/$test.jar")
 done
 for f in "${jars[@]}"; do

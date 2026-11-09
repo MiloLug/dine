@@ -58,8 +58,8 @@ within the spread. Whether iOS leaves clean file pages out of Dine's memory limi
 when measuring: an APK on tmpfs, or copied and not yet written back (`sync`), shows its mapped
 pages as dirty. iOS can't fork or exec, so dex2oat would run in-process there (unchecked). Compiled code has ART-22's absolute-reference problem, and iOS
 may refuse to execute pages that aren't signed (unchecked for Dine); a verify-only output (vdex,
-no machine code) would avoid both (unchecked). The side path that still reaches dex2oat:
-[ART-23](bug-tracker.md#art-23).
+no machine code) would avoid both (unchecked). `OatFileAssistant::GetBestOatFile` returns no oat
+file either ([ART-23](bug-tracker.md#art-23)).
 
 ## ATL
 

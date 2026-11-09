@@ -65,8 +65,7 @@ Consequences:
 
 Both are fixed in the harness (2026-10-16): the suite now runs with the flags below, and each test
 gets its own `XDG_CACHE_HOME`. `~/.cache/art` was deleted. dine-art now loads no boot image or
-oat files and opens dex files without dex2oat ("Runs on the phone"; a side path that still can:
-[ART-23](bug-tracker.md#art-23)).
+oat files and never runs dex2oat ("Runs on the phone").
 
 **Experiment: the same thing with no boot image and no dex2oat.** Flags `-Xnoimage-dex2oat
 -Xcompiler:/nonexistent/dex2oat`, with an empty `XDG_CACHE_HOME` (the suite now also passes
@@ -83,9 +82,8 @@ verifying at runtime. Results:
 
 So **ART runs fine without a boot image and without dex2oat**: the configuration iOS will need
 works today on Linux, at a modest startup cost. Notes:
-- The fallback forked; only the exec failed. dine-art's dex open path never runs dex2oat now
-  (side path: [ART-23](bug-tracker.md#art-23)), and on Apple `Exec` returns an error without
-  forking (`runtime/exec_utils.cc`).
+- The fallback forked; only the exec failed. dine-art never runs dex2oat, and on Apple `Exec`
+  returns an error without forking (`runtime/exec_utils.cc`).
 - A prebuilt boot image to win the startup back: [ART-22](general-todo.md#art-22).
 - ATL passes VM flags with `--extra-jvm-option=<flag>`, one per flag.
 
@@ -282,15 +280,14 @@ What it took in dine-art (one config, Linux and iOS):
   - liblog wrote a NUL after every line (the color-support commit), so readers splitting on
     newlines saw empty lines.
 
-Startup noise on iOS: [ART-4](bug-tracker.md#art-4), [ART-5](bug-tracker.md#art-5),
-[ART-6](bug-tracker.md#art-6).
+Startup noise on iOS: [ART-4](bug-tracker.md#art-4).
 
 ## More hazards found (2026-10-17)
 
 Fixed since, except where a code is named:
 - **16 KB pages:** `kPageSize` is 16 KB ("Runs on the phone").
-- **dex2oat exec without a switch:** the dex open path never runs dex2oat, and on Apple `Exec`
-  fails without forking; `GetBestOatFile` still can: [ART-23](bug-tracker.md#art-23).
+- **dex2oat exec without a switch:** neither the dex open path nor
+  `OatFileAssistant::GetBestOatFile` runs dex2oat, and on Apple `Exec` fails without forking.
 - **No futex on Apple:** `ART_USE_FUTEXES` is `__linux__`-only, so ART's mutexes, condition
   variables and RW locks use pthreads there. Park and Unpark block through
   `os_sync_wait_on_address` (`ParkWait`/`ParkWake` in `thread.cc`; iOS 17.4+, the min target),
