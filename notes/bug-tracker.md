@@ -1016,6 +1016,44 @@ called from an unnamed frame, and no more.
 - State: open, cause unchecked. No core dump: ART's handler ends the process.
 - Where: `dine-atl/src/backends/gfx/gsk/bitmap.c` (`gdk_pixbuf_loader`), `/usr/lib/libglycin-2.so.0`.
 
+### ATL-116
+
+**On iOS, Configuration says no keys even with a hardware keyboard attached.** records'
+`ui_display_get` answers `UI_DISPLAY_KEYS_SOFT` for uikit always; iOS hides its soft keyboard when
+a Bluetooth or Smart Keyboard is attached, and uikit already turns its presses into Android keys
+(`uikit/input.m`, `view.m`). Reporting it needs a keyboard watch on the host (GameController's
+`GCKeyboard`), a field through `dineart.h`, and a `CONFIG_KEYBOARD|CONFIG_KEYBOARD_HIDDEN` change
+path (only night changes are dispatched, `ATLLoadedApp.applyNight`).
+- State: open; found 2026-11-09 (keyboard configuration).
+- Where: `dine-atl/src/backends/ui/records/ui.c` `ui_display_get`.
+
+### ATL-117
+
+**Configuration's `touchscreen`, `navigation` and `navigationHidden` are never set.** They stay
+UNDEFINED on every build (`Configuration.setToDefaults`); `atl_display_apply` writes the keyboard
+fields and not these.
+- State: open; found 2026-11-09 (keyboard configuration), from the code.
+- Where: `dine-atl/src/shared/android_content_Context.c` `atl_display_apply`.
+
+### ATL-118
+
+**libandroid's `AConfiguration` is all stubs.** `AConfiguration_new` returns 0,
+`AConfiguration_fromAssetManager` does nothing and all 19 getters return -1: native code
+(NativeActivity, SDL, engines) sees no configuration.
+- State: open; found 2026-11-09 (keyboard configuration), from the code.
+- Where: `dine-atl/src/libandroid/configuration.c`.
+
+### ATL-119
+
+**A click into a gtk field records no show request.** The field takes its own input
+(`input_take_native`), so EditText's `onTouchEvent` doesn't reach `showSoftInput`, and the toolkit's
+focus-in records a request only where a keyboard shows (it also follows Java's `requestFocus`):
+after a click, `hideSoftInputFromWindow` and `toggleSoftInput` act as if none was asked; on Android
+the tap asks.
+- State: open; found 2026-11-09 (keyboard configuration), from the code.
+- Where: `dine-atl/src/backends/ui/gtk/edit.c` `on_focus_enter`,
+  `src/api-impl/android/view/inputmethod/InputMethodManager.java` `atlToolkitFocus`.
+
 ## DINE
 
 ### DINE-1
@@ -1145,7 +1183,7 @@ dine-atl e7a207c6.
 
 ### ATL-64
 
-**A background drawable gave its view no padding.** 2026-11-08, before the M6b3a commit, uncommitted.
+**A background drawable gave its view no padding.** 2026-11-08, with M6b3a, dine-atl 79754ea9.
 
 ### ATL-75
 

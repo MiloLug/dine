@@ -288,6 +288,37 @@ app's headless stop is that gap (`notes/atl-port.md` M9).
 - State: the gtk side is code-checked; the cli side is from the notes, not checked in code.
 - Where: `dine-atl/src/main-executable/main.c` (`extract_from_apk`); the cli host's APK loading.
 
+### ATL-120
+
+**Named constants for Android's values in native code, then a sweep for unexplained magic
+numbers.**
+- Configuration constants are written in C as literals with the Java name in a comment:
+  - `/*KEYBOARD_QWERTY*/ 2`, `/*UI_MODE_NIGHT_YES*/ 0x20`, `/*SCREENLAYOUT_SIZE_LARGE*/ 0x03`;
+  - 12 sites on 2026-11-09, in `dine-atl/src/shared/android_content_Context.c`,
+    `src/backends/ui/gtk/display.c`, `src/backends/host/cli/main.c` and
+    `src/api-impl-jni/android_content_res_AssetManager.c`.
+- Proposal, from one source:
+  - mark the constants native code uses with `@java.lang.annotation.Native` in
+    `src/api-impl/android/content/res/Configuration.java`, so that `javac -h` writes them into
+    `generated_headers/android_content_res_Configuration.h`. Unchecked: that the meson rule emits
+    a header for a class with `@Native` constants and no native methods.
+- ATL's own two-value fields get typed enums: `ui_display.keys` (`UI_DISPLAY_KEYS_SOFT`/`_HARD`
+  are `#define`s in `src/slots/ui.h`). `UI_DISPLAY_UNKNOWN` stays the shared "not reported".
+- Night stays Android's int: it crosses JNI, `atl_window_config`, `native/artbridge/include/dineart.h`
+  and Swift (`apps/Dine/Sources/Dine/Navigation.swift`, a literal `0x20`). A named constant in
+  `dineart.h` would serve the Swift side.
+- Then sweep dine-atl, artbridge and Dine for other numbers without a name or an explanation
+  (flags, masks, sizes, timeouts); name each or say why.
+
+### ATL-121
+
+**Check FILL_AND_STROKE text on gtk: the fill and the outline may sit a subpixel apart.**
+`draw_text` fills with GSK's text node (`gtk_snapshot_append_layout`, hinted glyphs) and strokes
+the layout's outline (`gsk_path_builder_add_layout`), which may follow unhinted shapes. Unchecked:
+draw large FILL_AND_STROKE text into a bitmap and compare where the stroke's middle and the
+glyphs' edges fall.
+- Where: `dine-atl/src/backends/gfx/gsk/canvas.c` `draw_text`.
+
 ## DINE
 
 ### DINE-6

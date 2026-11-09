@@ -682,12 +682,17 @@ keyboard, the keyboard after Home and front. As built:
   autocorrect, hint, resolved in Java from `inputType` and `imeOptions`), `ui_edit_set_state`,
   `ui_edit_set_keyboard`, `ui_text_set_selectable`; upcalls `atl_upcall_edit_report`, `_action`
   and `_focus`.
-- Keyboard and focus: InputMethodManager holds the EditText the keyboard serves and whether it
-  shows. The keyboard follows Java's focus between EditTexts and hides when focus leaves them, on
-  Done, and on Back (its down and up both go to the keyboard). A tap the toolkit takes itself gives
+- Keyboard and focus: InputMethodManager holds the EditText the keyboard serves, the app's show
+  request (AOSP's `mInputShown`: `hideSoftInputFromWindow` answers it, on gtk too) and whether the
+  toolkit's keyboard shows. The keyboard follows Java's focus between EditTexts and hides when
+  focus leaves them, on Done, and on Back (its down and up both go to a shown keyboard; gtk shows
+  none, so Back reaches the app). A tap the toolkit takes itself gives
   the field the keyboard and Java's focus (`atl_upcall_edit_focus`); on headless a tap goes through
   Java (EditText takes `clickable` from its style by hand). gtk keeps GTK's focus with Java's
-  (`ui_view_set_focused`), and `ui_edit_set_keyboard` does nothing there.
+  (`ui_view_set_focused`), and `ui_edit_set_keyboard` does nothing there. Configuration says which:
+  `ui_display.keys` gives gtk a hard QWERTY keyboard (QWERTY, keyboardHidden NO, hardKeyboardHidden
+  NO) and records a soft one (NOKEYS, NO, YES); AssetManager matches `-qwerty`, `-nokeys` and the
+  `-keys*` qualifiers by them.
 - Java: `Editable`, `InputType` and `InputFilter` are AOSP's, and EditorInfo has the IME
   constants. TextView keeps the hint, the selectable state, the transformation method and the
   editor action listener, with AOSP's `onEditorAction`. EditText has AOSP's input types (a bare
@@ -794,8 +799,7 @@ graphics suite's Matrix and Paint tests pass on headless and on gtk (`tools/dine
   widgets APK's `DrawActivity`, which redraws after `invalidate()`, not after a same-size layout,
   and after showing again from INVISIBLE; the graphics suite's pivot, `mapRect`, `rectStaysRect`
   and Paint copy tests. `tools/dine test framework --gtk` runs every suite on the gtk build, one at
-  a time, against `expectations/linux-x86_64-gtk.json`: `InputMethodTest#testShowAndHide` fails
-  there, as gtk shows no soft keyboard.
+  a time, against `expectations/linux-x86_64-gtk.json`.
 - Open: a missing native's stack trace prints on every redraw of the view that calls it.
 
 #### M5b: drawing on the phone
