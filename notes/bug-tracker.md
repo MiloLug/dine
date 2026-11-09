@@ -59,17 +59,23 @@ that keeps the same fact as a rule or record).
 ### ART-5
 
 **On iOS startup logs `Could not reserve sentinel fault page`.**
-- Where: `dine-art/art/runtime/runtime.cc` `Runtime::Init`: the page at `kSentinelAddr` is mapped
-  with `low_4gb`, which iOS refuses.
-- Fix: drop the page, or map it inside the heap reservation.
+- Where: `dine-art/art/runtime/runtime.cc` `Runtime::Init`: the page at `kSentinelAddr`
+  (0xebad6000) is mapped with `low_4gb`, which `MemMap` refuses on Apple arm64
+  (`libartbase/base/mem_map.cc`: the kernel's page zero covers the whole low 4 GB). Nothing reads
+  `protected_fault_page_` beyond the map and its reset.
+- Fix: skip the page on Apple arm64; no address inside the heap can be 0xebad6000.
 
 ### ART-6
 
 **Startup logs `DexFile … is in boot class path but is not in a known location` once per boot
 jar: 7 in release builds, 10 in dev builds.**
-- Where: `dine-art/art/runtime/hidden_api.cc`; the jars are `kBootJars` in
-  `native/artbridge/artbridge.cpp`, plus the junit jars `DevVmArgs` adds in
-  `native/artbridge/dev.cpp`.
+- Linux prints it too: 10 lines per framework-suite app (`out/tests/framework/runs/*/basics/stderr`,
+  2026-11-09).
+- Where: `dine-art/art/runtime/hidden_api.cc` `DetermineDomainFromLocation`: a location counts as
+  known under `$ANDROID_ROOT/framework/` or `/usr` (a fork patch). artbridge sets `ANDROID_ROOT` to
+  the resource dir and puts the jars directly in it; the Linux prefix (`out/linux/prefix`) isn't
+  under `/usr`. The jars are `kBootJars` in `native/artbridge/artbridge.cpp`, plus the junit jars
+  `DevVmArgs` adds in `native/artbridge/dev.cpp`. The branch returns `kPlatform` either way.
 
 ### ART-7
 
@@ -173,11 +179,15 @@ after the call doesn't move it.**
 **`OatFileAssistant::GetBestOatFile` still builds a dex2oat command and runs it through `Exec` when
 an oat file isn't up to date.**
 - State: unchecked whether any run reaches it. The dex open path
-  (`OatFileManager::OpenDexFilesFromOat`) never runs dex2oat; `GetBestOatFile` is called from
-  `class_loader_context.cc`, `native/dalvik_system_DexFile.cc` and `oat_file_assistant.cc`. On
-  Apple `Exec` returns an error without forking; on Linux it forks and execs dex2oat.
+  (`OatFileManager::OpenDexFilesFromOat`) never runs dex2oat. `GetBestOatFile` has three callers:
+  `class_loader_context.cc` (only after a context dex file failed to open),
+  `DexFile_getDexFileOutputPaths` (`native/dalvik_system_DexFile.cc`) and
+  `OatFileAssistant::GetOptimizationStatus` (from `DexFile_getDexFileStatus`). On Apple `Exec`
+  returns an error without forking; on Linux it forks and execs dex2oat.
 - Where: `dine-art/art/runtime/oat_file_assistant.cc` `OatFileAssistant::GetBestOatFile`.
-- Fix: never run dex2oat there either, as the open path does.
+- Fix: never run dex2oat there either, as the open path does. Unchecked: whether every caller takes
+  a null result, and whether upstream's `GetBestInfo().ReleaseFileForUse()` would load oat files
+  that earlier dex2oat runs left on Linux.
 
 ### ART-24
 
@@ -285,9 +295,12 @@ depend on it.
 `pango_attr_size_new`, a size in points, and Java passes px: a TextView's text is 4/3 of its size
 at 96 dpi, and a Paint at the same size measures 3/4 of the label (DrawStayActivity's
 `widgets metric` lines on gtk: "Hello world" at 14 sp, Paint 76 px, label 101 px).
-- Where: `dine-atl/src/backends/ui/gtk/text.c` `ui_text_set_size`; `ui_text_get_size` answers in
-  the same unit.
-- Fix: `pango_attr_size_new_absolute`, which shrinks every gtk TextView to its Android size.
+- Where: `dine-atl/src/backends/ui/gtk/text.c`: `ui_text_set_size` and the span runs'
+  `UI_RUN_SIZE` both use `pango_attr_size_new`. `ui_text_get_size` answers in the same unit, and
+  without a set size it returns the label font's size in points; the TextView constructor sets
+  its Paint's size from it (`native_getTextSize`).
+- Fix: `pango_attr_size_new_absolute` at both sites and a px answer from `ui_text_get_size`, which
+  shrinks every gtk TextView, and the Paint of a default-sized one, to its Android size.
 
 ### ATL-9
 
@@ -295,8 +308,8 @@ at 96 dpi, and a Paint at the same size measures 3/4 of the label (DrawStayActiv
 text on gtk; the display list keeps the style and iOS strokes it.
 - Where: `dine-atl/src/backends/gfx/gsk/canvas.c` `gfx_canvas_draw_text`:
   `gtk_snapshot_append_layout` only fills.
-- Fix: the layout as a path through `gtk_snapshot_append_stroke` (`gsk_path_builder_add_layout`;
-  that GTK 4.24 has it is unchecked).
+- Fix: the layout as a path through `gtk_snapshot_append_stroke` (`gsk_path_builder_add_layout`,
+  GTK 4.14 and later; this system has 4.24.1).
 
 ### ATL-10
 
@@ -322,14 +335,6 @@ padding the label is narrower, wraps elsewhere, and the cut can fall inside a li
 - Where: `dine-atl/src/backends/ui/gtk/text.c` `text_cap_height`.
 - Fix: take the box's horizontal extra off `for_width`.
 
-### ATL-13
-
-**After `setKeyListener(DigitsKeyListener)` on a multi-line EditText,
-`setInputType(TYPE_CLASS_NUMBER)` keeps it multi-line.** EditText compares the multi-line state with the old input type, which
-`setKeyListener` already made NUMBER; AOSP compares with `mSingleLine`.
-- Where: `dine-atl/src/api-impl/android/widget/EditText.java` `setInputType`.
-- Fix: a single-line flag, as AOSP's TextView keeps.
-
 ### ATL-14
 
 **Unchecked: a drag that starts on a multi-line EditText inside a ScrollView on iOS.** The field's
@@ -344,13 +349,6 @@ may take the drag: the parent stops scrolling, or Java gets `ACTION_CANCEL`.
 the default font on every build, and the `fontFamily` attribute isn't read; Paint draws the family.
 - Where: the ui slot takes a style only (`ui_text_set_style`); `TextView.setTypeface` passes
   `getStyle()`.
-
-### ATL-16
-
-**`TextView.getLayout()` makes a new BoringLayout on every call.** An app that calls it in
-`onDraw` allocates a native line array per frame, freed only by the finalizer, and its lines come
-from Paint, not from the toolkit's label.
-- Where: `dine-atl/src/api-impl/android/widget/TextView.java` `getLayout`.
 
 ### ATL-17
 
@@ -428,13 +426,6 @@ main thread or the receiver's `Handler`; `sendOrderedBroadcast` only prints.
 - Where: `dine-atl/src/api-impl/android/content/Context.java` `sendBroadcast`,
   `dine-atl/src/api-impl/android/atl/ATLLoadedApp.java` `receiveBroadcast`.
 
-### ATL-37
-
-**Two installed packages may claim one provider authority.** Android refuses the second install
-(`INSTALL_FAILED_CONFLICTING_PROVIDER`); the registry stores both, and `resolveContentProvider`
-returns whichever row comes first.
-- Where: `dine-atl/src/api-impl/android/atl/ATLInstaller.java` `commit`.
-
 ### ATL-38
 
 **An installed APK is synced with `fsync` only.** On Apple `fsync` doesn't make the data durable
@@ -450,13 +441,6 @@ may point at an APK whose blocks never reached the disk.
 whose uid falls in that range would make them refuse again.
 - State: unchecked.
 - Where: `dine-atl/src/api-impl/android/os/Process.java` `myUid`.
-
-### ATL-40
-
-**`JobScheduler.cancel` never stops a running job's service.** It looks the service up by
-`job.getService().getClass()`, which is `ComponentName.class`, while `schedule` stores it by the
-service's own class, so `onStopJob` never runs.
-- Where: `dine-atl/src/api-impl/android/app/job/JobScheduler.java` `cancel`.
 
 ### ATL-41
 
@@ -666,6 +650,24 @@ has; `NativeActivity` reads them from there. M6b3c's night dispatch reads the ma
 - State: open; found 2026-11-08 (M6b3c planning, code read only).
 - Where: `dine-atl/src/api-impl/android/content/pm/PackageManager.java:1632`.
 
+### ATL-75
+
+**`TextView.getLineCount()` always returns 1.** It ignores the text, the width and the line caps;
+`getLayout().getLineCount()` counts the lines.
+- State: open; found 2026-11-09 (ATL-16's fix, code read only).
+- Where: `dine-atl/src/api-impl/android/widget/TextView.java` `getLineCount`.
+
+### ATL-76
+
+**JobScheduler keeps a finished job pending, and a reused JobInfo can start twice.** A job whose
+`onStartJob` returns false stays in `pending_jobs` until `cancel`: `getAllPendingJobs` lists it,
+and a `schedule` of its id does nothing. An app that schedules, cancels and schedules one `JobInfo` object
+passes both start runnables' check, so the job starts twice. An `onStartJob` that throws leaves the
+job marked running.
+- State: open; found 2026-11-09 (ATL-40's reviews, code read only).
+- Where: `dine-atl/src/api-impl/android/app/job/JobScheduler.java` `schedule`, `JobService.java`
+  `jobFinished`.
+
 ## DINE
 
 ### DINE-1
@@ -752,9 +754,28 @@ one.**
 
 **framework-res said 3-button navigation.** 2026-11-03, M6b1, dine-atl cff73b6f.
 
+### ATL-13
+
+**`setInputType(TYPE_CLASS_NUMBER)` after `setKeyListener(DigitsKeyListener)` kept an EditText
+multi-line.** 2026-11-09, bugs step, dine-atl e7a207c6.
+
+### ATL-16
+
+**`TextView.getLayout()` made a new BoringLayout on every call.** 2026-11-09, bugs step,
+dine-atl e7a207c6.
+
 ### ATL-33
 
 **gsk drew some PorterDuff color filters as SRC_IN.** 2026-11-04, M6b review, dine-atl 73077776.
+
+### ATL-37
+
+**Two installed packages could claim one provider authority.** 2026-11-09, bugs step,
+dine-atl e7a207c6.
+
+### ATL-40
+
+**`JobScheduler.cancel` never stopped a job.** 2026-11-09, bugs step, dine-atl e7a207c6.
 
 ### ATL-64
 

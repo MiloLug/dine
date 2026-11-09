@@ -14,6 +14,7 @@ import re
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
 from typing import Callable
@@ -38,6 +39,7 @@ class Fixture:
     src: str
     key: str | None
     link_args: tuple[str, ...] = ()
+    manifest_replace: tuple[tuple[str, str], ...] = ()   # (old, new) in src's manifest: what aapt2 can't rename
 
 
 def _version(code: int) -> tuple[str, ...]:
@@ -50,7 +52,9 @@ FIXTURES = (
     Fixture("app-v3", "app", "a", _version(3)),
     Fixture("app-v1", "app", "a", _version(1)),
     Fixture("app-keyb", "app", "b", _version(4)),
-    Fixture("plain", "app", None, (*_version(1), "--rename-manifest-package", "dev.dine.pkg.plain")),
+    Fixture("plain", "app", None, (*_version(1), "--rename-manifest-package", "dev.dine.pkg.plain"),
+            (("dev.dine.pkg.app.prov", "dev.dine.pkg.plain.prov"),)),
+    Fixture("provdup", "app", None, (*_version(1), "--rename-manifest-package", "dev.dine.pkg.provdup")),
     Fixture("spoof", "spoof", "a"),
     Fixture("spoofdeny", "spoof", "a", ("--rename-manifest-package", "dev.dine.pkg.spoofdeny")),
     Fixture("gms", "ext", "b", ("--rename-manifest-package", "com.google.android.gms")),
@@ -65,10 +69,21 @@ FIXTURES = (
 
 def build_fixture(f: Fixture) -> str | None:
     key = SUITE / "keys" / f"{f.key}.p12" if f.key else None
-    try:
-        apk.build(SUITE / "fixtures" / f.src, APKS / f"{f.name}.apk", link_args=f.link_args, key=key)
-    except (subprocess.CalledProcessError, SystemExit) as e:
-        return f"{f.name}: {e}"
+    src = SUITE / "fixtures" / f.src
+    with tempfile.TemporaryDirectory() as tmp:
+        manifest = None
+        if f.manifest_replace:
+            text = (src / "AndroidManifest.xml").read_text()
+            for old, new in f.manifest_replace:
+                if old not in text:
+                    return f"{f.name}: {old!r} is not in {src / 'AndroidManifest.xml'}"
+                text = text.replace(old, new)
+            manifest = Path(tmp) / "AndroidManifest.xml"
+            manifest.write_text(text)
+        try:
+            apk.build(src, APKS / f"{f.name}.apk", link_args=f.link_args, key=key, manifest=manifest)
+        except (subprocess.CalledProcessError, SystemExit) as e:
+            return f"{f.name}: {e}"
     return None
 
 
@@ -213,6 +228,31 @@ def path_run(work: Path, prefix: Path) -> None:
     assert v3["version_code"] == 3 and v3["uid"] == first["uid"], (first, v3)
 
 
+def authority_holders(prefix: Path, authority: str) -> list[str]:
+    db = sqlite3.connect(f"file:{prefix / 'registry.sqlite'}?mode=ro", uri=True)
+    try:
+        return sorted(r[0] for r in db.execute("SELECT pkg FROM authorities WHERE authority = ?", (authority,)))
+    finally:
+        db.close()
+
+
+@check
+def provider_conflict(work: Path, prefix: Path) -> None:
+    """provdup is app under another name with app's provider authority: Android refuses it."""
+    run(work, prefix, "install", "--install", str(APKS / "app.apk"))
+    run(work, prefix, "install-dup", "--install", str(APKS / "provdup.apk"), status=1)
+    out = (work / "install-dup.stdout").read_text(errors="replace")
+    assert "Failure [status 5]" in out and "dev.dine.pkg.app.prov" in out and "held by dev.dine.pkg.app" in out, out
+    proc = atl(work, "run-dup", [str(APKS / "provdup.apk")], prefix)
+    assert proc.returncode != 0, "a path run of provdup started"
+    log = (work / "run-dup.stdout").read_text(errors="replace") + (work / "run-dup.stderr").read_text(errors="replace")
+    assert "dev.dine.pkg.app.prov" in log, "the run's output doesn't name the authority"
+    assert "dev.dine.pkg.provdup" not in rows(prefix), "provdup is installed"
+    assert authority_holders(prefix, "dev.dine.pkg.app.prov") == ["dev.dine.pkg.app"]
+    staging = prefix / "apps/.staging"
+    assert not staging.exists() or not any(staging.iterdir()), f"left in {staging}: {list(staging.iterdir())}"
+
+
 @check
 def package_run(work: Path, prefix: Path) -> None:
     run(work, prefix, "install", "--install", str(APKS / "app.apk"))
@@ -266,6 +306,10 @@ SCENARIOS = (
              rows=_row("dev.dine.pkg.ext")),
     Scenario("intent_install", "intent-install:ext", "Install", ("result -1 1", "added dev.dine.pkg.ext replacing=false"),
              rows=_row("dev.dine.pkg.ext")),
+    Scenario("session_provider_conflict", "session:provdup", "Install", ("status 5 dev.dine.pkg.provdup",), setup=("app",),
+             never=("unscoped", "added"), rows=_row("dev.dine.pkg.provdup", absent=True)),
+    Scenario("intent_provider_conflict", "intent-install:provdup", "Install", ("result 1 -13",), setup=("app",),
+             never=("unscoped", "added"), rows=_row("dev.dine.pkg.provdup", absent=True)),
     Scenario("intent_uninstall", "intent-uninstall:dev.dine.pkg.ext", "Uninstall",
              ("result -1 0", "removed dev.dine.pkg.ext replacing=false"), setup=("ext",),
              rows=_row("dev.dine.pkg.ext", absent=True)),

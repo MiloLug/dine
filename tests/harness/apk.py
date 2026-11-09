@@ -22,8 +22,9 @@ KEY_PASSWORD = "dine-test"
 
 
 def build(src: Path, out: Path, classpath: tuple[Path, ...] = (), link_args: tuple[str, ...] = (),
-          key: Path | None = None) -> None:
-    """link_args go to aapt2 link (e.g. --version-code, --rename-manifest-package)."""
+          key: Path | None = None, manifest: Path | None = None) -> None:
+    """link_args go to aapt2 link (e.g. --version-code, --rename-manifest-package); manifest replaces
+    src's AndroidManifest.xml."""
     for f in (HAX_JAR, FRAMEWORK_RES, CORE_JAR, *classpath):
         if not f.exists():
             sys.exit(f"missing {f}: run tools/dine linux build")
@@ -34,7 +35,7 @@ def build(src: Path, out: Path, classpath: tuple[Path, ...] = (), link_args: tup
         classes.mkdir()
         gen = tmp / "gen"
         base = tmp / "base.apk"
-        link = ["aapt2", "link", "-o", base, "--manifest", src / "AndroidManifest.xml", "-I", FRAMEWORK_RES,
+        link = ["aapt2", "link", "-o", base, "--manifest", manifest or src / "AndroidManifest.xml", "-I", FRAMEWORK_RES,
                 *link_args]
         if (src / "res").is_dir():
             compiled = tmp / "res.zip"

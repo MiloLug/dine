@@ -969,11 +969,9 @@ shows its last lines with the cursor. As built:
 - Open: gtk labels take px as points ([ATL-8](bug-tracker.md#atl-8)); stroked text on gtk ([ATL-9](bug-tracker.md#atl-9));
   line separators besides `\n` ([ATL-10](bug-tracker.md#atl-10)); gtk measuring off the main
   thread ([ATL-11](bug-tracker.md#atl-11)); gtk's line cap width
-  ([ATL-12](bug-tracker.md#atl-12)); `setKeyListener` then `setInputType`
-  ([ATL-13](bug-tracker.md#atl-13)); a capped field in a scroll view on iOS
+  ([ATL-12](bug-tracker.md#atl-12)); a capped field in a scroll view on iOS
   ([ATL-14](bug-tracker.md#atl-14)); TextView's font family ([ATL-15](bug-tracker.md#atl-15));
-  `getLayout()` per call ([ATL-16](bug-tracker.md#atl-16)); Layout's spans and Builder (M9,
-  [ATL-17](bug-tracker.md#atl-17)); iOS serif ([ATL-19](general-todo.md#atl-19)); Roboto widths
+  Layout's spans and Builder (M9, [ATL-17](bug-tracker.md#atl-17)); iOS serif ([ATL-19](general-todo.md#atl-19)); Roboto widths
   on iOS ([ATL-20](general-todo.md#atl-20)); TextKeyListener ([ATL-21](general-todo.md#atl-21));
   CoreText off UIKit's thread ([ATL-22](general-todo.md#atl-22)).
 
