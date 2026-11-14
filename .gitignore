@@ -7,3 +7,4 @@ xtool/
 .claude/
 .venv/
 __pycache__/
+.diamond
