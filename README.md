@@ -261,6 +261,10 @@ DINE_PREFIX=$PWD/out/linux/appdata \
 
 Third-party test APKs: `third_party/apks`, never committed (`docs/first-run.md` lists them).
 
+`linux build` holds a lock on the Linux builds; `test framework|apps|package`, `linux smoke` and
+`ios build-atl` share it, so a build never runs beside them. Those runs, `ios run` and `dbg smoke`
+stop when a build dir is behind its sources (`ninja -n`) and name the build command to run.
+
 Run by hand, ATL's gtk build opens its window on WSLg (Wayland). On WSL `env.sh` sets
 `GALLIUM_DRIVER=llvmpipe`: with Mesa's d3d12 driver, a first frame with many textures (Flower
 Finder) hangs and the window never shows. `linux smoke`, `test framework

@@ -15,7 +15,7 @@ import zipfile
 from pathlib import Path
 
 from classify import classify
-from common import BUILD, CORE_JAR, D8, HARNESS, RUNTIME, SHIMS, TOP, UPSTREAM, load_corpus, parallel
+from common import BUILD, CORE_JAR, D8, HARNESS, ROOT, SHIMS, TOP, UPSTREAM, load_corpus, parallel, run
 from grade import expected_file
 
 BUILD_TIMEOUT = 600
@@ -35,12 +35,31 @@ def _shared_key() -> bytes:
     h.update(json.dumps(load_corpus()["upstream"], sort_keys=True).encode())
     for p in [UPSTREAM / "test/etc/default-build", HARNESS / "build.py", HARNESS / "classify.py", D8]:
         h.update(p.read_bytes())
+    # tools/bin/d8 picks the newest installed build-tools; javac comes from PATH
+    for tool in ([str(D8), "--version"], ["javac", "-version"]):
+        version = subprocess.run(tool, capture_output=True)
+        h.update(version.stdout + version.stderr)   # JDK 8's javac prints it on stderr
     _hash_tree(h, SHIMS)
     # Entry names + CRCs, not the jar bytes: a clean ART rebuild rewrites zip timestamps.
     with zipfile.ZipFile(CORE_JAR) as jar:
         for info in sorted(jar.infolist(), key=lambda i: i.filename):
             h.update(f"{info.filename}\0{info.CRC}\0".encode())
     return h.digest()
+
+
+def _hash_inputs(h, src: Path) -> None:
+    """A test's `build-inputs` file names what its build reads outside its dir, one path per line,
+    from the repo root or with an environment variable in front: a file, or a directory hashed
+    whole."""
+    listing = src / "build-inputs"
+    if not listing.exists():
+        return
+    for line in listing.read_text().split():
+        p = ROOT / os.path.expandvars(line)
+        if p.is_dir():
+            _hash_tree(h, p)
+        else:
+            h.update(p.read_bytes())
 
 
 def _env() -> dict:
@@ -64,16 +83,23 @@ def _env() -> dict:
     }
 
 
-def build_one(name: str, src: Path, env: dict, shared: bytes) -> dict:
+def build_one(name: str, src: Path, env: dict, shared: bytes, retry_failed: bool) -> dict:
+    """retry_failed: a stored failed build is not reused, since its cause may be gone (a full disk,
+    a prefix that was being installed). A test with a `check` script grades its own build output,
+    so its failed build may be the expected one and stays."""
     dst = BUILD / name
     h = hashlib.sha256(shared)
     _hash_tree(h, src)
+    _hash_inputs(h, src)
     key = h.hexdigest()
     bundle_path = dst / "bundle.json"
-    if bundle_path.exists():
+    try:
         bundle = json.loads(bundle_path.read_text())
-        if bundle["key"] == key:
-            return bundle | {"cached": True}
+    except (OSError, ValueError):
+        bundle = {}   # absent, or cut short by a stopped build
+    retry = retry_failed and bundle.get("status") == "build-fail" and not (src / "check").exists()
+    if bundle.get("key") == key and not retry:
+        return bundle | {"cached": True}
 
     shutil.rmtree(dst, ignore_errors=True)
     bundle = {"name": name, "key": key}
@@ -86,12 +112,10 @@ def build_one(name: str, src: Path, env: dict, shared: bytes) -> dict:
         shutil.copy(UPSTREAM / "test/etc/default-build", dst / "default-build")
         script = "./build" if (dst / "build").exists() else "./default-build"
         with open(dst / "build-output.txt", "w") as log:
-            try:
-                rc = subprocess.run(["bash", script, "--host"], cwd=dst, env=env | {"TEST_NAME": name},
-                                    stdout=log, stderr=subprocess.STDOUT,
-                                    timeout=BUILD_TIMEOUT).returncode
-            except subprocess.TimeoutExpired:
-                rc = "timeout"
+            rc = run(["bash", script, "--host"], BUILD_TIMEOUT, cwd=dst, env=env | {"TEST_NAME": name},
+                     stdout=log, stderr=subprocess.STDOUT)
+        if rc is None:
+            rc = "timeout"
         expected = expected_file(dst)
         if rc != 0:
             bundle |= {"status": "build-fail", "reason": f"build exit {rc}"}
@@ -117,8 +141,9 @@ def build_one(name: str, src: Path, env: dict, shared: bytes) -> dict:
     return bundle
 
 
-def build_all(tests: dict[str, Path], jobs: int) -> dict[str, dict]:
+def build_all(tests: dict[str, Path], jobs: int, expected_build_fail: set[str]) -> dict[str, dict]:
     env = _env()
     shared = _shared_key()
-    bundles = parallel(lambda item: build_one(*item, env, shared), list(tests.items()), jobs, "build")
+    bundles = parallel(lambda item: build_one(*item, env, shared, item[0] not in expected_build_fail),
+                       list(tests.items()), jobs, "build")
     return {b["name"]: b for b in bundles}

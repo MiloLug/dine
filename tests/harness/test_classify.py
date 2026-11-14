@@ -59,6 +59,11 @@ class ParseRunScript(unittest.TestCase):
         with self.assertRaisesRegex(Unsupported, "--strip-dex"):
             parse_run_script('exec ${RUN} "$@" --strip-dex\n')
 
+    def test_flag_without_a_usable_value_skips_the_test(self):
+        for line in ('${RUN} "$@" --runtime-option', '${RUN} "$@" --timeout soon', '${RUN} "$@" --timeout'):
+            with self.subTest(line), self.assertRaises(Unsupported):
+                parse_run_script(line + "\n")
+
     def test_multiple_statements(self):
         with self.assertRaisesRegex(Unsupported, "custom run script"):
             parse_run_script('./default-run "$@"\necho "exit status:" $?\n')

@@ -398,10 +398,13 @@ struct atl_embedded_listener {
 ### Test APK
 
 `dine-atl/tests/headless/nav/`, built with `tests/harness/apk.py`: package `dev.dine.nav`, minSdk
-29, activities `MainActivity` (A) and `SecondActivity` (B). A starts B once, guarded by a static
-flag, from its first `onResume`. Both log their lifecycle and register an
-`OnApplyWindowInsetsListener` that logs `nav: <A|B> insets <gesture l t r b> <mandatory l t r b>
-<navigation bars l t r b>`, values in whole px. B sets one exclusion rect, 100 px tall, at its right edge.
+29, activities `MainActivity` (A), `SecondActivity` (B), `ImmersiveActivity` (I), `ResultActivity`
+(R) and `AnswerActivity` (S). A starts B once, guarded by a static flag, from its first `onResume`.
+All log their lifecycle and register an `OnApplyWindowInsetsListener` that logs `nav: <name> insets
+<gesture l t r b> <mandatory l t r b> <navigation bars l t r b>`, values in whole px. B sets two
+exclusion rects at its right edge, 30 px wide, y 200-300 and 250-540. A tap on R's "ask" starts S
+for a result; a tap on S's "answer" sets it and finishes, and R logs `nav: R result <request>
+<code> <answer>`.
 
 ### Linux
 
@@ -416,7 +419,8 @@ flag, from its first `onResume`. Both log their lifecycle and register an
   command that must do nothing is checked by the next command's lines arriving with nothing between.
   1. B shown: `nav: B insets 0 0 0 0 0 0 0 0 0 0 0 0` (Linux sets no insets at start)
   2. `insets 20 10 20 10 0 10 0 10 0 0 0 10`: `nav: B insets 20 10 20 10 0 10 0 10 0 0 0 10` and
-     `host: exclusion left - right <B's span>`
+     `host: exclusion left - right 330-530`: B's rects merged, cut at the bottom strip (530) and
+     to the bottom-most 200 dp
   3. `back`: B finishes, A resumes and logs its insets line
   4. `back` on A: `host: task back app`, A's `onPause` and `onStop`
   5. `back` (nothing), then `front`: `host: task front host`, A's `onRestart`, `onStart`, `onResume`
@@ -425,7 +429,11 @@ flag, from its first `onResume`. Both log their lifecycle and register an
   8. `insets` with a status bar and an IME edge: A's edges line; `size 200 300`: A's size line
   9. a second run with `ImmersiveActivity` (I): its frame line's flags, the flags its views hear,
      its navigation-bar inset 0 while hidden, the status inset, a size that grows it
-  10. kill ATL, like `run-demo.sh`
+  10. a third run with A and B at `-d 480`: the same `insets` reach B as px (`60 30 60 30 …`), its
+      span comes back in dp (`67-170`), `size 200 100`: `nav: B size 600x300`
+  11. a fourth run with R: `tap ask` starts S, `tap answer`: `nav: R result 7 -1 yes` once before
+      R's `onResume`, then S's `onDestroy`
+  12. each run ends with a `dump` ATL must answer, then the kill
 - Register `nav` in `tools/py/dine/linux.py` next to gd, demo and looper. The demo golden doesn't
   change.
 

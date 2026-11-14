@@ -12,13 +12,12 @@ import os
 import re
 import subprocess
 import sys
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import apk
 import expect
-from common import PREFIX, ROOT, parallel
+from common import PREFIX, ROOT, new_run_dir, parallel, run, stop_on_signals
 
 SUITES = ROOT / "dine-atl/tests/framework"
 OUT = ROOT / "out/tests/framework"
@@ -122,7 +121,7 @@ def run_suite(suite: Path, work: Path, build: Build) -> tuple[str, Run, str]:
     work.mkdir(parents=True)
     package = OUT / "apks" / f"{suite.name}.apk"
     try:
-        apk.build(suite, package, build.classpath())
+        apk.build(suite, package, build.classpath(), atl=build.dir)
     except (subprocess.CalledProcessError, SystemExit) as e:
         return suite.name, Run(problems=[f"APK build failed: {e}"]), "fail"
     (work / "data").mkdir()
@@ -130,15 +129,13 @@ def run_suite(suite: Path, work: Path, build: Build) -> tuple[str, Run, str]:
     env = dict(os.environ, RUN_FROM_BUILDDIR="1", DINE_PREFIX=str(work / "data"), MALLOC_PERTURB_="85")
     cmd = ["./android-translation-layer", "--instrument", RUNNER, str(package), "-X", "-Xint"]
     with open(work / "stdout", "w") as out, open(work / "stderr", "w") as err:
-        try:
-            proc = subprocess.run(cmd, cwd=build.dir, env=env, stdout=out, stderr=err, timeout=TIMEOUT)
-        except subprocess.TimeoutExpired:
-            run = parse((work / "stdout").read_text(errors="replace"))
-            return suite.name, run, "timeout"
-    run = parse((work / "stdout").read_text(errors="replace"))
-    if proc.returncode != 0:
-        run.problems.append(f"exit {proc.returncode}")
-    return suite.name, run, "fail" if run.problems else "pass"
+        rc = run(cmd, TIMEOUT, cwd=build.dir, env=env, stdout=out, stderr=err)
+    result = parse((work / "stdout").read_text(errors="replace"))
+    if rc is None:
+        return suite.name, result, "timeout"
+    if rc != 0:
+        result.problems.append(f"exit {rc}")
+    return suite.name, result, "fail" if result.problems else "pass"
 
 
 def manifest_package(suite: Path) -> str:
@@ -153,37 +150,35 @@ def run_one_vm(suites: list[Path], work: Path, build: Build) -> tuple[dict[str, 
     for suite in suites:
         package = OUT / "apks" / f"{suite.name}.apk"
         try:
-            apk.build(suite, package, build.classpath())
+            apk.build(suite, package, build.classpath(), atl=build.dir)
         except (subprocess.CalledProcessError, SystemExit) as e:
             shared.problems.append(f"{suite.name}: APK build failed: {e}")
             return {}, shared, "fail"
         cmd += ["--instrument", RUNNER, str(package)]
     (work / "data").mkdir()
     env = dict(os.environ, RUN_FROM_BUILDDIR="1", DINE_PREFIX=str(work / "data"), MALLOC_PERTURB_="85")
-    status = None
     with open(work / "stdout", "w") as out, open(work / "stderr", "w") as err:
-        try:
-            proc = subprocess.run(cmd, cwd=build.dir, env=env, stdout=out, stderr=err, timeout=TIMEOUT * len(suites))
-            if proc.returncode != 0:
-                shared.problems.append(f"exit {proc.returncode}")
-        except subprocess.TimeoutExpired:
-            status = "timeout"
+        rc = run(cmd, TIMEOUT * len(suites), cwd=build.dir, env=env, stdout=out, stderr=err)
+    status = "timeout" if rc is None else None
+    if rc:
+        shared.problems.append(f"exit {rc}")
     stdout = (work / "stdout").read_text(errors="replace")
     runs = {}
     for suite in suites:
-        run = parse(stdout, manifest_package(suite))
-        runs[suite.name] = run, status or ("fail" if run.problems else "pass")
+        result = parse(stdout, manifest_package(suite))
+        runs[suite.name] = result, status or ("fail" if result.problems else "pass")
     return runs, shared, status or ("fail" if shared.problems else "pass")
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    p = argparse.ArgumentParser(description=__doc__.splitlines()[0], allow_abbrev=False)
     p.add_argument("-f", "--filter", help="regex on suite names")
     p.add_argument("--gtk", action="store_true", help="run on the gtk build (needs a display; tools/dine test "
                                                         "framework --gtk gives it a hidden one)")
     p.add_argument("--one-vm", action="store_true", help="run the suites side by side in one headless VM")
     p.add_argument("--update-expectations", action="store_true",
-                   help="record this run's failures as expected (passes clear their entries)")
+                   help="drop the entries of tests that pass now and list the tests that ran; refused while "
+                        "a regression stands")
     a = p.parse_args()
 
     if a.one_vm and a.gtk:
@@ -199,37 +194,30 @@ def main() -> int:
         suites = [d for d in suites if re.search(a.filter, d.name)]
     if not suites:
         sys.exit(f"no suite in {SUITES} matches")
-    runs = OUT / "runs" / f"{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}"
+    stop_on_signals()
+    runs = new_run_dir(OUT / "runs")
     results: dict[str, str] = {}
     if a.one_vm:
         by_suite, shared, status = run_one_vm(suites, runs / "one-vm", build)
-        done = [(name, run, suite_status) for name, (run, suite_status) in by_suite.items()]
+        done = [(name, result, suite_status) for name, (result, suite_status) in by_suite.items()]
         results["suite:one-vm"] = status
         for problem in shared.problems:
             print(f"one-vm: {problem} (log: {runs / 'one-vm'})")
     else:
         done = parallel(lambda s: run_suite(s, runs / s.name, build), suites, build.jobs, "framework")
 
-    for name, run, status in sorted(done):
+    for name, result, status in sorted(done, key=lambda d: d[0]):
         results[f"suite:{name}"] = status
-        results.update(run.tests)
-        for problem in run.problems:
+        results.update(result.tests)
+        for problem in result.problems:
             print(f"{name}: {problem} (log: {runs / ('one-vm' if a.one_vm else name)})")
-    expectations = expect.load(build.expectations)
-    if a.update_expectations:
-        expect.save(build.expectations, expect.update(results, expectations, "new failure"))
-        print(f"updated {build.expectations}")
-        return 0
-    c = expect.compare(results, expectations)
     passed = sum(s == "pass" for n, s in results.items() if not n.startswith("suite:"))
     n_suite_rows = sum(n.startswith("suite:") for n in results)
+    c, rc = expect.settle(results, build.expectations, whole=not a.filter, record=a.update_expectations,
+                          new_reason="new failure", listed=lambda name: not name.startswith("suite:"))
     print(f"framework{' (one VM)' if a.one_vm else ''}: {len(suites)} suites, {passed}/{len(results) - n_suite_rows} tests pass, "
           f"{len(c.expected_failures)} expected failures → {runs}")
-    for name in c.fixed:
-        print(f"fixed: {name} (run with --update-expectations)")
-    for name in c.regressions:
-        print(f"REGRESSION: {name} {results[name]}")
-    return 1 if c.regressions else 0
+    return rc
 
 
 if __name__ == "__main__":

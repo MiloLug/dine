@@ -1,5 +1,6 @@
 import re
 import unittest
+from unittest import mock
 
 from dine.dbg import smoke
 from dine.dbg.targets.ios import parked_in_kernel
@@ -62,6 +63,65 @@ class SmokeTableTest(unittest.TestCase):
         for problem, log in cases:
             with self.subTest(problem):
                 self.assertIn(f"({problem})", smoke.viewtree_problem(log, GOLDEN) or "")
+
+
+class FakeServer:
+    """The debug server as smoke.run uses it: a tap logs the lines scripted for its label."""
+
+    def __init__(self, taps: dict[str, list[str]]):
+        self.taps, self.log, self.mark = taps, ["loaded 0 apps"], 0
+
+    def call(self, cmd, args=None, timeout=None):
+        args = args or {}
+        if cmd == "ui_tap":
+            self.mark = len(self.log)
+            self.log += self.taps[args["arg"]]
+        elif cmd == "wait":
+            for line in self.log[self.mark:]:
+                for pattern in args["log_re"]:
+                    if re.search(pattern, line):
+                        return {"code": 0, "text": f"matched --log-re {pattern!r}: {line}"}
+            return {"code": 2, "text": "timeout"}
+        elif cmd == "log":
+            hits = [line for line in self.log[args["since"]:] if re.search(args["pattern"], line, re.I)]
+            return {"code": 0, "text": "\n".join([f"{len(hits)} matches", *hits[-1:], f"cursor {len(self.log)}"])}
+        return {"code": 0, "text": "", "cursor": len(self.log)}
+
+
+class SmokeRunTest(unittest.TestCase):
+    STEPS = [smoke.Step("go", tap="go", ok=("done",), fail=("bad",)),
+             smoke.Step("quiet", tap="quiet", fail=("bad",)),
+             smoke.Step("back", back=True)]
+
+    def run_smoke(self, **taps) -> tuple[int, str]:
+        server = FakeServer({"go": ["done"], "quiet": [], **taps})
+        lines = []
+        with mock.patch.object(smoke.client, "call", server.call), \
+                mock.patch.dict(smoke.SCENARIOS, {"T": [smoke.Scenario("s", self.STEPS)]}), \
+                mock.patch.dict(smoke.STARTUP, {"T": "loaded"}):
+            return smoke.run("T", [], False, lambda: 1, out=lines.append), "\n".join(lines)
+
+    def test_clean_run_passes(self):
+        self.assertEqual(self.run_smoke()[0], 0)
+
+    def test_missing_ok_line_fails(self):
+        self.assertEqual(self.run_smoke(go=["other"])[0], 1)
+
+    def test_fail_line_before_the_ok_line_fails(self):
+        rc, text = self.run_smoke(go=["bad", "done"])
+        self.assertEqual((rc, "s: go: FAILED (bad)" in text), (1, True))
+
+    def test_fail_line_after_the_ok_line_fails(self):
+        rc, text = self.run_smoke(go=["done", "bad"])
+        self.assertEqual((rc, "s: go: FAILED ('bad': bad)" in text), (1, True))
+
+    def test_fail_line_in_a_step_that_waits_for_nothing_fails(self):
+        rc, text = self.run_smoke(quiet=["bad"])
+        self.assertEqual((rc, "s: quiet: FAILED" in text), (1, True))
+
+    def test_fatal_line_fails_the_scenario(self):
+        rc, text = self.run_smoke(quiet=["E/art: java.lang.UnsatisfiedLinkError: No implementation found"])
+        self.assertEqual((rc, "s: FAILED: 'UnsatisfiedLinkError'" in text), (1, True))
 
 
 class ExecGuardTest(unittest.TestCase):

@@ -7,6 +7,11 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - Our delta: `git diff upstream/master...dine`. Local `master` lags upstream.
 - Upstream isn't merged: read its commits since the last merge and reimplement the wanted ones
   by hand.
+- JNI headers: each Java target's `javac -h` writes into its own `<target>.p.h`, and ant copies
+  into `src/api-impl-jni/generated_headers` only the headers whose text changed (the `build.xml` of
+  `src/api-impl`, `ghax`, `gstub`, `test-runner`). Upstream writes them straight into the source
+  dir; with our two Linux build dirs each build's Java step then aged the other's objects. An
+  upstream change to a `build.xml` or to a Java target's `java_args` is ported onto this.
 - The keyboard is the host's IME inset (`atl_window_insets.ime`). adjustResize lays a window out
   above it (`windows_area`) and clips its insets there; adjustPan moves its root by a per-window
   offset in `windows.c`, which `View.getLocationInWindow` subtracts (AOSP's `mCurScrollY`);

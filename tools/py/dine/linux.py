@@ -2,11 +2,14 @@
 widgets APK's drawing, on a hidden display (display.py); the headless build runs demo_app and the
 looper, dialog, nav, views, widgets and windows APKs. Needs a prior `tools/dine linux build`."""
 
+import fcntl
 import signal
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable
 
 from . import display, paths
@@ -37,6 +40,32 @@ class Check:
 _display: display.Display | None = None
 
 
+@contextmanager
+def builds(exclusive: bool):
+    """The lock on the Linux builds: `linux build` holds it alone, runs that read them share it.
+    The two ATL builds write the same generated headers, and a run must not see a build change
+    under it."""
+    paths.OUT.mkdir(exist_ok=True)
+    with open(paths.OUT / ".linux-builds.lock", "a") as lock:
+        try:
+            fcntl.flock(lock, (fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH) | fcntl.LOCK_NB)
+        except BlockingIOError:
+            busy = "in use by a build or by a test or smoke run" if exclusive else "being built"
+            raise DineError(f"the Linux builds are {busy}: wait for that tools/dine to end") from None
+        yield
+
+
+def require_fresh(build_dir: Path, rebuild: str, *targets: str, default: bool = True) -> None:
+    """Raises when a meson build dir has pending work: what runs from it would be an older build
+    than the sources. Checks the default targets (unless `default` is off) and `targets`."""
+    if not (build_dir / "build.ninja").exists():
+        raise DineError(f"no build in {build_dir}: run {rebuild}")
+    for target in (*([[]] if default else []), *([t] for t in targets)):
+        r = subprocess.run(["ninja", "-C", str(build_dir), "-n", *target], capture_output=True, text=True)
+        if r.returncode != 0 or "no work to do" not in r.stdout:
+            raise DineError(f"{build_dir} is behind its sources: run {rebuild}")
+
+
 def _gtk_env() -> dict[str, str]:
     """The env for a gtk run: the smoke run's hidden display, started by its first gtk check."""
     global _display
@@ -46,12 +75,13 @@ def _gtk_env() -> dict[str, str]:
 
 
 def _gd(*args: str) -> str | None:
-    if not GTK_BUILD.is_dir():
-        raise DineError(f"no {GTK_BUILD}: run tools/dine linux build atl")
+    _need_gtk()
     proc = subprocess.run([sys.executable, str(paths.ROOT / "tests/harness/apps.py"), "--gtk", "-f", "^gd$", *args],
                           env=_gtk_env(), capture_output=True, text=True)
     # its pass, not an expected failure
-    return None if proc.returncode == 0 and "apps (gtk): 1/1 pass" in proc.stdout else (proc.stdout + proc.stderr).strip()
+    if proc.returncode == 0 and "apps (gtk): 1/1 pass" in proc.stdout:
+        return None
+    return (proc.stdout + proc.stderr).strip() or f"apps.py: exit status {proc.returncode}, no output"
 
 
 def _script(label: str, *args, env: dict[str, str] | None = None) -> str | None:
@@ -59,9 +89,21 @@ def _script(label: str, *args, env: dict[str, str] | None = None) -> str | None:
     return None if r.returncode == 0 else f"{label}: exit status {r.returncode}\n{r.stdout.rstrip()}"
 
 
+_fresh: set[Path] = set()   # builds this smoke run has checked
+
+
+def _need(build: Path, stage: str) -> None:
+    if build not in _fresh:
+        require_fresh(build, f"tools/dine linux build {stage}")
+        _fresh.add(build)
+
+
 def _need_headless() -> None:
-    if not HEADLESS_BUILD.is_dir():
-        raise DineError(f"no {HEADLESS_BUILD}: run tools/dine linux build atl-headless")
+    _need(HEADLESS_BUILD, "atl-headless")
+
+
+def _need_gtk() -> None:
+    _need(GTK_BUILD, "atl")
 
 
 def _demo() -> str | None:
@@ -81,8 +123,9 @@ def _looper() -> str | None:
             or _script("run-looper.sh", HEADLESS_TESTS / "run-looper.sh", HEADLESS_BUILD, LOOPER_APK))
 
 
-def _dialog_apk() -> str | None:
-    return _script("apk.py", sys.executable, paths.ROOT / "tests/harness/apk.py", HEADLESS_TESTS / "dialog", DIALOG_APK)
+def _dialog_apk(build: Path = HEADLESS_BUILD) -> str | None:
+    return _script("apk.py", sys.executable, paths.ROOT / "tests/harness/apk.py", HEADLESS_TESTS / "dialog", DIALOG_APK,
+                   "--atl", build)
 
 
 def _dialog() -> str | None:
@@ -92,9 +135,8 @@ def _dialog() -> str | None:
 
 
 def _dialog_gtk() -> str | None:
-    if not GTK_BUILD.is_dir():
-        raise DineError(f"no {GTK_BUILD}: run tools/dine linux build atl")
-    return _dialog_apk() or _script("run-dialog.sh", HEADLESS_TESTS / "run-dialog.sh", GTK_BUILD, DIALOG_APK,
+    _need_gtk()
+    return _dialog_apk(GTK_BUILD) or _script("run-dialog.sh", HEADLESS_TESTS / "run-dialog.sh", GTK_BUILD, DIALOG_APK,
                                     env=_gtk_env())
 
 
@@ -110,8 +152,9 @@ def _crash() -> str | None:
             or _script("run-crash.sh", HEADLESS_TESTS / "run-crash.sh", HEADLESS_BUILD, CRASH_APK))
 
 
-def _views_apk() -> str | None:
-    return _script("apk.py", sys.executable, paths.ROOT / "tests/harness/apk.py", HEADLESS_TESTS / "views", VIEWS_APK)
+def _views_apk(build: Path = HEADLESS_BUILD) -> str | None:
+    return _script("apk.py", sys.executable, paths.ROOT / "tests/harness/apk.py", HEADLESS_TESTS / "views", VIEWS_APK,
+                   "--atl", build)
 
 
 def _views() -> str | None:
@@ -121,14 +164,14 @@ def _views() -> str | None:
 
 
 def _views_gtk() -> str | None:
-    if not GTK_BUILD.is_dir():
-        raise DineError(f"no {GTK_BUILD}: run tools/dine linux build atl")
-    return _views_apk() or _script("run-views.sh", HEADLESS_TESTS / "run-views.sh", GTK_BUILD, VIEWS_APK,
+    _need_gtk()
+    return _views_apk(GTK_BUILD) or _script("run-views.sh", HEADLESS_TESTS / "run-views.sh", GTK_BUILD, VIEWS_APK,
                                    env=_gtk_env())
 
 
-def _widgets_apk() -> str | None:
-    return _script("apk.py", sys.executable, paths.ROOT / "tests/harness/apk.py", HEADLESS_TESTS / "widgets", WIDGETS_APK)
+def _widgets_apk(build: Path = HEADLESS_BUILD) -> str | None:
+    return _script("apk.py", sys.executable, paths.ROOT / "tests/harness/apk.py", HEADLESS_TESTS / "widgets", WIDGETS_APK,
+                   "--atl", build)
 
 
 def _widgets() -> str | None:
@@ -170,9 +213,9 @@ def _config() -> str | None:
 
 
 def _windows_gtk() -> str | None:
-    if not GTK_BUILD.is_dir():
-        raise DineError(f"no {GTK_BUILD}: run tools/dine linux build atl")
-    return (_script("apk.py", sys.executable, paths.ROOT / "tests/harness/apk.py", HEADLESS_TESTS / "windows", WINDOWS_APK)
+    _need_gtk()
+    return (_script("apk.py", sys.executable, paths.ROOT / "tests/harness/apk.py", HEADLESS_TESTS / "windows", WINDOWS_APK,
+                    "--atl", GTK_BUILD)
             or _script("run-windows.sh", HEADLESS_TESTS / "run-windows.sh", "--gtk", GTK_BUILD, WINDOWS_APK, env=_gtk_env()))
 
 
@@ -183,9 +226,8 @@ def _draw() -> str | None:
 
 
 def _draw_gtk() -> str | None:
-    if not GTK_BUILD.is_dir():
-        raise DineError(f"no {GTK_BUILD}: run tools/dine linux build atl")
-    return _widgets_apk() or _script("run-draw.sh", HEADLESS_TESTS / "run-draw.sh", GTK_BUILD, WIDGETS_APK,
+    _need_gtk()
+    return _widgets_apk(GTK_BUILD) or _script("run-draw.sh", HEADLESS_TESTS / "run-draw.sh", GTK_BUILD, WIDGETS_APK,
                                      env=_gtk_env())
 
 
@@ -194,22 +236,22 @@ CHECKS = [
     Check("gd-package", "gtk: the same, installed with --install-internal and run with --package", lambda: _gd("--by-package")),
     Check("demo", "headless: demo_app reaches onResume, view tree matches the golden", _demo),
     Check("demo-480", "headless: the same at density 480, where sp, dp and px differ", _demo_480),
-    Check("looper", "headless: looper.apk goes through the loop paths and exits 0", _looper),
-    Check("dialog", "headless: dialog.apk's alerts and list take scripted answers, an alert changes its buttons in onShow, it exits 0; a Dialog's content view lays out over the activity (dialog-content.viewtree), takes a tap and closes on a touch outside", _dialog),
-    Check("dialog-gtk", "gtk: the same through the GTK dialog's widgets", _dialog_gtk),
-    Check("nav", "headless: nav.apk's lifecycle under Back, Home and front from cli -c", _nav),
-    Check("crash", "headless: crash.apk throws in onCreate, onResume, a posted Runnable and a started activity's onCreate; each ends ATL through the uncaught handler with exit 10, no CheckJNI abort", _crash),
-    Check("views", "headless: views.apk removes, re-adds and frees views, view tree matches the golden", _views),
-    Check("views-gtk", "gtk: the same through GTK's widgets, and gsk frees a nine-patch and a StateListDrawable", _views_gtk),
+    Check("looper", "headless: looper.apk goes through the loop paths, its timed and untimed waits last their 50 ms without spinning, and it exits 0", _looper),
+    Check("dialog", "headless: dialog.apk's scripted runs log exactly the expected lines (alerts, a list, choice rows, progress, a setView panel, buttons changed in onShow and while drawn, an alert that isn't cancelable); from cli -c, content dialogs and panels match dialog-content.viewtree and dialog-view.viewtree under taps, text, Back and touches outside, and a finishing activity's dialog goes with it", _dialog),
+    Check("dialog-gtk", "gtk: dialog.apk's scripted runs through the GTK dialog's widgets, graded on the app's lines and exit status; none of the cli -c steps", _dialog_gtk),
+    Check("nav", "headless: nav.apk's lifecycle, insets, exclusion span and window size under Back, Home, front, insets and size from cli -c; the insets, span and size again at 480 dpi; an immersive activity's bar flags; an activity started for a result from a tap, and its result", _nav),
+    Check("crash", "headless: crash.apk throws in onCreate, onResume, a posted Runnable and a started activity's onCreate; each ends ATL through the uncaught handler with exit 10 and, with CheckJNI on, no CheckJNI abort", _crash),
+    Check("views", "headless: views.apk removes, re-adds and frees views, a dialog and three drawables; the first layout's tree and the one after a laid-out view's removal match views.viewtree and views-removed.viewtree", _views),
+    Check("views-gtk", "gtk: views.apk's steps through GTK's widgets; its dialog is freed and gsk frees a nine-patch and a StateListDrawable; no tree and no view frees are checked", _views_gtk),
     Check("widgets", "headless: widgets.apk takes taps, a hold, Tab, Enter, a drag and keys from cli -c; a press shows only in its own copy of a shared selector resource", _widgets),
-    Check("lists", "headless: a ListView scrolled by 600 px shows a later first row", _lists),
+    Check("lists", "headless: widgets.apk's ListView scrolled by 600 px has row 11 first and 12 rows shown, and ATL stays up until the timeout", _lists),
     Check("controls", "headless: widgets.apk's buttons, checkboxes, radios, switch, toggle and image button take taps and keys from cli -c", _controls),
     Check("text", "headless: widgets.apk's text fields take cli -c text lines through filters, watchers, a composition, a held report, focus moves and Back", _text),
     Check("draw", "headless: widgets.apk's Canvas view redraws on invalidate, not on a same-size layout; display lists (clips, a PNG bitmap, a scrolled background, text, paths, arcs, gradients, a layer, nine-patches) match the golden", _draw),
-    Check("draw-gtk", "gtk: the same view draws through gsk", _draw_gtk),
-    Check("windows", "headless: windows.apk's window state from an activity and a dialog, the order of WindowManager windows, a popup, an AutoCompleteTextView's drop-down, a menu and toasts", _windows),
+    Check("draw-gtk", "gtk: the same view draws its three times through gsk and the bitmap readbacks hold, with no missing native and no GTK critical; the draws' order and the display lists aren't compared", _draw_gtk),
+    Check("windows", "headless: windows.apk's window state from an activity and a dialog in order with the task's moves, none from a stopped activity; a dialog's insets at 160 and 480 dpi; the order and frames of WindowManager windows, a popup, an AutoCompleteTextView's drop-down, a menu, and toasts with their durations", _windows),
     Check("windows-gtk", "gtk: a popup below its anchor, a native menu and a toast", _windows_gtk),
-    Check("keyboard", "headless: windows.apk's fields under an IME inset: adjustPan moves the window up, adjustResize and an unspecified mode with a ScrollView lay it out above the keyboard (keyboard-pan.viewtree, keyboard-resize.viewtree)", _keyboard),
+    Check("keyboard", "headless: windows.apk's fields under an IME inset: adjustPan moves the window up only as far as the field needs, adjustResize lays it out above the keyboard (keyboard-pan.viewtree, keyboard-resize.viewtree), both also against what their layout alone would give and at 480 dpi; no mode follows the scroll container", _keyboard),
     Check("config", "headless: windows.apk under night changes from cli -c: an activity whose manifest covers uiMode, its view and the Application hear them and resolve night resources; one that doesn't keeps its configuration", _config),
 ]
 
@@ -236,6 +278,7 @@ def smoke(names: list[str], out=print) -> int:
     handlers = {sig: signal.signal(sig, lambda signum, _: sys.exit(128 + signum))
                 for sig in (signal.SIGTERM, signal.SIGHUP)}
     try:
+        _fresh.clear()
         for c in checks:
             t = time.monotonic()
             problem = c.run()

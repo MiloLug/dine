@@ -1,6 +1,7 @@
 """`dine ios …`: device tunnel, build/install/launch, processes, logs, symbols, interactive lldb."""
 
 import asyncio
+import hashlib
 import json
 import os
 import re
@@ -263,10 +264,57 @@ def atl_hooks_problem(build_dir: Path, release: bool) -> str | None:
     return None
 
 
+def atl_jars_problem(linux_jars: Path, staged: Path) -> str | None:
+    """The jars `ios run` bundles against the Linux build's, which `ios build-atl` copies them
+    from: ATL's Java is compiled by the Linux build only."""
+    for name in ("api-impl.jar", "framework-res.apk"):
+        ours, theirs = staged / name, linux_jars / name
+        if not ours.exists() or not theirs.exists() or ours.read_bytes() != theirs.read_bytes():
+            return f"{ours} is not the Linux build's {name}: run tools/dine ios build-atl"
+    return None
+
+
 def check_atl_build() -> None:
-    """For `ios run`, before it kills or builds anything."""
-    if problem := atl_hooks_problem(paths.OUT / "ios/build/dine-atl", release()):
+    """For `ios run`, before it kills or builds anything: the iOS ATL archive and its jars come
+    from separate steps, and an older one would be bundled without a word."""
+    want = "DINE_RELEASE=1 tools/dine ios build-atl" if release() else "tools/dine ios build-atl"
+    build_dir = paths.OUT / "ios/build/dine-atl"
+    if problem := atl_hooks_problem(build_dir, release()):
         raise DineError(problem)
+    from . import linux   # not at the top: the debug server imports this module, and linux.py is the client's
+    # of the Linux build iOS takes the jars and the JNI headers their javac writes
+    linux.require_fresh(paths.ATL_GTK_BUILD, "tools/dine linux build atl, then " + want,
+                        "api-impl.jar", "gstub.jar", "ghax.jar", default=False)
+    linux.require_fresh(build_dir, want)
+    jars = Path(paths.env("DINE_LINUX_PREFIX")) / "lib/java/dex/android_translation_layer"
+    if problem := atl_jars_problem(jars, paths.OUT / "ios/share/atl"):
+        raise DineError(problem)
+
+
+def install_fingerprint(app: str) -> str:
+    """Changes when anything the installed app is built from does: what `ios run` bundles (archives,
+    jars, the dev payload, assets) and the sources it compiles itself."""
+    roots = [paths.OUT / "ios/lib", paths.OUT / "ios/share", paths.OUT / "ios/dev", paths.OUT / "ios/assets" / app,
+             paths.APPS / app / "Sources", paths.APPS / app / "Package.swift", paths.APPS / app / "xtool.yml",
+             paths.ROOT / "native"]
+    h = hashlib.sha1()
+    for root in roots:
+        for p in sorted(root.rglob("*")) if root.is_dir() else [root]:
+            if p.is_file():
+                st = p.stat()
+                h.update(f"{p}:{st.st_size}:{st.st_mtime_ns}\0".encode())
+    return h.hexdigest()
+
+
+def _install_stamp(app: str) -> Path:
+    return paths.OUT / f"ios/{app}.installed"
+
+
+def check_installed(app: str) -> None:
+    """For checks that judge the app on the phone: it must be the build the checkout holds now."""
+    stamp = _install_stamp(app)
+    if not stamp.exists() or stamp.read_text() != install_fingerprint(app):
+        raise DineError(f"the {app} on the phone is not this checkout's build: run tools/dine ios run")
 
 
 def run_libexec(script: str, *args: str) -> int:
@@ -295,6 +343,7 @@ def cmd_install(app: str) -> int:
     # Installs fine, then its pre-iOS-17 debugserver launch step fails; tolerate only that error.
     if proc.wait() and b"DebugserverClient" not in out:
         return proc.returncode
+    _install_stamp(app).write_text(install_fingerprint(app))
     return 0
 
 

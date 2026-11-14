@@ -4,27 +4,25 @@ Per test, runs/<id>/<test>/ is both DEX_LOCATION and ANDROID_DATA (as on upstrea
 symlinks to the build dir's files plus a fresh dalvik-cache, so runs never write into build/.
 It is also XDG_CACHE_HOME, where art_standalone keeps its dalvik-cache (boot image, oat files),
 so nothing lands in ~/.cache/art.
-Files: vm-output.txt (raw, stdout+stderr merged), output.txt (graded), diff (on mismatch).
+Files: output.txt (stdout+stderr merged), diff (on mismatch).
 """
 
 import os
 import platform
-import signal
 import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from classify import expand_vars
-from common import BUILD, parallel
-from grade import diff, expected_file, outputs_match, strip_shutdown_abort, verdict
+from common import BUILD, end, parallel, spawn
+from grade import diff, expected_file, outputs_match, verdict
 
 
 @dataclass
 class RunOptions:
     jobs: int
     timeout: int | None = None      # overrides the corpus default (not per-test overrides)
-    strict: bool = False            # don't tolerate the shutdown abort
     vm_args: list[str] = field(default_factory=list)
     network: bool = False           # also run tests that need the internet
 
@@ -74,36 +72,33 @@ def run_one(name: str, bundle: dict, corpus: dict, run_dir: Path, opts: RunOptio
            "-cp", cp, bundle["main"], *expand_vars(bundle["main_args"], env)]
 
     start = time.monotonic()
-    p = subprocess.Popen(cmd, cwd=wd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                         start_new_session=True)
+    p = spawn(cmd, cwd=wd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     try:
         out, _ = p.communicate(timeout=_timeout(name, bundle, corpus, opts))
         timed_out = False
     except subprocess.TimeoutExpired:
-        os.killpg(p.pid, signal.SIGKILL)
+        end(p)
         out, _ = p.communicate()
         timed_out = True
+    finally:
+        end(p)
     seconds = round(time.monotonic() - start, 2)
     output = out.decode("utf-8", "replace")
-    (wd / "vm-output.txt").write_text(output)
+    (wd / "output.txt").write_text(output)
 
     result = {"name": name, "exit": p.returncode, "seconds": seconds}
     if timed_out:
-        return result | {"status": "timeout", "shutdown_abort": False}
+        return result | {"status": "timeout"}
 
-    stripped, abort = strip_shutdown_abort(output)
-    graded = output if opts.strict else stripped
-    (wd / "output.txt").write_text(graded)
     expected = (wd / bundle["expected"]).read_text(errors="replace")
     if bundle["check"]:
         matched = subprocess.run(["bash", "./check", bundle["expected"], "output.txt"], cwd=wd,
                                  env=env, capture_output=True).returncode == 0
     else:
-        matched = outputs_match(expected, graded)
+        matched = outputs_match(expected, output)
     if not matched:
-        (wd / "diff").write_text(diff(expected, graded))
-    return result | {"status": verdict(p.returncode, abort, matched, strict=opts.strict),
-                     "shutdown_abort": abort}
+        (wd / "diff").write_text(diff(expected, output))
+    return result | {"status": verdict(p.returncode, matched)}
 
 
 def run_all(bundles: dict[str, dict], corpus: dict, run_dir: Path, opts: RunOptions) -> dict[str, dict]:

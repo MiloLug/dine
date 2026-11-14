@@ -32,7 +32,7 @@ class Scenario:
     name: str
     steps: list[Step]
     uses_vm: bool = False   # creates the process's one Java VM
-    needs_clean: bool = False  # ATL: needs a process without a VM, and runs once per process
+    needs_clean: bool = False  # starts in a process that has no VM yet
     check: Callable[[int], str | None] | None = None  # after the steps: (seq at start) -> problem or None
     alive: bool = False     # the app must still run afterwards
 
@@ -125,7 +125,11 @@ def _spin_paced(since: int) -> str | None:
 # The app's own log line that says it started; checked after every relaunch.
 STARTUP = {"Dine": r"loaded \d+ apps"}
 ART_FAIL = ("art main threw", "a run is still active")
-ATL_FAIL = ("atl already ran", "atl needs a process without a VM", r"atl main returned (?!0\b)")
+ATL_FAIL = ("atl is still starting", "atl needs a process without a VM", "atl: can't attach the app's thread",
+            "or a library dir missing", r"atl (app )?main returned (?!0\b)")
+# never part of a passing scenario, whatever its steps wait for
+FATAL = ("UnsatisfiedLinkError", "JNI DETECTED ERROR", "Runtime aborting", "FATAL EXCEPTION",
+         "hacky_uncaught_exception_handler")
 NAV_LIST_FAIL = (r"nav: list \d", "nav: list canceled")  # an answer nobody gave
 
 SCENARIOS = {
@@ -377,7 +381,7 @@ SCENARIOS = {
             Step("run cpu time", tap="run cpu time", ok=("thread cpu time ok", "art main returned"),
                  fail=("thread cpu time failed", *ART_FAIL)),
             Step("back", back=True),
-        ], uses_vm=True),
+        ], uses_vm=True, needs_clean=True),   # as a run of it alone: it creates the VM itself
     ],
 }
 
@@ -408,6 +412,17 @@ def fail_hit(text: str, fail: tuple[str, ...]) -> str | None:
     return next((f for f in fail if any(line.startswith(f"matched --log-re {f!r}") for line in lines)), None)
 
 
+def logged(patterns: tuple[str, ...], since: int) -> str | None:
+    """The first of the patterns the app's syslog shows after `since`, with its line."""
+    for pattern in patterns:
+        resp = client.call("log", {"op": "grep", "pattern": pattern, "since": since, "src": ["syslog"],
+                                   "text": True, "n": 1})
+        head, _, rest = resp["text"].partition("\n")
+        if not head.startswith("0 matches"):
+            return f"{pattern!r}: {rest.partition(chr(10))[0]}"
+    return None
+
+
 def run(app: str, names: list[str], network: bool, relaunch: Callable[[], int], out=print) -> int:
     """Relaunches before the first scenario and before ATL ones that need a clean process; exit 1 at
     the first failure."""
@@ -434,6 +449,7 @@ def run(app: str, names: list[str], network: bool, relaunch: Callable[[], int], 
                 out(f"{sc.name}: {st.title}: skipped (needs --network)")
                 continue
             t = time.monotonic()
+            step_start = client.call("status")["cursor"]
             if st.tap or st.type or st.back or st.action or st.appearance:
                 resp = client.call("ui_tap", {"arg": st.tap}, timeout=30) if st.tap else \
                     client.call("ui_type", {"arg": st.type[0], "text": st.type[1]}, timeout=30) if st.type else \
@@ -460,8 +476,15 @@ def run(app: str, names: list[str], network: bool, relaunch: Callable[[], int], 
                 if resp["code"]:
                     out(f"{sc.name}: {st.title}: FAILED waiting for {label!r} on screen\n{resp['text']}")
                     return 1
+            # the waits end at their first match: a forbidden line after it, or in a step with no
+            # `ok`, shows only here
+            if hit := logged(st.fail, step_start):
+                out(f"{sc.name}: {st.title}: FAILED ({hit})")
+                return 1
             out(f"{sc.name}: {st.title}: ok ({time.monotonic() - t:.1f} s)")
         problem = sc.check(start) if sc.check else None
+        if hit := logged(FATAL, start):
+            problem = hit
         if sc.alive and not any(p["pid"] == pid for p in ios.processes(app)):
             problem = f"{app} pid {pid} is gone"
         if problem:

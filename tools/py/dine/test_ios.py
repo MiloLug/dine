@@ -42,6 +42,47 @@ class AtlHooksTest(unittest.TestCase):
         self.assertIn("no iOS ATL build", ios.atl_hooks_problem(Path(tempfile.gettempdir()) / "no-such-build", False))
         self.assertIn("predates its test_hooks option", ios.atl_hooks_problem(self.build([{"name": "ui", "value": "uikit"}]), False))
 
+class AtlJarsTest(unittest.TestCase):
+    def test_staged_jars_must_be_the_linux_builds(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        for d in ("linux", "staged"):
+            (tmp / d).mkdir()
+            for name in ("api-impl.jar", "framework-res.apk"):
+                (tmp / d / name).write_bytes(b"same")
+        self.assertIsNone(ios.atl_jars_problem(tmp / "linux", tmp / "staged"))
+        (tmp / "linux/api-impl.jar").write_bytes(b"rebuilt")
+        self.assertIn("ios build-atl", ios.atl_jars_problem(tmp / "linux", tmp / "staged"))
+        (tmp / "staged/framework-res.apk").unlink()
+        self.assertIn("ios build-atl", ios.atl_jars_problem(tmp / "linux", tmp / "staged"))
+
+
+class InstalledTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        (self.tmp / "out/ios/lib").mkdir(parents=True)
+        (self.tmp / "out/ios/lib/libart.a").write_bytes(b"1")
+        (self.tmp / "apps/App/Sources").mkdir(parents=True)
+        (self.tmp / "apps/App/Sources/Main.swift").write_text("a")
+        for name, value in (("ROOT", self.tmp), ("OUT", self.tmp / "out"), ("APPS", self.tmp / "apps")):
+            patch = mock.patch.object(ios.paths, name, value)
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def test_install_must_match_the_checkout(self):
+        with self.assertRaisesRegex(DineError, "ios run"):
+            ios.check_installed("App")
+        (self.tmp / "out/ios/App.installed").write_text(ios.install_fingerprint("App"))
+        ios.check_installed("App")
+        (self.tmp / "out/ios/lib/libart.a").write_bytes(b"22")
+        with self.assertRaisesRegex(DineError, "ios run"):
+            ios.check_installed("App")
+        (self.tmp / "out/ios/App.installed").write_text(ios.install_fingerprint("App"))
+        (self.tmp / "apps/App/Sources/New.swift").write_text("b")
+        with self.assertRaisesRegex(DineError, "ios run"):
+            ios.check_installed("App")
+
 
 if __name__ == "__main__":
     unittest.main()

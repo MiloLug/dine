@@ -36,9 +36,27 @@ the AOSP tree: `javac-helper.sh` / `bootjars.sh` (compile and desugar against ar
 |---|---|
 | `pass` | exit 0 and output matches (a test whose `check` accepts its failed build also passes, like upstream) |
 | `fail` | wrong output or non-zero exit |
+| `crash` | the VM ended by a signal |
 | `timeout` | over the per-test limit (default 120 s; overrides in `corpus.toml` `[timeouts]` or the test's `run --timeout`) |
 | `build-fail` | the build script failed or produced no jar |
 | `skip` | can't run here. Recomputed every build, never put in expectations |
+
+## Baselines
+
+Every suite (runtime, framework, apps, package) is graded by `expect.settle` against two committed
+files in its `expectations/`:
+- `<build>.json`: the tests that don't pass yet, each with its status and a reason. A test that
+  isn't listed must pass.
+- `<build>.tests.txt`: the tests a run without a filter executes. One of them that doesn't run is
+  a regression: a deleted test, a class that no longer loads, a test that turned into a skip.
+
+A run exits 1 on a regression, on a listed test that didn't run, and on a stale entry (a listed
+failure that passes now); 2 when no test ran at all.
+
+`--update-expectations` drops stale entries and, for a run without a filter, rewrites the test
+list. It writes nothing while a regression stands. A failure that is to stay is added to the
+`.json` by hand, with a tracker code as its reason; a removed test is taken out of the `.tests.txt`
+by hand. Only a suite with no `.json` yet gets its failures recorded.
 
 Skip reasons:
 - **jvmti:** needs the JVMTI test agent.

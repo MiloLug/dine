@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import shlex
+import signal
 import subprocess
 import sys
 import time
@@ -38,7 +39,7 @@ def _ios(sub):
     t = s.add_parser("build-atl", help="dine-atl uikit build → out/ios/lib/libtranslation_layer_main.a, jars → "
                                        "out/ios/share/atl, test APKs → out/tests/apks (after linux build atl); "
                                        "DINE_RELEASE=1: no test hooks or APKs")
-    t.set_defaults(func=lambda a: ios.run_libexec("build-ios-atl.sh"))
+    t.set_defaults(func=_ios_build_atl)
 
     t = s.add_parser("icons", help="apps/Dine/Resources/Icons.xcassets from its sources.txt and the icon pack's "
                                    "clone in third_party")
@@ -139,6 +140,25 @@ def _ios_lldb_offline(a):
     ios.cmd_lldb_offline(app, bp, a.extra)
 
 
+def _ios_build_atl(a):
+    # it reads the Linux build's jars and JNI headers
+    with linux.builds(exclusive=False):
+        return ios.run_libexec("build-ios-atl.sh")
+
+
+def _linux_build(a):
+    with linux.builds(exclusive=True):
+        return ios.run_libexec("build-linux-stack.sh", *a.stages)
+
+
+def _linux_smoke(a):
+    if a.list:
+        print(linux.listing())
+        return 0
+    with linux.builds(exclusive=False):
+        return linux.smoke(a.names)
+
+
 def _linux(sub):
     p = sub.add_parser("linux", help="Linux ATL/ART stack")
     s = p.add_subparsers(dest="action", required=True)
@@ -146,12 +166,12 @@ def _linux(sub):
                                    "headless atl-headless in its build dir (default: all)")
     t.add_argument("stages", nargs="*", choices=[[], "bionic", "art", "opensles", "atl", "atl-headless"],
                    metavar="stage")
-    t.set_defaults(func=lambda a: ios.run_libexec("build-linux-stack.sh", *a.stages))
+    t.set_defaults(func=_linux_build)
     t = s.add_parser("smoke", help="gtk runs Gravity Defied to onResume on a hidden display, headless runs "
                                    "demo_app and looper (after linux build; --list for the checks)")
     t.add_argument("names", nargs="*", metavar="check")
     t.add_argument("--list", action="store_true", help="print the checks")
-    t.set_defaults(func=lambda a: print(linux.listing()) if a.list else linux.smoke(a.names))
+    t.set_defaults(func=_linux_smoke)
 
 
 def _test(sub):
@@ -159,7 +179,7 @@ def _test(sub):
     s = p.add_subparsers(dest="action", required=True)
     t = s.add_parser("runtime", help="ART run-tests on dalvikvm -Xint; args go to the harness "
                                      "(tools/dine test runtime -- --help)")
-    t.set_defaults(func=lambda a: subprocess.run([sys.executable, str(paths.ROOT / "tests/harness"), *a.extra]).returncode,
+    t.set_defaults(func=lambda a: _harness([sys.executable, str(paths.ROOT / "tests/harness"), *a.extra]),
                    passthrough="all")
     t = s.add_parser("framework", help="android.* JUnit suites in-VM on the headless build, --gtk on the gtk one on a "
                                        "hidden display (after linux build); args go to tests/harness/framework.py")
@@ -175,12 +195,36 @@ def _test(sub):
     t.set_defaults(func=_test_unit)
 
 
+def _harness(cmd, env=None) -> int:
+    """Runs a test harness. SIGTERM and SIGHUP go on to it: it ends its own children, which sit in
+    sessions of their own, before it exits."""
+    proc = subprocess.Popen(cmd, env=env)
+    old = {sig: signal.signal(sig, lambda signum, _: proc.send_signal(signum))
+           for sig in (signal.SIGTERM, signal.SIGHUP)}
+    try:
+        while True:
+            try:
+                return proc.wait()
+            except KeyboardInterrupt:   # a terminal's ^C reached the harness too; a lone SIGINT didn't
+                proc.send_signal(signal.SIGINT)
+    finally:
+        for sig, handler in old.items():
+            signal.signal(sig, handler)
+
+
 def _test_harness(script, a):
+    """A suite on an ATL build: the headless one, or the gtk one on a hidden display."""
+    gtk = "--gtk" in a.extra
+    build, stage = (paths.ATL_GTK_BUILD, "atl") if gtk else (paths.ATL_HEADLESS_BUILD, "atl-headless")
     cmd = [sys.executable, str(paths.ROOT / "tests/harness" / script), *a.extra]
-    if "--gtk" not in a.extra:
+    if "-h" in a.extra or "--help" in a.extra:
         return subprocess.run(cmd).returncode
-    with display.headless() as d:
-        return subprocess.run(cmd, env=d.env()).returncode
+    with linux.builds(exclusive=False):
+        linux.require_fresh(build, f"tools/dine linux build {stage}", *(() if script == "apps.py" else ("test_runner.jar",)))
+        if not gtk:
+            return _harness(cmd)
+        with display.headless() as d:
+            return _harness(cmd, d.env())
 
 
 def _test_unit(a):
@@ -399,6 +443,11 @@ def _smoke(a) -> int:
     if a.list:
         print(smoke.listing(st["app"]))
         return 0
+    if st["text"].startswith(session.STALE):
+        # its waits and matchers would judge the run, and a passing run prints no reply text
+        raise DineError(st["text"].partition("\n")[0])
+    ios.check_atl_build()
+    ios.check_installed(st["app"])
     return smoke.run(st["app"], a.names, a.network, lambda: _relaunch(st))
 
 

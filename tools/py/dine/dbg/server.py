@@ -82,8 +82,7 @@ class Server:
                                 else f"$ {line}  → exit {code}\n{text}")
         hint = "narrow it: -n, --src, log grep" if cmd in QUIET else f"tools/dine dbg log show {seq}"
         if req.get("code") and req["code"] != self.code:
-            text = ("warning: the server runs older dbg code: tools/dine dbg stop-server; "
-                    "tools/dine dbg start-server\n" + text)
+            text = f"{session.STALE}: tools/dine dbg stop-server; tools/dine dbg start-server\n" + text
         resp = {"code": code, "text": clip(text, max_lines, hint), "cursor": self.store.cursor, "seq": seq}
         if cmd == "status":
             resp["state"] = self.target.state()

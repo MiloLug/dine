@@ -62,6 +62,13 @@ def parse_run_script(text: str) -> RunSpec:
     spec = RunSpec()
     main = None
     it = iter(words[1:])
+
+    def value(flag: str) -> str:
+        try:
+            return next(it)
+        except StopIteration:
+            raise Unsupported(f"run flag {flag} has no value") from None
+
     for w in it:
         if w.startswith("$@") or w.startswith("${@"):
             spec.main_args.append(TESTLIB)
@@ -70,15 +77,18 @@ def parse_run_script(text: str) -> RunSpec:
         elif w in IGNORED_WITH_ARG:
             next(it, None)
         elif w in VM_ARG:
-            spec.vm_args.append(next(it))
+            spec.vm_args.append(value(w))
         elif w in MAIN_ARG:
-            spec.main_args.append(next(it))
+            spec.main_args.append(value(w))
         elif w in VERIFY:
             spec.vm_args.append(VERIFY[w])
         elif w == "--secondary":
             spec.secondary = True
         elif w == "--timeout":
-            spec.timeout = int(next(it))
+            seconds = value(w)
+            if not seconds.isdigit():
+                raise Unsupported(f"run flag --timeout {seconds}")
+            spec.timeout = int(seconds)
         elif w.startswith("-"):
             raise Unsupported(f"run flag {w}")
         elif main is None:

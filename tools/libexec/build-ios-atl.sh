@@ -70,7 +70,8 @@ meson install -C "$BUILD" --quiet
 
 if [[ $hooks == true ]]; then
   for apk in looper dialog nav views widgets windows; do
-    python3 "$ROOT/tests/harness/apk.py" "$ROOT/dine-atl/tests/headless/$apk" "$APKS/$apk.apk"
+    python3 "$ROOT/tests/harness/apk.py" "$ROOT/dine-atl/tests/headless/$apk" "$APKS/$apk.apk" \
+      --atl "$ROOT/out/linux/build/dine-atl"
   done
 fi
 # the whole dir is bundled: nothing else may stay in it. ATLPaths expects gstub.jar and ghax.jar

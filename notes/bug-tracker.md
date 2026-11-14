@@ -1016,6 +1016,14 @@ the tap asks.
 - Where: `dine-atl/src/backends/ui/gtk/edit.c` `on_focus_enter`,
   `src/api-impl/android/view/inputmethod/InputMethodManager.java` `atlToolkitFocus`.
 
+### ATL-122
+
+**A gtk draw run can die in Mesa's d3d12 driver** (`D3D12: Removing Device`, then
+`realloc(): invalid pointer`).
+- State: open, seen once in 24 `draw-gtk` runs on WSLg (2026-11-04); not seen since, cause
+  unknown.
+- Workaround: rerun the check.
+
 ## DINE
 
 ### DINE-1
@@ -1095,6 +1103,50 @@ one.**
 - State: open; not rechecked against the current accord.
 - Workaround: Dine tints in code, `.renderingMode(.template)` with `.foregroundStyle(...)`
   (`notes/icons.md` Rendering).
+
+### TOOL-10
+
+**`tools/dine test apps` passes an app that hangs or draws nothing after its marker.** A pass is
+every marker in the log plus a live pid for 3 s; the common marker is logged at the start of
+`Activity.onResume`. Only gd on headless also waits for a frame (`atl frame`), and the gtk build has
+no frame hook.
+- State: open; found 2026-11-14 (instruments audit).
+- Where: `tests/harness/apps.py` `verdict`, `tests/android-compat/apps/apps.toml`.
+- Fix: a frame line from both builds after resume, required for every app, and a sign of a running
+  main loop during the settle time.
+
+### TOOL-11
+
+**Small open defects of the test harness.**
+- State: open; found 2026-11-14 (instruments audit).
+- `test apps --by-package`: one failed install ends the run with a traceback and nothing is graded
+  (`tests/harness/apps.py` `install`).
+- `test package`: a harness error in a scenario or in the JUnit phase ends the run with a
+  traceback, while a `cli:` check grades the same error as a failed row; six `cli:` assertions
+  carry no message, so their failure prints no problem line (`tests/harness/package.py`).
+- `test runtime`: a `check` script runs with symlinks into the build dir, and the check of a failed
+  build runs inside it (`tests/harness/run.py` `_workdir`, `_build_fail`); the summary and
+  `results.json` name neither the `dalvikvm` that ran nor its source revision.
+
+### TOOL-12
+
+**Small open defects of `tools/dine dbg smoke`.**
+- State: open; found 2026-11-14 (instruments audit).
+- An app that died is reported as a log timeout, after the step's whole timeout.
+- Waits read the server's one mark, which another client's action moves; a step with no action
+  sets a new mark, so the line it waits for can land before it.
+- `dbg smoke --list` needs a running debug server.
+- gtk target: `log --text` cuts the first field off ATL's own lines
+  (`tools/py/dine/dbg/logstore.py` `bare`).
+
+### TOOL-13
+
+**`dbg smoke art --network`, run alone, lost the app's debug agent once.** `art: run hello: FAILED`,
+`no usbmux connection to the app within 10s`, and the server showed no process afterwards.
+- State: unchecked; seen in 1 of 5 runs on 2026-11-14, right after a full smoke run. The syslog of
+  that launch ends with `art probe ... done` and holds no crash, abort or signal line; crash reports
+  on the phone were not read.
+- Where: the saved lines are in `out/handoff/overhaul/a0/phone/art-fail-syslog.txt` (gitignored).
 
 ## Fixed
 

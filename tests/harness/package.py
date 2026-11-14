@@ -15,15 +15,15 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
-import time
 from dataclasses import dataclass
 from typing import Callable
 from pathlib import Path
 
 import apk
+import common
 import expect
 import framework
-from common import ROOT, parallel
+from common import ROOT, new_run_dir, parallel, stop_on_signals
 
 SUITE = ROOT / "dine-atl/tests/package"
 OUT = ROOT / "out/tests/package"
@@ -81,7 +81,7 @@ def build_fixture(f: Fixture) -> str | None:
             manifest = Path(tmp) / "AndroidManifest.xml"
             manifest.write_text(text)
         try:
-            apk.build(src, APKS / f"{f.name}.apk", link_args=f.link_args, key=key, manifest=manifest)
+            apk.build(src, APKS / f"{f.name}.apk", link_args=f.link_args, key=key, manifest=manifest, atl=BUILD.dir)
         except (subprocess.CalledProcessError, SystemExit) as e:
             return f"{f.name}: {e}"
     return None
@@ -98,11 +98,8 @@ def atl(work: Path, name: str, args: list[str], prefix: Path, **extra: str) -> s
     work.mkdir(parents=True, exist_ok=True)
     cmd = ["./android-translation-layer", *args, "-X", "-Xint"]
     with open(work / f"{name}.stdout", "w") as out, open(work / f"{name}.stderr", "w") as err:
-        try:
-            return subprocess.run(cmd, cwd=BUILD.dir, env=env(prefix, **extra), stdout=out, stderr=err,
-                                  timeout=TIMEOUT)
-        except subprocess.TimeoutExpired:
-            return subprocess.CompletedProcess(cmd, -1)
+        rc = common.run(cmd, TIMEOUT, cwd=BUILD.dir, env=env(prefix, **extra), stdout=out, stderr=err)
+    return subprocess.CompletedProcess(cmd, -1 if rc is None else rc)
 
 
 def rows(prefix: Path) -> dict[str, dict]:
@@ -267,9 +264,8 @@ class Scenario:
     name: str
     arg: str                       # DINE_TEST_SCENARIO: <kind>:<fixture or package>
     answers: str                   # ATL_DIALOG_ANSWERS
-    want: tuple[str, ...]          # "scenario: " lines it must print
+    want: tuple[str, ...]          # the "scenario: " lines it prints, in order
     setup: tuple[str, ...] = ()    # fixtures the CLI installs first
-    never: tuple[str, ...] = ("unscoped",)
     rows: Callable[[dict], str | None] = lambda rows: None
 
 
@@ -285,36 +281,46 @@ def _row(name: str, **want) -> Callable[[dict], str | None]:
     return check
 
 
+def _installed(package: str) -> tuple[str, ...]:
+    """A session install that asks the user (-1) and succeeds."""
+    return (f"status -1 {package}", f"status 0 {package}", f"added {package} replacing=false")
+
+
 SCENARIOS = (
-    Scenario("session_install", "session:ext", "Install",
-             ("status -1 dev.dine.pkg.ext", "status 0 dev.dine.pkg.ext", "added dev.dine.pkg.ext replacing=false"),
+    Scenario("session_install", "session:ext", "Install", _installed("dev.dine.pkg.ext"),
              rows=_row("dev.dine.pkg.ext", installer="dev.dine.pkg.driver")),
-    Scenario("session_cancel", "session:ext", "Cancel", ("status 3 dev.dine.pkg.ext",),
-             never=("unscoped", "added"), rows=_row("dev.dine.pkg.ext", absent=True)),
-    Scenario("session_other_signer", "session:app-keyb", "Install", ("status 5 dev.dine.pkg.app",), setup=("app",), never=("unscoped", "added"),
+    Scenario("session_cancel", "session:ext", "Cancel", ("status -1 dev.dine.pkg.ext", "status 3 dev.dine.pkg.ext"),
+             rows=_row("dev.dine.pkg.ext", absent=True)),
+    Scenario("session_other_signer", "session:app-keyb", "Install",
+             ("status -1 dev.dine.pkg.app", "status 5 dev.dine.pkg.app"), setup=("app",),
              rows=_row("dev.dine.pkg.app", version_code=2)),
-    Scenario("session_downgrade", "session:app-v1", "Install", ("status 7 dev.dine.pkg.app",), setup=("app",), never=("unscoped", "added"),
+    Scenario("session_downgrade", "session:app-v1", "Install",
+             ("status -1 dev.dine.pkg.app", "status 7 dev.dine.pkg.app"), setup=("app",),
              rows=_row("dev.dine.pkg.app", version_code=2)),
     Scenario("session_update", "session:app-v3", "Install",
-             ("status 0 dev.dine.pkg.app", "removed dev.dine.pkg.app replacing=true", "added dev.dine.pkg.app replacing=true",
-              "replaced dev.dine.pkg.app replacing=true"), setup=("app",), rows=_row("dev.dine.pkg.app", version_code=3)),
-    Scenario("spoof_allow", "session:spoof", "Install;Allow", ("status 0 dev.dine.pkg.spoof",),
+             ("status -1 dev.dine.pkg.app", "status 0 dev.dine.pkg.app", "removed dev.dine.pkg.app replacing=true",
+              "added dev.dine.pkg.app replacing=true", "replaced dev.dine.pkg.app replacing=true"), setup=("app",),
+             rows=_row("dev.dine.pkg.app", version_code=3)),
+    Scenario("spoof_allow", "session:spoof", "Install;Allow", _installed("dev.dine.pkg.spoof"),
              rows=_row("dev.dine.pkg.spoof", fake_signature=1)),
-    Scenario("spoof_deny", "session:spoof", "Install;Deny", ("status 0 dev.dine.pkg.spoof",),
+    Scenario("spoof_deny", "session:spoof", "Install;Deny", _installed("dev.dine.pkg.spoof"),
              rows=_row("dev.dine.pkg.spoof", fake_signature=0)),
-    Scenario("app_context", "session-app-context:ext", "Install", ("status 0 dev.dine.pkg.ext",),
+    Scenario("app_context", "session-app-context:ext", "Install", _installed("dev.dine.pkg.ext"),
              rows=_row("dev.dine.pkg.ext")),
     Scenario("intent_install", "intent-install:ext", "Install", ("result -1 1", "added dev.dine.pkg.ext replacing=false"),
              rows=_row("dev.dine.pkg.ext")),
-    Scenario("session_provider_conflict", "session:provdup", "Install", ("status 5 dev.dine.pkg.provdup",), setup=("app",),
-             never=("unscoped", "added"), rows=_row("dev.dine.pkg.provdup", absent=True)),
+    Scenario("session_provider_conflict", "session:provdup", "Install",
+             ("status -1 dev.dine.pkg.provdup", "status 5 dev.dine.pkg.provdup"), setup=("app",),
+             rows=_row("dev.dine.pkg.provdup", absent=True)),
     Scenario("intent_provider_conflict", "intent-install:provdup", "Install", ("result 1 -13",), setup=("app",),
-             never=("unscoped", "added"), rows=_row("dev.dine.pkg.provdup", absent=True)),
+             rows=_row("dev.dine.pkg.provdup", absent=True)),
     Scenario("intent_uninstall", "intent-uninstall:dev.dine.pkg.ext", "Uninstall",
              ("result -1 0", "removed dev.dine.pkg.ext replacing=false"), setup=("ext",),
              rows=_row("dev.dine.pkg.ext", absent=True)),
     # ends by itself after the result, as Android kills an app it replaced
-    Scenario("self_update", "self-update:driver-v2", "Install", ("status 0 dev.dine.pkg.driver",),
+    Scenario("self_update", "self-update:driver-v2", "Install",
+             ("status -1 dev.dine.pkg.driver", "status 0 dev.dine.pkg.driver", "removed dev.dine.pkg.driver replacing=true",
+              "added dev.dine.pkg.driver replacing=true", "replaced dev.dine.pkg.driver replacing=true"),
              rows=_row("dev.dine.pkg.driver", version_code=2)),
 )
 
@@ -334,8 +340,8 @@ def run_scenario(s: Scenario, runs: Path) -> tuple[str, str, str]:
 def grade_scenario(s: Scenario, returncode: int, stdout: str, registry: dict) -> list[str]:
     lines = [line[len("scenario: "):] for line in stdout.splitlines() if line.startswith("scenario: ")]
     problems = [f"exit {returncode}"] if returncode else []
-    problems += [f"no {w!r}" for w in s.want if w not in lines]
-    problems += [f"printed {line!r}" for line in lines if any(line.startswith(n) for n in s.never)]
+    if tuple(lines) != s.want:
+        problems.append(f"printed {lines}, not {list(s.want)}")
     problem = s.rows(registry)
     if problem:
         problems.append(problem)
@@ -375,7 +381,7 @@ def run_junit(runs: Path) -> tuple[dict[str, str], list[str]]:
     work = runs / "junit"
     suite_apk = OUT / "suite.apk"
     try:
-        apk.build(SUITE / "suite", suite_apk, BUILD.classpath())
+        apk.build(SUITE / "suite", suite_apk, BUILD.classpath(), atl=BUILD.dir)
     except (subprocess.CalledProcessError, SystemExit) as e:
         return {"suite:junit": "fail"}, [f"APK build failed: {e}"]
     prefix = work / "prefix"
@@ -394,11 +400,12 @@ def run_junit(runs: Path) -> tuple[dict[str, str], list[str]]:
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    p = argparse.ArgumentParser(description=__doc__.splitlines()[0], allow_abbrev=False)
     p.add_argument("-f", "--filter", help="regex on row names (cli:, scenario:, Class#test); the JUnit suite runs "
                                           "whole when any of its rows could match")
     p.add_argument("--update-expectations", action="store_true",
-                   help="record this run's failures as expected (passes clear their entries)")
+                   help="drop the entries of rows that pass now and list the rows that ran; refused while a "
+                        "regression stands")
     a = p.parse_args()
 
     for f in (BUILD.dir / "android-translation-layer", BUILD.dir / "test_runner.jar"):
@@ -409,7 +416,8 @@ def main() -> int:
     if errors:
         sys.exit("fixture build failed:\n" + "\n".join(errors))
 
-    runs = OUT / "runs" / f"{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}"
+    stop_on_signals()
+    runs = new_run_dir(OUT / "runs")
     results: dict[str, str] = {}
     checks = [(n, c) for n, c in CHECKS.items() if match(f"cli:{n}")]
     for row, status, problem in sorted(parallel(lambda nc: run_check(*nc, runs), checks, BUILD.jobs, "cli")):
@@ -421,26 +429,18 @@ def main() -> int:
         results[row] = status
         if problem:
             print(f"{row}: {problem} (log: {runs / ('scenario-' + row[9:])})")
-    if not a.filter or not re.match(r"^\^?(cli|scenario):", a.filter):
+    # cli:reparse is read off the JUnit run's registry
+    if not a.filter or not re.match(r"^\^?(cli|scenario):", a.filter) or match("cli:reparse"):
         tests, problems = run_junit(runs)
         results.update(tests)
         for problem in problems:
             print(f"junit: {problem} (log: {runs / 'junit'})")
 
-    expectations = expect.load(EXPECTATIONS)
-    if a.update_expectations:
-        EXPECTATIONS.parent.mkdir(parents=True, exist_ok=True)
-        expect.save(EXPECTATIONS, expect.update(results, expectations, "new failure"))
-        print(f"updated {EXPECTATIONS}")
-        return 0
-    c = expect.compare(results, expectations)
     passed = sum(s == "pass" for s in results.values())
+    c, rc = expect.settle(results, EXPECTATIONS, whole=not a.filter, record=a.update_expectations,
+                          new_reason="new failure", listed=lambda name: not name.startswith("suite:"))
     print(f"package: {passed}/{len(results)} rows pass, {len(c.expected_failures)} expected failures → {runs}")
-    for name in c.fixed:
-        print(f"fixed: {name} (run with --update-expectations)")
-    for name in c.regressions:
-        print(f"REGRESSION: {name} {results[name]}")
-    return 1 if c.regressions else 0
+    return rc
 
 
 if __name__ == "__main__":

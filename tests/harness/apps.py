@@ -9,7 +9,6 @@ expectations/. Results are one per app: pass, fail or timeout.
 import argparse
 import os
 import re
-import signal
 import subprocess
 import sys
 import time
@@ -18,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import expect
-from common import ROOT, parallel
+from common import ROOT, end, new_run_dir, parallel, spawn, stop_on_signals
 
 SUITE = ROOT / "tests/android-compat/apps"
 APKS = ROOT / "third_party/apks"
@@ -83,11 +82,10 @@ def run_app(name: str, app: dict, work: Path, build: Build, by_package: bool = F
     cmd = ["./android-translation-layer", *target, "-l", app["activity"], "-X", "-Xint"]
     wanted = markers(app, build)
     with open(log, "wb") as out:
-        proc = subprocess.Popen(cmd, cwd=build.dir, env=env, stdin=subprocess.DEVNULL, stdout=out,
-                                stderr=subprocess.STDOUT, start_new_session=True)
+        proc = spawn(cmd, cwd=build.dir, env=env, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT)
     try:
         deadline, settled = time.monotonic() + TIMEOUT, None
-        while time.monotonic() < deadline:
+        while time.monotonic() < deadline or settled:   # markers that came at the deadline still settle
             running = proc.poll() is None
             result = verdict(log.read_bytes(), wanted, running)
             if result == "pass":
@@ -99,22 +97,19 @@ def run_app(name: str, app: dict, work: Path, build: Build, by_package: bool = F
             time.sleep(0.2)
         return name, "timeout", f"no {', '.join(repr(m.decode()) for m in wanted if m not in log.read_bytes())} in {TIMEOUT} s (log: {log})"
     finally:
-        try: # the whole group, even when its leader is gone: ATL's children may still run
-            os.killpg(proc.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        proc.wait()
+        end(proc)
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    p = argparse.ArgumentParser(description=__doc__.splitlines()[0], allow_abbrev=False)
     p.add_argument("-f", "--filter", help="regex on app names")
     p.add_argument("--gtk", action="store_true", help="run on the gtk build (needs a display; tools/dine test "
                                                         "apps --gtk gives it a hidden one)")
     p.add_argument("--by-package", action="store_true",
                    help="install each APK into the run's prefix, then run it with --package")
     p.add_argument("--update-expectations", action="store_true",
-                   help="record this run's failures as expected (passes clear their entries)")
+                   help="drop the entries of apps that pass now and list the apps that ran; refused while a "
+                        "regression stands")
     a = p.parse_args()
 
     build = GTK if a.gtk else HEADLESS
@@ -130,7 +125,8 @@ def main() -> int:
     for app in apps.values():
         if not (APKS / app["apk"]).exists():
             sys.exit(f"missing {APKS / app['apk']}: docs/first-run.md lists the APKs")
-    runs = OUT / "runs" / f"{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}"
+    stop_on_signals()
+    runs = new_run_dir(OUT / "runs")
     done = parallel(lambda n: run_app(n, apps[n], runs / n, build, a.by_package), sorted(apps), build.jobs, "apps")
 
     results = {}
@@ -138,19 +134,11 @@ def main() -> int:
         results[name] = status
         if problem:
             print(f"{name}: {problem}")
-    expectations = expect.load(build.expectations)
-    if a.update_expectations:
-        expect.save(build.expectations, expect.update(results, expectations, "new failure"))
-        print(f"updated {build.expectations}")
-        return 0
-    c = expect.compare(results, expectations)
     passed = sum(s == "pass" for s in results.values())
+    c, rc = expect.settle(results, build.expectations, whole=not a.filter, record=a.update_expectations,
+                          new_reason="new failure")
     print(f"apps ({build.name}): {passed}/{len(results)} pass, {len(c.expected_failures)} expected failures → {runs}")
-    for name in c.fixed:
-        print(f"fixed: {name} (run with --update-expectations)")
-    for name in c.regressions:
-        print(f"REGRESSION: {name} {results[name]}")
-    return 1 if c.regressions else 0
+    return rc
 
 
 if __name__ == "__main__":

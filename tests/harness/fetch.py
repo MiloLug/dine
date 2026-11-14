@@ -61,6 +61,8 @@ def fetch(corpus: dict) -> None:
         _clone(up["repo"], up["tag"])
         if _head() != up["commit"]:
             raise SystemExit(f"{UPSTREAM}: HEAD {_head()} != pinned {up['commit']}")
+    elif _git("status", "--porcelain", cwd=UPSTREAM):
+        raise SystemExit(f"{UPSTREAM} differs from the pinned tests: delete it to fetch them again")
     _link(TOP / "art/test", UPSTREAM / "test")
     _link(TOP / "art/tools/javac-helper.sh", SHIMS / "javac-helper.sh")
     _link(TOP / "art/tools/bootjars.sh", SHIMS / "bootjars.sh")

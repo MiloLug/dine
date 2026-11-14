@@ -79,8 +79,10 @@ SendMessage. Spawn neither from plan mode: it blocks every launch, attach and ta
 Test suites live in the repo that owns the code (`tests/README.md` has the map); the engine is
 `tests/harness/`. The runtime suite (`dine-art/tests/runtime/`, AOSP ART run-tests) and the
 framework suite (`dine-atl/tests/framework/`, JUnit 3 APKs for `android.*`) are graded against
-their `expectations/` (exit 1 = regression). After a fix makes tests pass, rerun with
-`--update-expectations`; the file changes inside the fork that owns the suite. No linters yet.
+their `expectations/` (exit 1 = a regression, a listed test that didn't run, or a stale entry).
+After a fix makes tests pass, or after adding tests, rerun with `--update-expectations`; it writes
+nothing while a regression stands, and the files change inside the fork that owns the suite
+(`tests/harness/README.md` "Baselines"). No linters yet.
 
 **Never commit a third-party APK** (an app we didn't write) to any repo: they live in gitignored
 `third_party/apks/` under the names in `docs/first-run.md` §8, and a new one gets a row there.

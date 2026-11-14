@@ -9,6 +9,7 @@ from pathlib import Path
 PACKAGE = Path(__file__).resolve().parents[1]
 # Never imported by the server.
 CLIENT_ONLY = {"__main__.py", "cli.py", "linux.py", "dbg/client.py", "dbg/smoke.py"}
+STALE = "warning: the server runs older dbg code"   # starts a reply of a server the edits passed by
 
 # Fixed, not $TMPDIR: a sandboxed shell may set its own TMPDIR and then miss the running server.
 BASE = Path(os.environ.get("DINE_DBG_DIR", "/tmp/dine-dbg"))
