@@ -26,10 +26,12 @@ extern int gOutput;
 
 void RedirectOutput();
 
-// Doesn't return when creation fails: ART may have attached the thread before failing, and a
-// thread that exits attached aborts the process.
+// nullptr when creation fails, after logging: the caller reports it and then parks its thread.
 JNIEnv *CreateVm(const std::string &resource_dir, const std::string &data_dir, const char *log_tags,
                  const JavaVMOption *extra, int n_extra);
+// For the thread of a failed CreateVm: ART may have attached it before failing, and a thread that
+// exits attached aborts the process.
+[[noreturn]] void ParkFailedVmThread();
 
 // a detached thread with an 8 MiB stack; false after logging the error
 bool StartVmThread(void *(*body)(void *), void *arg);

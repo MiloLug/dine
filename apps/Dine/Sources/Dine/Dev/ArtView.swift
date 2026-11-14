@@ -17,7 +17,9 @@ struct ArtView: View {
                 Button("run jni args") { run("dine-0002-jni-args") }
                 Button("run https") { run("dine-0003-https") }
                 Button("run park") { run("dine-0004-park") }
+                Button("run cleanup") { run("dine-0006-cleanup-domains") }
                 Button("run cpu time") { run("dine-0008-thread-cpu-time") }
+                Button("run netif") { run("dine-0010-netif") }
             }
             Section("Multi-app probes") {
                 ForEach(["shutdown-read", "zones", "madvise", "default-zone", "limits", "mach-threads",

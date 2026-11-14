@@ -56,8 +56,8 @@ All C.
 ## Dine on iOS
 
 - `dine_atl_run` copies its arguments, starts a detached 8 MiB pthread, and refuses a second call
-  (`native/artbridge/artbridge.cpp:221-244`); `gAtlStarted` is never reset; `CreateVm` pauses
-  forever when VM creation fails (`:135`). C
+  (`native/artbridge/artbridge.cpp:221-244`); `gAtlStarted` is never reset; when VM creation
+  fails, `CreateVm`'s thread reports `exited` and parks for good (`ParkFailedVmThread`). C
 - The thread sets `ANDROID_APP_DATA_DIR=<data_dir>/atl`, gets ATL's VM options for one APK
   (`embedded.c:34`), creates the VM, then runs `atl_embedded_main`: `atl_vm_init`,
   `atl_app_create(ui_window_new(surface))`, the main activity, and `CFRunLoopRun` on that thread

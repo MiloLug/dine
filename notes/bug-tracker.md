@@ -195,6 +195,21 @@ monotonic one.**
 - Fix: `clock_gettime(CLOCK_MONOTONIC)` on every platform. Darwin's `CLOCK_MONOTONIC` counts device
   sleep and Linux's doesn't (unchecked whether any caller cares).
 
+### ART-30
+
+**With two apps in one VM, a task in ForkJoinPool's common pool runs on a worker of whichever app
+grew the pool.** The worker keeps that app's thread group and embedder tag, so inside the task
+`Looper.getMainLooper()` and `ActivityThread.currentApplication()` answer for the other app
+(`atl_app_current`), and boot-class objects the task makes go to its cleanup domain.
+`CompletableFuture`'s async calls and parallel streams use the pool.
+- State: open, from a code read (overhaul A2, 2026-11-14): `ForkJoinPool.common` is one static of
+  a boot class; a worker is constructed with no group, so it takes the group of the thread that
+  grows the pool (`ForkJoinWorkerThread`); a worker idles 2 s.
+  `notes/multi-app-support/design.md` records the sharing as decided, not this consequence.
+- Where: `dine-art/libcore/ojluni/src/main/java/java/util/concurrent/ForkJoinPool.java`.
+- Fix: the common pool per app, as AsyncTask's executors are (the calling thread's group picks it).
+- Owner: multi-app MA3.
+
 ## ATL
 
 ### ATL-1

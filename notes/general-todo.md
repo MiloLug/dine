@@ -61,6 +61,20 @@ may refuse to execute pages that aren't signed (unchecked for Dine); a verify-on
 no machine code) would avoid both (unchecked). `OatFileAssistant::GetBestOatFile` returns no oat
 file either ([ART-23](bug-tracker.md#art-23)).
 
+### ART-31
+
+**Runtime behaviour no test would see break** (overhaul A2, 2026-11-14):
+- jars with a stored, aligned `classes.dex` are mapped, not inflated (`definitions.mk`,
+  `d8-jar.sh`): nothing reads the mapping back;
+- `OatFileAssistant::GetBestOatFile` answering nothing when an old dalvik cache holds an oat file;
+- `ProcessCpuNanoTime` and `Thread::GetCpuMicroTime`'s Apple branch (GC statistics and CheckJNI
+  read them); `dine-0008` grades `ThreadCpuNanoTime` only;
+- the hidden-API warning gate, the sentinel fault page left out on Apple arm64 and the invoke
+  stub's 32-bit frame size: arm64 or log-only, with no output a test compares;
+- `dine_atl_run`'s refusals (while the first run starts; after the art screen made the VM) and the
+  `exited` it sends when `JNI_CreateJavaVM` fails: no smoke step reaches them;
+- `tests/probes/multi-app/` (`run.sh`: storm, juclock): no `tools/dine` command runs it.
+
 ## ATL
 
 ### ATL-6
@@ -468,6 +482,15 @@ the agent now sets it for its own process at start.
 (the pads' round return button), which sits in the keyboard's window: `ls` doesn't list it and a
 screenshot may not show it (`notes/dev-reference.md` "Debug agent").
 - Where: `native/dev/dbgagent`.
+
+### TOOL-14
+
+**The runtime suite on the phone is seven authored tests behind buttons.** The phone runner of
+`notes/atl-port.md` "Test strategy" (a test mode in Dine, tests pushed and pulled, batches in one
+VM) has no stage. Until it exists the AOSP run-tests never run on arm64, and of the authored ones
+`dine-0005-embedder-tag`, `dine-0007-native-libs` (their JNI code isn't linked into
+`native/dev/runtimetests`) and `dine-0009-no-dex2oat` (a `run` script) stay Linux-only: the Apple
+rule that a library outside the embedder's symbol lists doesn't load has no test.
 
 ## Done
 

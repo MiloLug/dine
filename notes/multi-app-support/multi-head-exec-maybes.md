@@ -32,7 +32,7 @@ second VM from bundled ART copies is rejected ("too complicated").
   - a failure is an ART FATAL, which kills Dine.
 
   artbridge needs changes too: `gAtlStarted` never resets, `dine_atl_run` refuses once any VM
-  state is set, and `CreateVm` pauses forever when creation fails.
+  state is set, and the thread of a failed `CreateVm` parks for good.
 - **Two VMs at once.** This needs a second copy of ART's code and statics, for example ART built
   as a renamed dynamic library instead of the static `libart.a`. The copy also needs its own
   libjavacore, libopenjdk and ATL native code, which hold per-VM statics. Untested. Both copies

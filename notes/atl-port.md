@@ -1694,7 +1694,7 @@ stop is that gap.
 
 | Suite | Home | Builds | Oracle | From |
 |---|---|---|---|---|
-| runtime | `dine-art/tests/runtime` | Linux; the phone (by hand, from Dine's art screen) | expected output and per-platform expectations | now: `dine-0002-jni-args` runs on both |
+| runtime | `dine-art/tests/runtime` | Linux; on the phone seven authored tests from Dine's art screen (`dbg smoke art`) | expected output and per-platform expectations | now |
 | framework | `dine-atl/tests/framework` | headless, gtk; iOS waits for the phone runner below | JUnit through `--instrument` and `test_runner.jar`; later CTS subsets at Android 10 (graphics, text, content, view) | M2 |
 | package | `dine-atl/tests/package` | headless | expected parse results | MA1 |
 | apps | `tests/android-compat/apps` | headless, gtk; on the phone only Gravity Defied (`dbg smoke atl-gd`) | reaches `onResume`, no crash, log markers | M5d |
@@ -1710,7 +1710,7 @@ stop is that gap.
   `javac` and `d8`, in the harness. M2's dialog APK is its first user.
 - **Ground truth:** an Android 10 x86_64 emulator on `/dev/kvm` (present in WSL; the emulator is
   not installed) for screenshots and view bounds of the same APKs.
-- **Phone runner,** shaped by one VM per process, an ART FATAL killing Dine, and no fork:
+- **Phone runner** ([TOOL-14](general-todo.md#tool-14)), shaped by one VM per process, an ART FATAL killing Dine, and no fork:
   - a test mode in Dine, selected with `dvt launch --env`; the free account's 3-app limit rules
     out a separate test app;
   - tests pushed with `pymobiledevice3 apps push`, run in batches in one VM, results written to a

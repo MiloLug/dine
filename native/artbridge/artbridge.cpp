@@ -101,6 +101,10 @@ constexpr size_t kVmThreadStack = 8 << 20;
 
 }  // namespace
 
+void ParkFailedVmThread() {
+  for (;;) pause();
+}
+
 JNIEnv *CreateVm(const std::string &resource_dir, const std::string &data_dir, const char *log_tags,
                  const JavaVMOption *extra, int n_extra) {
   setenv("ANDROID_ROOT", resource_dir.c_str(), 1);
@@ -132,12 +136,12 @@ JNIEnv *CreateVm(const std::string &resource_dir, const std::string &data_dir, c
   JNIEnv *env = nullptr;
   if (JNI_CreateJavaVM(&vm, &env, &init) != JNI_OK) {
     {
-      // ART keeps the failed runtime: no second try in this process
+      // final for the process: whether ART takes a second creation after a failed one is untried
       std::lock_guard<std::mutex> lock(gLock);
       gVmState = VmState::kFailed;
     }
     os_log_error(Log(), "art JNI_CreateJavaVM failed");
-    for (;;) pause();
+    return nullptr;
   }
   std::lock_guard<std::mutex> lock(gLock);
   gVm = vm;
@@ -214,6 +218,11 @@ void *AtlThread(void *arg) {
   // *:i: ATL logs its lifecycle (onResume) at info
   JNIEnv *env = CreateVm(run->resource_dir, run->cache_dir, "*:i", options, n_options);
   atl_embedded_vm_options_free(options, n_options);
+  if (!env) {
+    DevAtlExited();
+    if (run->listener.exited) run->listener.exited(run->listener.context, run->app, -1);
+    ParkFailedVmThread();
+  }
   DevAtlVmCreated();
 
   int rc = -1;

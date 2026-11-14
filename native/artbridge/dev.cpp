@@ -121,8 +121,8 @@ struct Run {
 
 bool gRunning = false;
 
-// One loader per jar for the VM's lifetime: ART won't open a native library again from a second
-// loader, so a rerun must reuse the loader that loaded it.
+// One loader per jar for the VM's lifetime, so a rerun sees the first run's classes and their
+// statics. A second loader for a jar whose JNI library is linked into Dine is untried.
 std::map<std::string, jobject> gLoaders;
 
 jobject LoaderFor(JNIEnv *env, const std::string &class_path) {
@@ -138,7 +138,8 @@ jobject LoaderFor(JNIEnv *env, const std::string &class_path) {
   return gLoaders[class_path] = env->NewGlobalRef(loader);
 }
 
-void RunMain(JNIEnv *env, const std::string &class_path, const std::string &main_class) {
+// true when main threw
+bool RunMain(JNIEnv *env, const std::string &class_path, const std::string &main_class) {
   jobject loader = LoaderFor(env, class_path);
   jclass cls = nullptr;
   if (loader) {
@@ -151,12 +152,9 @@ void RunMain(JNIEnv *env, const std::string &class_path, const std::string &main
     jobjectArray argv = env->NewObjectArray(0, env->FindClass("java/lang/String"), nullptr);
     env->CallStaticVoidMethod(cls, main, argv);
   }
-  if (env->ExceptionCheck()) {
-    env->ExceptionDescribe();
-    os_log_error(Log(), "art main threw");
-  } else {
-    os_log(Log(), "art main returned");
-  }
+  if (!env->ExceptionCheck()) return false;
+  env->ExceptionDescribe();
+  return true;
 }
 
 void *VmThread(void *arg) {
@@ -164,15 +162,25 @@ void *VmThread(void *arg) {
   JNIEnv *env = nullptr;
   if (run->create_vm) {
     env = CreateVm(run->resource_dir, run->data_dir, "*:w", nullptr, 0);
+    if (!env) ParkFailedVmThread();
   } else {
     gVm->AttachCurrentThread(&env, nullptr);
   }
+  bool threw = false;
   if (env) {
-    RunMain(env, run->class_path, run->main_class);
+    threw = RunMain(env, run->class_path, run->main_class);
     gVm->DetachCurrentThread();
   }
-  std::lock_guard<std::mutex> lock(gLock);
-  gRunning = false;
+  {
+    std::lock_guard<std::mutex> lock(gLock);
+    gRunning = false;
+  }
+  // logged once the next run may start: the smoke taps its next button on this line
+  if (threw) {
+    os_log_error(Log(), "art main threw");
+  } else if (env) {
+    os_log(Log(), "art main returned");
+  }
   return nullptr;
 }
 

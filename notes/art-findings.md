@@ -63,13 +63,13 @@ Consequences:
   dir (2,496 files, 106 MB by 2026-10-16), and runs shared the boot image there, so they weren't
   hermetic.
 
-Both are fixed in the harness (2026-10-16): the suite now runs with the flags below, and each test
-gets its own `XDG_CACHE_HOME`. `~/.cache/art` was deleted. dine-art now loads no boot image or
-oat files and never runs dex2oat ("Runs on the phone").
+Neither holds any more: each test gets its own `XDG_CACHE_HOME`, and dine-art loads no boot image
+or oat files and never runs dex2oat ("Runs on the phone"), so the suite passes no image or
+compiler flag (`dine-art/tests/runtime/corpus.toml`).
 
 **Experiment: the same thing with no boot image and no dex2oat.** Flags `-Xnoimage-dex2oat
--Xcompiler:/nonexistent/dex2oat`, with an empty `XDG_CACHE_HOME` (the suite now also passes
-upstream's `-Ximage:/system/non-existent/core.art`). The runtime logs `Attempting to
+-Xcompiler:/nonexistent/dex2oat`, with an empty `XDG_CACHE_HOME`, on a runtime that still had
+both. The runtime logs `Attempting to
 fall back to imageless running`, the dex2oat exec fails, and it runs the dex files directly,
 verifying at runtime. Results:
 
