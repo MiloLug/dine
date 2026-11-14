@@ -440,7 +440,8 @@ the Linux golden: `1170x2391` roots, TextViews `315x51` and `375x51` at y 0 and 
   `dispatch_async` at the end of each layout pass, or from a deduplicated post when no pass is
   pending; text measurement `dispatch_sync`s to a scratch `ATLLabel` and ceils to px.
 - `records/` serves headless and uikit through the hooks in `records.h` (`native` per record);
-  headless keeps the fixed metrics in `headless/views.c`, so its goldens are unchanged.
+  headless kept the fixed metrics in `headless/views.c` (since M5c they are record's,
+  `gfx/record/text.c`), so its goldens are unchanged.
 - One window source: hosts pass `struct atl_window_config` (px size, density, night) to
   `atl_vm_init` (a `ui_window` per task with several apps: multi-app MA6); `Display.density_dpi` feeds `DisplayMetrics.DENSITY_DEVICE` and
   `AssetManager_init`; `atl_display_apply` writes dp. The cli host takes `-d DPI`;
@@ -773,8 +774,8 @@ graphics suite's Matrix and Paint tests pass on headless and on gtk (`tools/dine
   snapshot paths pass it as before). `gfx_canvas_*`: a recording's new and free, save, restore,
   translate, rotate, scale, concat, rect, round rect (circle and oval), line, drawable.
   `drawLines` takes four floats per line from `offset`, on every build.
-  Bitmaps, paths, text, clips and RenderNode stay gtk-only: on records an `onDraw` that calls one
-  gets `UnsatisfiedLinkError`, printed and cleared by the upcall.
+  At M5a bitmaps, paths, text, clips and RenderNode stayed gtk-only (an `onDraw` calling one got
+  `UnsatisfiedLinkError` on records); M5b to M5d moved all but RenderNode behind `gfx_canvas_*`.
 - `View.draw`'s and `ViewGroup.drawChild`'s toolkit parts go through `ui_view_draw_*`: gtk
   snapshots its widgets, records draw nothing (a background, text or child is its own node).
   `Drawable.draw` goes through `gfx_canvas_draw_drawable`; record keeps a `drawable` op for a
@@ -842,7 +843,8 @@ pass. As built:
   `ATLDrawLayer` (`drawsAsynchronously`, under the subviews by `zPosition`, no implicit actions, at
   the bounds' origin so it scrolls with the content, `contentsScale` the window density's); an
   ATLLabel replays in `drawRect:` under its text. The Android thread only records. Lists are
-  refcounted, any thread drops them, and they hold only plain ops and bitmap refs: Java draws
+  refcounted, any thread drops them, and they hold plain ops with refs to bitmaps, paths and
+  shaders: Java draws
   backgrounds, an ImageView's drawable and a container's selected child into them. Rasterizing on
   the Android thread into a CGBitmapContext was the alternative: simpler lifetimes, but the
   Android thread would pay the raster and a full-size image copy per frame.
@@ -871,8 +873,7 @@ pass. As built:
   smoke `atl-draw`; the graphics suite's `res/` and tests.
 - RenderNode is [M9](#m9-heavy)'s.
 - Open: a clip under a perspective matrix on coregraphics; Choreographer stays timer-based (10 ms
-  frames); views redraw whole, without dirty rects; `Canvas(Bitmap)` and Bitmap's pixel natives
-  stay gtk-only; a background's offset while UIKit drives a scroll waits for Java's scroll report and
+  frames); views redraw whole, without dirty rects; a background's offset while UIKit drives a scroll waits for Java's scroll report and
   redraw; the display link on the Android thread's own run loop (saves a hop, unverified on iOS
   27); a press on a selector row on the phone and gtk is unchecked by hand.
 

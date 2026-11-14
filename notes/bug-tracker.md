@@ -1024,6 +1024,31 @@ the tap asks.
   unknown.
 - Workaround: rerun the check.
 
+### ATL-123
+
+**On gsk a translucent FILL_AND_STROKE paint with a shader, or in a blend mode other than SRC_OVER,
+blends twice under the stroke.** Fill and stroke are two passes (`draw_path_part`,
+`draw_round_rect`); Skia covers the union once. A plain color in SRC_OVER fades as one group
+(`paint_draw`), and record and coregraphics draw the stroke over the fill in a group.
+- State: open; found 2026-11-14 (overhaul A1), from the code: no test draws such a paint.
+- Where: `dine-atl/src/backends/gfx/gsk/canvas.c`.
+
+### ATL-124
+
+**REPEAT and MIRROR gradients stop repeating after 256 periods on gsk and coregraphics.**
+`shader_stops` cuts the periods a shape covers at `MAX_PERIODS`; past them the last stop's color
+fills the rest (a 6 px period over 2400 px: rows from 1536 on).
+- State: open; found 2026-11-14 (overhaul A1). record repeats through cairo and has no limit.
+- Where: `dine-atl/src/shared/shader.c` `shader_stops`.
+- Fix: GSK's repeating gradient nodes; on coregraphics successive bands of 256 periods, each clipped.
+
+### ATL-125
+
+**`Path.isConvex` always answers false.**
+- State: open; found 2026-11-14 (overhaul stage claims, M5d). Nothing in api-impl calls it.
+- Where: `dine-atl/src/api-impl/android/graphics/Path.java`.
+- Fix: one closed contour whose flattened edges turn one way (`path_flatten`).
+
 ## DINE
 
 ### DINE-1

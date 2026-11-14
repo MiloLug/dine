@@ -7,6 +7,12 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - Our delta: `git diff upstream/master...dine`. Local `master` lags upstream.
 - Upstream isn't merged: read its commits since the last merge and reimplement the wanted ones
   by hand.
+- Shared graphics follow Skia where the toolkits differ: gradient stops go through `shader_ramp`
+  (a pair of stops with different alpha is cut into pieces, so the blend follows Android's
+  premultiplied one), strokes get miter limit 4, fill-and-stroke covers the union once
+  (`draw_shape`, `draw_path`, gsk's `paint_draw` for a plain color; ATL-123), `Path.arcTo` takes its sweep mod 360,
+  a round rect's radii follow SkRRect on every backend (`path_fit_round_rect_radii`), a new Paint's
+  stroke width is 0.
 - JNI headers: each Java target's `javac -h` writes into its own `<target>.p.h`, and ant copies
   into `src/api-impl-jni/generated_headers` only the headers whose text changed (the `build.xml` of
   `src/api-impl`, `ghax`, `gstub`, `test-runner`). Upstream writes them straight into the source
@@ -164,7 +170,7 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   `performClick`, RadioGroup's widget listener). Their legacy gtk natives are gone: port upstream
   widget fixes into the Java or `src/backends/ui/gtk/widgets.c`.
 - `src/backends/ui/records/` serves headless and uikit through the hooks in `records.h`;
-  headless metrics are in `headless/views.c`, UIKit views in `uikit/view.m`.
+  headless metrics are in `gfx/record/text.c`, UIKit views in `uikit/view.m`.
 - `ViewGroup.native_removeView` and `View.native_destructor` are in `src/shared/` behind
   `ui_view_remove_child` and `ui_view_free`; gtk's bodies are in `src/backends/ui/gtk/view.c`, and
   its remove skips a child held by another parent. The destructor posts the free to the main loop,

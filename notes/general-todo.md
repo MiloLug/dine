@@ -319,6 +319,22 @@ draw large FILL_AND_STROKE text into a bitmap and compare where the stroke's mid
 glyphs' edges fall.
 - Where: `dine-atl/src/backends/gfx/gsk/canvas.c` `draw_text`.
 
+### ATL-126
+
+**`Region.setPath` walks every pixel row of its area and every edge on each row.** With no clip the
+area is the path's bounds (`Path.op` passes none), so a tall path costs rows times edges
+(`region_set_path`, `rasterize` in `dine-atl/src/shared/region.c`). An edge table sorted by its top
+row would visit only the edges a row crosses.
+
+### ATL-127
+
+**Graphics behaviour no test would see break** (overhaul A1, 2026-11-14):
+- a nine-patch with an empty patch, a transparent patch or an axis without a stretch section
+  (`ninepatch_slices`; the golden's one nine-patch reaches none);
+- `RGBA_F16` conversions (`bitmap_pack`, `bitmap_unpack`);
+- the frees of paints, paths, shaders and a display list's refs: only drawables, dialogs and views
+  print a line a script greps.
+
 ## DINE
 
 ### DINE-6
