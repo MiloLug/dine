@@ -843,10 +843,12 @@ button.**
   (M5a).
 - The activity's decor attaches before `onStart` and detaches before `onDestroy`: gtk's points, not
   Android's; gtk has no `notify::root` path (M3).
-- A missing native's stack trace prints on every redraw of the view that calls it (M5b).
-- State: open; from the Open lines and Status text of M3, M4a, M5a and M5b in
-  `notes/atl-port.md`, not checked in code.
-- Where: `dine-atl/src/backends/ui/gtk/`, `src/backends/gfx/gsk/`.
+- Not gtk's, the records backends' (headless, iOS): a missing native's stack trace prints on every
+  redraw of the view that calls it (M5a; the draw upcall in `src/shared/upcall.c` prints and
+  clears).
+- State: open; from the Open lines and Status text of M3, M4a and M5a in `notes/atl-port.md`, not
+  checked in code.
+- Where: `dine-atl/src/backends/ui/gtk/`, `src/backends/gfx/gsk/`, `src/shared/upcall.c`.
 
 ### ATL-98
 
@@ -1027,7 +1029,7 @@ the tap asks.
 ### ATL-123
 
 **On gsk a translucent FILL_AND_STROKE paint with a shader, or in a blend mode other than SRC_OVER,
-blends twice under the stroke.** Fill and stroke are two passes (`draw_path_part`,
+blends twice under the stroke.** Fill and stroke are two passes (`draw_path`,
 `draw_round_rect`); Skia covers the union once. A plain color in SRC_OVER fades as one group
 (`paint_draw`), and record and coregraphics draw the stroke over the fill in a group.
 - State: open; found 2026-11-14 (overhaul A1), from the code: no test draws such a paint.
@@ -1048,6 +1050,31 @@ fills the rest (a 6 px period over 2400 px: rows from 1536 on).
 - State: open; found 2026-11-14 (overhaul stage claims, M5d). Nothing in api-impl calls it.
 - Where: `dine-atl/src/api-impl/android/graphics/Path.java`.
 - Fix: one closed contour whose flattened edges turn one way (`path_flatten`).
+
+### ATL-128
+
+**gtk: a layout that a message asked for can run after the queue counts as idle.** An `IdleHandler`,
+and `Instrumentation.waitForIdleSync`, can see a view just added with no size yet. The records
+backends run that layout as a loop post, which the Looper yields to between messages; GTK lays out
+from its frame clock, whose timer is no waiting source for `g_main_context_pending`.
+- State: open; found 2026-11-14 (overhaul A3). `LooperTest#testIdleHandlersRunAfterThePendingLayout`
+  is expected to fail on gtk.
+- Where: `dine-atl/src/backends/loop/glib/loop.c` (`loop_main_yield`).
+- Fix: let the ui backend say that its window has a layout or frame queued.
+
+### ATL-130
+
+**Activity starts and results, the rest** (from the overhaul's A3 review, 2026-11-15; upstream's
+code, not checked by a run):
+- `startActivityForResult` calls `onActivityResult(RESULT_CANCELED)` inside the caller's own call
+  when the class can't be created or no activity takes the intent;
+- `startActivityForResult` ignores `FLAG_ACTIVITY_CLEAR_TOP`, which `Context.startActivity` honours;
+- `recreate()` focuses the activity underneath (restart, start, resume) and unfocuses it again
+  before the new instance starts;
+- native code reads `finishing`, `window` and `lifecycle` by name through the object's class, so a
+  field of the same name and type in an app's subclass is read instead.
+- State: open.
+- Where: `dine-atl/src/api-impl/android/app/Activity.java`, `src/shared/activity.c`.
 
 ## DINE
 

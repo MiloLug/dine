@@ -122,6 +122,23 @@ def _spin_paced(since: int) -> str | None:
     return None
 
 
+_LOOPER_WAIT = re.compile(r"looper (timed|untimed) wait (\d+) ms cpu (\d+) ms")
+
+
+# The looper APK's two 50 ms waits, as run-looper.sh grades them: one that returns at once spins.
+def _looper_waits(since: int) -> str | None:
+    resp = client.call("log", {"op": "grep", "pattern": "looper .* wait", "since": since, "src": ["syslog"],
+                               "text": True, "n": 5})
+    waits = {m[1]: (int(m[2]), int(m[3])) for m in _LOOPER_WAIT.finditer(resp["text"])}
+    for kind in ("timed", "untimed"):
+        if kind not in waits:
+            return f"no \"looper {kind} wait\" line"
+        ms, cpu = waits[kind]
+        if ms < 50 or cpu >= 10:
+            return f"the {kind} wait spun or was cut short: {ms} ms, cpu {cpu} ms"
+    return None
+
+
 # The app's own log line that says it started; checked after every relaunch.
 STARTUP = {"Dine": r"loaded \d+ apps"}
 ART_FAIL = ("art main threw", "a run is still active")
@@ -129,7 +146,7 @@ ATL_FAIL = ("atl is still starting", "atl needs a process without a VM", "atl: c
             "or a library dir missing", r"atl (app )?main returned (?!0\b)")
 # never part of a passing scenario, whatever its steps wait for
 FATAL = ("UnsatisfiedLinkError", "JNI DETECTED ERROR", "Runtime aborting", "FATAL EXCEPTION",
-         "hacky_uncaught_exception_handler")
+         "hacky_uncaught_exception_handler", "atl: app exception cleared")
 NAV_LIST_FAIL = (r"nav: list \d", "nav: list canceled")  # an answer nobody gave
 
 SCENARIOS = {
@@ -150,10 +167,11 @@ SCENARIOS = {
         ], uses_vm=True, needs_clean=True, check=_demo_viewtree),
         Scenario("atl-looper", [
             Step("atl", tap="atl"),
-            Step("run looper", tap="looper", ok=("looper done", "atl main returned 0", "nav: container dismissed exit"),
+            Step("run looper", tap="looper", ok=("looper laid out", "looper done", "atl main returned 0",
+                                                "nav: container dismissed exit"),
                  fail=ATL_FAIL, timeout=120),
             Step("back", back=True),
-        ], uses_vm=True, needs_clean=True, alive=True),
+        ], uses_vm=True, needs_clean=True, alive=True, check=_looper_waits),
         Scenario("atl-views", [
             Step("atl", tap="atl"),
             # c was laid out before its free; a layout pass after it walks the records without it

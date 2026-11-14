@@ -1,5 +1,6 @@
 import unittest
 
+import framework
 from framework import parse
 
 BLOCK = """INSTRUMENTATION_STATUS: class=a.B
@@ -84,6 +85,11 @@ class OneVmTest(unittest.TestCase):
         self.assertEqual({"a.B#t1": "fail", "a.B#t2": "pass"}, run_b.tests)
         self.assertEqual([], run_a.problems)
         self.assertEqual([], run_b.problems)
+
+    def test_cleared_exceptions(self):
+        self.assertEqual([], framework.cleared_problems("java.lang.Error: x\n\tat a.b(c.java:1)\n"))
+        self.assertEqual(["2 app exceptions printed and cleared by an upcall (stack in stderr)"],
+                         framework.cleared_problems(f"{framework.CLEARED}\njava.lang.Error: x\n{framework.CLEARED}\n"))
 
     def test_missing_app(self):
         run = parse(block("t1", 1) + END, "b")

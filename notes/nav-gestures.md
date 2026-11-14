@@ -33,16 +33,17 @@ waits for the front, and backend results count only while it is drawn. The nav A
 amended there): the window stays full height with no padding; apps get the side strips and the
 home indicator as insets and decide. Linux `linux smoke nav` checks the insets on every show and
 the exclusion spans; `framework` has `WindowInsetsTest`; iOS `atl-nav` checks B's insets and its
-exclusion span. Left: M6b3 (status-bar insets for a window that covers the whole screen, insets
-and exclusion for Dialog and WindowManager roots), [ATL-3](bug-tracker.md#atl-3), and M4a's check
-on the phone that the recognizer ignores an excluded span (smoke checks the log line).
+exclusion span. M6b3b and M6b3c added the status-bar insets for a window that covers the whole
+screen and the insets and exclusion of Dialog and WindowManager roots. Left:
+[ATL-3](bug-tracker.md#atl-3), and M4a's check on the phone that the recognizer ignores an excluded
+span (smoke checks the log line).
 
 **Left to do:** stages in `notes/atl-port.md`: settings (M8c: the `navigation` UserDefaults
 store, the observable `NavigationSettings`, today a constant value with the defaults in
 `apps/Dine/Sources/Dine/EdgeGestures.swift`, agent `ui defaults`, smoke `atl-nav` steps 1, 5 and
 6), the running apps list and the run states on the launcher's tiles (M8a; several apps: multi-app
-MA8, `notes/multi-app-support/todo.md`),
-[Immersive mode](#immersive-mode) (M6b3; the Dine-wide setting: M8c). The by-hand default
+MA8, `notes/multi-app-support/todo.md`), and [Immersive mode](#immersive-mode)'s Dine-wide setting
+(M8c; the mode itself was built in M6b3c). The by-hand default
 bindings fire their actions; the other phone checks are [DINE-7](general-todo.md#dine-7) and M8c's
 settings steps. Open elsewhere: [DINE-1](bug-tracker.md#dine-1) (Dialogs and Home),
 [DINE-9](general-todo.md#dine-9) (the AtlView run states).
@@ -66,26 +67,6 @@ settings steps. Open elsewhere: [DINE-1](bug-tracker.md#dine-1) (Dialogs and Hom
   distance. A second 10 pt check along one axis failed most diagonal swipes. Scroll views wait for
   a pan from a strip to fail. Each swipe logs `nav: swipe <edge> <axis> commits|cancels: <pt>,
   <pt/s>`. By hand on the phone (2026-10-20): the default strip and commit values feel right.
-
-## Starting points
-
-| What | Where |
-|---|---|
-| Back today: calls `onBackPressed` only when `back_has_target`; not NULL-safe | `dine-atl/src/shared/activity.c:101`, `:146` |
-| its only caller, the gtk header button | `dine-atl/src/main-executable/back_button.c:11` |
-| activity stack, `activity_focus` / `activity_unfocus` (guards only `onPause`), `activity_start` | `dine-atl/src/shared/activity.c:16`, `:53`, `:70`, `:190` |
-| `Activity.onBackPressed` = `finish()`; `moveTaskToBack` package-private stub; `onRestart` never called | `dine-atl/src/api-impl/android/app/Activity.java:492`, `:623`, `:173` |
-| `View.layoutInternal`, reached from both ui backends through `atl_upcall_view_layout` | `View.java:1663`, `dine-atl/src/shared/upcall.c:71` |
-| `getFitsSystemWindows()` always true; `getRootWindowInsets`, `onApplyWindowInsets` stubs | `View.java:2029`, `:2424`, `:2629` |
-| `getLocationInWindow` ends in a gtk-only native | `View.java:1520`, `:2250` |
-| `WindowInsets` (getters zero, `Type` complete, Builder no-ops) | `dine-atl/src/api-impl/android/view/WindowInsets.java` |
-| `loop_main_post` signals with no check (crashes before prepare) | `dine-atl/src/backends/loop/cfrunloop/loop.c:60` |
-| embedded host API, installed header | `dine-atl/src/backends/host/embedded/atl_embedded.h`, `dine-atl/meson.build:270` |
-| ATL config, the start refusals, a later run's own app thread, `atl main returned` | `native/artbridge/artbridge.cpp:203`, `:265`, `:276`, `:229` |
-| Swift module for artbridge | `apps/Dine/Sources/CArtBridge/module.modulemap` |
-| launcher `NavigationStack` with destination links | `apps/Dine/Sources/Dine/LauncherView.swift:12`, `:31` |
-| debug agent: walk, escape, settle | `native/dbgagent/agent.mm:51`, `:92`, `:158` |
-| smoke tables | `tools/py/dine/dbg/smoke.py`, `tools/py/dine/linux.py` |
 
 ## Behaviour
 

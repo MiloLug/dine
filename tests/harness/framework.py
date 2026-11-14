@@ -29,6 +29,8 @@ STATUS_CODES = {0: "pass", -1: "fail", -2: "fail"}   # -1 error, -2 assertion fa
 MULTILINE = {"stream", "stack"}
 # Instrumentation's lines carry their app's package; unprefixed ones are ATL's own stdout
 PREFIXED = re.compile(r"\[([\w.]+)\] (.*)")
+# stderr: an upcall printed an app's exception and went on (clear_app_exception); no test may rely on it
+CLEARED = "atl: app exception cleared:"
 
 
 @dataclass(frozen=True)
@@ -117,6 +119,11 @@ def parse(stdout: str, package: str | None = None) -> Run:
     return run
 
 
+def cleared_problems(stderr: str) -> list[str]:
+    n = stderr.count(CLEARED)
+    return [f"{n} app exception{'s' if n > 1 else ''} printed and cleared by an upcall (stack in stderr)"] if n else []
+
+
 def run_suite(suite: Path, work: Path, build: Build) -> tuple[str, Run, str]:
     work.mkdir(parents=True)
     package = OUT / "apks" / f"{suite.name}.apk"
@@ -131,6 +138,7 @@ def run_suite(suite: Path, work: Path, build: Build) -> tuple[str, Run, str]:
     with open(work / "stdout", "w") as out, open(work / "stderr", "w") as err:
         rc = run(cmd, TIMEOUT, cwd=build.dir, env=env, stdout=out, stderr=err)
     result = parse((work / "stdout").read_text(errors="replace"))
+    result.problems += cleared_problems((work / "stderr").read_text(errors="replace"))
     if rc is None:
         return suite.name, result, "timeout"
     if rc != 0:
@@ -162,6 +170,7 @@ def run_one_vm(suites: list[Path], work: Path, build: Build) -> tuple[dict[str, 
     status = "timeout" if rc is None else None
     if rc:
         shared.problems.append(f"exit {rc}")
+    shared.problems += cleared_problems((work / "stderr").read_text(errors="replace"))
     stdout = (work / "stdout").read_text(errors="replace")
     runs = {}
     for suite in suites:

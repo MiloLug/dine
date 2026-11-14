@@ -56,7 +56,7 @@ symbols, ATL build, and a verification checklist.
 | `tools/dine ios lldb-offline [App] <bp> [-- lldb args]` | same lldb setup on a synthetic core, no phone |
 | `tools/dine dbg …` | the debug server: see [Debug server](#debug-server) |
 | `tools/dine linux build [stage…]` | bionic_translation → dine-art → libopensles → dine-atl → `out/linux/prefix`, then headless dine-atl in `out/linux/build/dine-atl-headless` |
-| `tools/dine linux smoke [check…] [--list]` | gtk ATL runs Gravity Defied to `onResume`, the dialog and views APKs and the widgets APK's Canvas view; headless ATL runs demo_app (also at 480 dpi) and the looper, dialog, nav, views and widgets APKs, the last one also through its controls, text and draw activities (after `linux build`) |
+| `tools/dine linux smoke [check…] [--list]` | gtk ATL runs Gravity Defied to `onResume`, the dialog and views APKs and the widgets APK's Canvas view; headless ATL runs demo_app (also at 480 dpi) and the looper, dialog, nav, crash, views, widgets and windows APKs; the loop slot's own test runs on both builds (after `linux build`; `--list` has every check) |
 | `tools/dine test runtime [fetch\|build\|run\|all] [-f REGEX] [--update-expectations]` | ART run-tests on the local `dalvikvm -Xint` (suite `dine-art/tests/runtime`, engine `tests/harness`); `tools/dine test runtime -- --help` lists every option |
 | `tools/dine test framework [-f REGEX] [--gtk \| --one-vm] [--update-expectations]` | `android.*` JUnit suites in-VM on the headless ATL build, the gtk one with `--gtk`, or side by side as apps of one headless VM with `--one-vm` (suite `dine-atl/tests/framework`, after `linux build`) |
 | `tools/dine test apps [-f REGEX] [--gtk] [--update-expectations]` | real APKs (`tests/android-compat/apps/apps.toml`: Gravity Defied, AdaptiveIconDemo) to their log markers on the headless ATL build, or the gtk one with `--gtk` (after `linux build`) |
@@ -252,7 +252,7 @@ apps/<App>/xtool/<App>.app/<App>` (local Mach-O + debug info) → `target.sdk-pa
 
 ```sh
 tools/dine linux build                  # all stages; or: bionic art opensles atl atl-headless
-tools/dine linux smoke                  # gd, gd-package, demo, demo-480, looper, dialog, dialog-gtk, nav, views, views-gtk, widgets, controls, text, draw, draw-gtk: one line each
+tools/dine linux smoke                  # 22 checks, one line each; --list names them
 source env.sh                           # PATH + LD_LIBRARY_PATH for out/linux/prefix
 DINE_PREFIX=$PWD/out/linux/appdata \
   android-translation-layer third_party/apks/org.happysanta.gd_29.apk \

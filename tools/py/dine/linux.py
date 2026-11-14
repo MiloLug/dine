@@ -123,6 +123,17 @@ def _looper() -> str | None:
             or _script("run-looper.sh", HEADLESS_TESTS / "run-looper.sh", HEADLESS_BUILD, LOOPER_APK))
 
 
+def _loop() -> str | None:
+    _need_headless()
+    _need_gtk()
+    for build in (HEADLESS_BUILD, GTK_BUILD):
+        problem = _script(f"meson test loop ({build.name})", "meson", "test", "-C", build, "--no-rebuild",
+                          "--print-errorlogs", "loop")
+        if problem:
+            return problem
+    return None
+
+
 def _dialog_apk(build: Path = HEADLESS_BUILD) -> str | None:
     return _script("apk.py", sys.executable, paths.ROOT / "tests/harness/apk.py", HEADLESS_TESTS / "dialog", DIALOG_APK,
                    "--atl", build)
@@ -236,11 +247,12 @@ CHECKS = [
     Check("gd-package", "gtk: the same, installed with --install-internal and run with --package", lambda: _gd("--by-package")),
     Check("demo", "headless: demo_app reaches onResume, view tree matches the golden", _demo),
     Check("demo-480", "headless: the same at density 480, where sp, dp and px differ", _demo_480),
-    Check("looper", "headless: looper.apk goes through the loop paths, its timed and untimed waits last their 50 ms without spinning, and it exits 0", _looper),
+    Check("loop", "headless and gtk: the loop slot's rules on the poll and glib backends alone (a scheduled dispatch, a wake before a schedule, posts across threads and after a quit, a dispatch that yields to a post)", _loop),
+    Check("looper", "headless: looper.apk goes through the loop paths, its timed and untimed waits last their 50 ms without spinning, a layout pass runs between messages that are all due, and it exits 0", _looper),
     Check("dialog", "headless: dialog.apk's scripted runs log exactly the expected lines (alerts, a list, choice rows, progress, a setView panel, buttons changed in onShow and while drawn, an alert that isn't cancelable); from cli -c, content dialogs and panels match dialog-content.viewtree and dialog-view.viewtree under taps, text, Back and touches outside, and a finishing activity's dialog goes with it", _dialog),
     Check("dialog-gtk", "gtk: dialog.apk's scripted runs through the GTK dialog's widgets, graded on the app's lines and exit status; none of the cli -c steps", _dialog_gtk),
-    Check("nav", "headless: nav.apk's lifecycle, insets, exclusion span and window size under Back, Home, front, insets and size from cli -c; the insets, span and size again at 480 dpi; an immersive activity's bar flags; an activity started for a result from a tap, and its result", _nav),
-    Check("crash", "headless: crash.apk throws in onCreate, onResume, a posted Runnable and a started activity's onCreate; each ends ATL through the uncaught handler with exit 10 and, with CheckJNI on, no CheckJNI abort", _crash),
+    Check("nav", "headless: nav.apk's lifecycle, insets, exclusion span and window size under Back, Home, front, insets and size from cli -c; the insets, span and size again at 480 dpi; an immersive activity's bar flags; an activity started for a result from a tap and from onCreate, its result or Back's RESULT_CANCELED before the caller restarts; a finish inside onCreate, onStart and onResume; the only activity finishing and starting the next; an activity started and one finished in the back", _nav),
+    Check("crash", "headless: crash.apk throws in onCreate, onResume, a posted Runnable, a started activity's onCreate, onLayout, and onPause and onDestroy inside a finish; each ends ATL through the uncaught handler with exit 10 and, with CheckJNI on, no CheckJNI abort; a throw in onMeasure or onDraw is printed and cleared, and the app goes on", _crash),
     Check("views", "headless: views.apk removes, re-adds and frees views, a dialog and three drawables; the first layout's tree and the one after a laid-out view's removal match views.viewtree and views-removed.viewtree", _views),
     Check("views-gtk", "gtk: views.apk's steps through GTK's widgets; its dialog is freed and gsk frees a nine-patch and a StateListDrawable; no tree and no view frees are checked", _views_gtk),
     Check("widgets", "headless: widgets.apk takes taps, a hold, Tab, Enter, a drag and keys from cli -c; a press shows only in its own copy of a shared selector resource", _widgets),

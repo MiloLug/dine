@@ -335,6 +335,21 @@ row would visit only the edges a row crosses.
 - the frees of paints, paths, shaders and a display list's refs: only drawables, dialogs and views
   print a line a script greps.
 
+### ATL-129
+
+**Host and lifecycle behaviour no test would see break** (overhaul A3, 2026-11-14):
+- a thread attached without a group takes the host's app on gtk and on a headless run of one app
+  (`host/cli/main.c`, `main-executable/main.c`); only ART's half has a test (`dine-0005`);
+- the gtk host's brightness path (GNOME's power settings over D-Bus, else `/sys/class/backlight`,
+  its save file and restore): the scripts read only the cli host's `host: brightness` lines;
+- a throw in `Application.onCreate`, in an activity's `onStop`, in an insets or observer callback:
+  the crash APK covers onCreate, onResume, a posted Runnable, onLayout, onPause, onDestroy (end the
+  app) and onMeasure, onDraw (printed and cleared);
+- the results of activities that `FLAG_ACTIVITY_CLEAR_TOP` closes (`RESULT_CANCELED` at their
+  callers), and `recreate()` handing its caller over;
+- the embedded host keeping a night mode set before the app's start (`embedded.c`): iOS only, and
+  no run sets one in that window.
+
 ## DINE
 
 ### DINE-6

@@ -177,6 +177,11 @@ Android main thread, schedule that loop's next dispatch (now, after a timeout, o
 from any thread, and the same three operations on a worker thread's loop. Each app's main thread
 has its own main loop instance; the glib backend has one per process (gtk runs one app).
 
+A dispatch is one `Looper.loop()` call, which returns when no message is due, and also after a
+message when the loop has other work waiting (`loop_main_yield`): layout passes, frames and input
+reach the main thread as posts, and they run between dispatches. `tests/loop/loop_test.c` checks
+the slot's rules on the poll and glib backends alone (`linux smoke loop`).
+
 - `glib`: the GSource for the main thread; workers keep ALooper, because app native code under
   `native=bionic` can attach file descriptors to a Java thread's ALooper.
 - `cfrunloop`: a run-loop source on the app's main thread runs the posts and, when a dispatch is
@@ -276,7 +281,8 @@ LinearLayout → two TextViews. As built:
   there and go into the `atl_shared` static library.
 - The app surface (toplevel window and activity stack) belongs to `ui`, not `host`:
   `ui_window_*`. `host` is the executable plus the shared start phases it calls; since M2 it also
-  implements `src/slots/host.h` (task moves, keep screen on).
+  implements `src/slots/host.h` (task moves, keep screen on, brightness, the gesture exclusion,
+  the app's end).
 - Layout in headless mirrors GTK: the root is measured and laid out at the window size, each
   `ui_view_new` node upcalls `View.layoutInternal` for its children; Java is unchanged.
 - `ATL_DUMP_VIEWTREE=1` prints the view tree when the app window first lays out, in gtk and in
@@ -440,8 +446,8 @@ the Linux golden: `1170x2391` roots, TextViews `315x51` and `375x51` at y 0 and 
   `dispatch_async` at the end of each layout pass, or from a deduplicated post when no pass is
   pending; text measurement `dispatch_sync`s to a scratch `ATLLabel` and ceils to px.
 - `records/` serves headless and uikit through the hooks in `records.h` (`native` per record);
-  headless kept the fixed metrics in `headless/views.c` (since M5c they are record's,
-  `gfx/record/text.c`), so its goldens are unchanged.
+  headless measures text with record's fixed metrics (`gfx/record/text.c`), the ones its goldens
+  hold.
 - One window source: hosts pass `struct atl_window_config` (px size, density, night) to
   `atl_vm_init` (a `ui_window` per task with several apps: multi-app MA6); `Display.density_dpi` feeds `DisplayMetrics.DENSITY_DEVICE` and
   `AssetManager_init`; `atl_display_apply` writes dp. The cli host takes `-d DPI`;
@@ -774,8 +780,8 @@ graphics suite's Matrix and Paint tests pass on headless and on gtk (`tools/dine
   snapshot paths pass it as before). `gfx_canvas_*`: a recording's new and free, save, restore,
   translate, rotate, scale, concat, rect, round rect (circle and oval), line, drawable.
   `drawLines` takes four floats per line from `offset`, on every build.
-  At M5a bitmaps, paths, text, clips and RenderNode stayed gtk-only (an `onDraw` calling one got
-  `UnsatisfiedLinkError` on records); M5b to M5d moved all but RenderNode behind `gfx_canvas_*`.
+  Bitmaps, paths, text and clips are behind `gfx_canvas_*` too (M5b to M5d); RenderNode is
+  gtk-only, and an `onDraw` that calls it gets `UnsatisfiedLinkError` on records.
 - `View.draw`'s and `ViewGroup.drawChild`'s toolkit parts go through `ui_view_draw_*`: gtk
   snapshots its widgets, records draw nothing (a background, text or child is its own node).
   `Drawable.draw` goes through `gfx_canvas_draw_drawable`; record keeps a `drawable` op for a
@@ -1162,8 +1168,9 @@ As built:
 - gtk frees a view's padding, background and text color CSS providers when it replaces them (no
   check counts them).
 - Open: the callbacks that print an exception and go on stay so (measure, draw, input, click,
-  dialog result; the layout upcall exits): multi-app's per-app handler takes them up, and uikit's
-  input prints where gtk's signal callbacks exit. Region's `setPath` rasterizes every row of the
+  dialog result; the layout upcall exits): multi-app's per-app handler takes them up. gtk differs:
+  a view's draw and its signal callbacks exit where the records backends' draw and uikit's input
+  print. Region's `setPath` rasterizes every row of the
   path's bounds when no clip limits them.
 
 ### M6b: breadth
@@ -1290,7 +1297,8 @@ passes; both builds build.
 
 **Status: done (2026-11-03).** Built: AOSP 10's `WindowManager.LayoutParams` (constants, fields,
 constructors), `ui_window_set_layout`, `host_screen_brightness` on every host (the gtk host saves
-and restores the desktop's level; the embedded host's is a no-op, DINE-11); records lay out a shown
+and restores the desktop's level, which no run checks: [ATL-129](general-todo.md#atl-129); the
+embedded host's is a no-op, DINE-11); records lay out a shown
 Dialog's content view over the activity (Gravity.apply, a floating window's least width, the
 window's frame to Java, touch routing with outside touches to a touch-modal dialog, the dump's
 `window dialog` line), the cli's `dump` and `tap <text>`, AOSP's dialog and alert dialog themes,

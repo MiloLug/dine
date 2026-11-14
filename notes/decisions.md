@@ -7,6 +7,30 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - Our delta: `git diff upstream/master...dine`. Local `master` lags upstream.
 - Upstream isn't merged: read its commits since the last merge and reimplement the wanted ones
   by hand.
+- The main Looper yields to the platform loop: after each message `nativePollOnce(0)` asks
+  `loop_main_yield`, and with posts queued (layout, frames, input; on glib any waiting source)
+  `Looper.loop()` returns, the posts run and the dispatch comes again. A dispatch's first poll
+  never yields, so loop work that queues itself again can't hold the messages up. Upstream returns
+  false for a zero timeout; port MessageQueue edits onto this (`android_os_MessageQueue.c`).
+- Loop backends keep a wake apart from the scheduled deadline: a `loop_main_schedule` after a wake
+  of the same dispatch doesn't undo it (poll's `woken`, glib's `woken` under `wake_lock`,
+  cfrunloop's `dispatch_pending`). Upstream's two `g_source_set_ready_time` calls race.
+- Activity lifecycle state is native code's: `Activity.lifecycle` (created, started, resumed,
+  stopped) replaces upstream's `paused` and `stopped`; `activity_step_down` pauses and stops
+  whatever the activity reached, so a `finish()` inside onStart or onResume still pairs its calls,
+  and one inside onCreate goes on to onDestroy in `activity_start`.
+- Activity results follow AOSP 10: `setResult` only stores; a finish hands the result to the
+  caller's record (`atlFinishing`), and the caller gets it at its next start, ahead of onRestart
+  (`atlDeliverResults`). `startActivityForResult` posts its start as `Context.startActivity` does.
+  Upstream calls `onActivityResult` from inside `setResult`.
+- An app ends when its stack is still empty after the messages queued at the finish ran: the
+  check is a message of its own (`nativeEndIfEmpty`), and the close a loop post. An instrumented
+  app (`ATLLoadedApp.instrumented`) ends only with its instrumentation.
+- `onWindowFocusChanged(true)` has one sender: `activity_window_ready` for the activity that is
+  current at the window's first layout, `activity_focus` from then on. The gtk host reports the
+  window ready under an instrumentation too.
+- `Instrumentation.waitForIdleSync` is AOSP's (an IdleHandler on the app's main queue); upstream
+  left its body commented out.
 - Shared graphics follow Skia where the toolkits differ: gradient stops go through `shader_ramp`
   (a pair of stops with different alpha is cut into pieces, so the blend follows Android's
   premultiplied one), strokes get miter limit 4, fill-and-stroke covers the union once
@@ -72,8 +96,10 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   fixes into the shared code.
 - An app exception that reaches C where Android's main loop would see it goes to
   `exit_on_exception` (`src/api-impl-jni/util.c`), the thread's uncaught handler; the upcalls that
-  print and clear (measure, draw, input, click, dialog result) keep doing so. In ported upstream code
-  that describes an exception and goes on, call it instead.
+  print and clear (measure, draw, input, click, dialog result) keep doing so, through
+  `clear_app_exception`, whose `atl: app exception cleared:` line fails a framework run and a phone
+  smoke scenario. On gtk a view's draw ends the app instead (WrapperWidget's snapshot). In ported
+  upstream code that describes an exception and goes on, call `exit_on_exception` instead.
 - Rotations from degrees go through `matrix_init_rotate` (`src/shared/matrix.h`), Skia's snap of a
   sin or cos near 0; upstream's graphene rotate calls in Matrix and the record canvas are gone.
 - Vibrator: upstream's gudev natives build only with gtk; headless and uikit take no-op natives
