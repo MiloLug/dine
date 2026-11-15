@@ -342,12 +342,19 @@ row would visit only the edges a row crosses.
 
 ### ATL-127
 
-**Graphics behaviour no test would see break** (overhaul A1, 2026-11-14):
+**Graphics behaviour no test would see break** (overhaul A1, 2026-11-14; A4 added the last two):
 - a nine-patch with an empty patch, a transparent patch or an axis without a stretch section
   (`ninepatch_slices`; the golden's one nine-patch reaches none);
 - `RGBA_F16` conversions (`bitmap_pack`, `bitmap_unpack`);
 - the frees of paints, paths, shaders and a display list's refs: only drawables, dialogs and views
-  print a line a script greps.
+  print a line a script greps;
+- gsk Paints taking GTK's text settings again after a `GtkSettings` change (`gsk_text_follow_gtk`'s
+  notify path): `TextViewTest` checks the first copy only, and nothing sets `gtk-font-name`;
+- `BitmapNdkTest` on headless runs the test hook's own lock and unlock code, not
+  `src/libandroid/bitmap.c` (`--gtk` runs it);
+- gsk's bitmap-shader transform branches (A4's second round): a shader matrix with rotation, skew
+  or a mirror, and REPEAT or MIRROR under a scale (`transform_affine_unscaled`, `append_bitmap_shader`);
+  only a scale with CLAMP is read.
 
 ### ATL-129
 
@@ -363,6 +370,38 @@ row would visit only the edges a row crosses.
   callers), and `recreate()` handing its caller over;
 - the embedded host keeping a night mode set before the app's start (`embedded.c`): iOS only, and
   no run sets one in that window.
+
+### ATL-133
+
+**App-supplied fonts draw in the system sans.** `Typeface.createFromAsset`, `createFromFile`,
+`Typeface.Builder.build` and `res/font` return DEFAULT (`Typeface.java`), so an app's icon font or
+brand font is lost. The gfx slot loads no font file.
+- Related: ATL-15 (TextView's family), ATL-19 (iOS serif), ATL-20 (Roboto's widths).
+- Where: `dine-atl/src/api-impl/android/graphics/Typeface.java`, `src/slots/gfx.h`.
+- Found 2026-11-15 (overhaul A4, stage row M5c-8).
+
+### ATL-134
+
+**`<animated-vector>` inflates an empty drawable, and ColorStateListDrawable draws nothing.**
+`Drawable.createFromXmlInner` returns an empty AnimatedVectorDrawable without reading the XML; it
+has no paintable, so its `draw` returns. ColorStateListDrawable's `draw` is empty, and a copy of
+either through `StubState` is another empty one.
+- Where: `dine-atl/src/api-impl/android/graphics/drawable/{Drawable,AnimatedVectorDrawable,ColorStateListDrawable}.java`.
+- Found 2026-11-15 (overhaul A4, stage row M6a-16).
+
+### ATL-135
+
+**On the phone a color filter is computed per pixel on UIKit's thread at each replay of a view's
+list.** A bitmap op keeps its filtered image on the op (`bitmap_op_image`), but every redraw of a
+view records new ops, so a tinted nine-patch (one op per slice, each filtering and keeping a copy
+of the whole bitmap) runs `filtered_image` nine times per redraw; a shader through a color filter
+(`draw_filtered_shader`) has no cache at all and filters each device pixel of the clip, up to
+1170 x 2532, per replay. Nothing was timed.
+- Design: filter where the list is published, on the Android thread (`cg_list_publish`), into a
+  cache kept on the bitmap and keyed by filter, alpha and generation, so slices and later
+  recordings share one filtered image; render a filtered shader's pixels once per op at publish.
+- Where: `dine-atl/src/backends/gfx/coregraphics/draw.c`.
+- Found 2026-11-15 (overhaul A4, audit A4-16, stage row M6b1-9).
 
 ## DINE
 

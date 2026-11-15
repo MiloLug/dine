@@ -142,7 +142,7 @@ combinations.
 - **No toolkit object assumed per View:** `gtk` and `uikit` create one per view node; `headless`
   and a future single-surface backend keep records and request pixels through the draw upcall.
 - **Threads:** ui and gfx calls happen on the app's Android main thread, but gfx's text calls take any
-  thread (gsk gives each thread but the main one a Pango context of its own); uikit's layers replay
+  thread (gsk gives every thread a Pango context of its own, with GTK's text settings); uikit's layers replay
   coregraphics' finished display lists on UIKit's side, and list and bitmap refs drop on any thread.
   A `cfrunloop` instance binds to the run loop of the thread that prepares it. On iOS that is an 8 MiB pthread per app
   with its own run loop, not UIKit's main thread (1008 KiB stack with RLIMIT_STACK fixed at that, so
@@ -489,7 +489,7 @@ Natives that layouts and app setup reach before any input, moved behind the slot
   on headless and iOS, `libgraphene-1.0.a` linked by Dine. A copy keeps its source's values,
   `setRotate(deg)` replaces the matrix, `mapPoints` divides by w, and skew, sinCos, setConcat,
   setPolyToPoly (after Skia) and mapRadius have natives.
-- Paint state in the gfx slot (`gfx_paint_*`); text bounds and font metrics stay gtk-only (M5c).
+- Paint state in the gfx slot (`gfx_paint_*`); its text natives are shared over `gfx_text_*` (M5c).
   Paint frees its native state in `finalize`.
 - Java: `getLocationInWindow/OnScreen` (OnScreen = InWindow: the window's origin is 0),
   `getGlobalVisibleRect`, `offset*RectInto*` and `getViewTreeObserver`'s window walk the parents.
@@ -866,7 +866,9 @@ pass. As built:
 - Bitmaps: `gfx_bitmap` (gsk: the GdkTexture; record: RGBA from libpng, PNGs only; coregraphics: a
   CGImage), with `Bitmap.Config.nativeInt` (AOSP's) as its config. BitmapFactory reads the
   stream into a byte[] for `gfx_bitmap_decode`. `drawBitmap` records `OP_BITMAP` with its paint's
-  alpha; BitmapDrawable's paintable is `gfx_bitmap_drawable_new`.
+  alpha and bitmap filter (`FILTER_BITMAP_FLAG`, set on a new Paint, as Android's: bilinear; a
+  draw with no Paint samples the nearest, as Skia's default paint; `ATLCanvas.drawBitmap` takes
+  float rects); BitmapDrawable's paintable is `gfx_bitmap_drawable_new` and keeps the filtering.
 - `clipRect` is `gfx_canvas_clip_rect` (INTERSECT and DIFFERENCE; Region's other ops intersect, as
   before): record keeps `clip` and `unclip` ops, gsk counts each save level's pushes on the
   snapshot (`clipPath` too), coregraphics saves a gstate per clip.
@@ -876,7 +878,19 @@ pass. As built:
 - Tests: `tests/harness/apk.py` compiles an optional `res/` (`aapt2 compile`, `link --java`); the
   widgets APK's resources, shared rows (`run-widgets.sh`) and DrawActivity's clips, bitmap and
   scrolled background (`draw.displaylist`); `run-draw.sh` fails gtk on unbalanced snapshot pushes;
-  smoke `atl-draw`; the graphics suite's `res/` and tests.
+  smoke `atl-draw`; the graphics suite's `res/` and tests. A view's own replay is read back through
+  `ATLTestHooks.drawViewCanvas` (`gfx_test_render_view`): gsk's renderer on the main thread on
+  gtk (scale 1 only), none on headless, and on the phone `cg_list_draw` into a CGBitmapContext in
+  points over the target's pixels, as a layer's `contentsScale` sets one, the list published and
+  drawn on the one Android thread. DrawActivity's `widgets view pixels` reads, at scale 1, a clip
+  and its restore (INTERSECT and DIFFERENCE), a PNG's four quarters, a drawable through a color
+  filter and a linear gradient; at each scale the backend draws (gtk 1, the phone 1 and 3, the
+  iPhone's factor) a clip's edge, a 4 px stroke, a hairline on whole device pixels, and a text on
+  white whose ink's extent is Paint's glyph box within 10 px (a line laid out in points differs by
+  a few px between scales: 5 at scale 1 on the phone, which logs its extents as `widgets view text`). `atl-draw` requires `ok scales 1 3`. Not probed: the layer's own flip
+  and `contentsScale` (the hook makes both), UIKit's thread (publish and draw share one thread),
+  the label replay in `drawRect:`, a scaled bitmap's sampling, blend modes, layers, nine-patches
+  and stroked or shaded text on the view path on the phone (`BlendModeTest` reads blends and layers on gtk only).
 - RenderNode is [M9](#m9-heavy)'s.
 - Open: a clip under a perspective matrix on coregraphics; Choreographer stays timer-based (10 ms
   frames); views redraw whole, without dirty rects; a background's offset while UIKit drives a scroll waits for Java's scroll report and
@@ -957,35 +971,40 @@ shows its last lines with the cursor. As built:
   the label (a layout manager on it; GtkLabel's own line limit counts per paragraph), clips the box
   and pads through the label's height request; uikit sets the ATLLabel's `numberOfLines` with word
   wrapping (no ellipsis, as Android clips) and caps the measure; a multi-line UITextView scrolls, so a capped or fixed-height field follows the cursor.
-- Metrics on the iPhone 13 (480 dpi) from DrawStayActivity's `widgets metric` lines: Paint's
-  `ceil(measureText)` and line spacing beside a one-line TextView's measured size, and Roboto
-  3.016's advances (no kerning) and hhea line spacing, px:
+- Metrics on the iPhone 13 (480 dpi) from DrawStayActivity's `widgets metric` lines (re-measured
+  2026-11-15, after the tabular digits of M5d): Paint's `ceil(measureText)` and line spacing beside
+  a one-line TextView's measured size, and Roboto 3.016's advances (no kerning) and hhea line
+  spacing, px:
 
   | Text | Size | Roboto | Paint (CoreText) | TextView (UILabel) |
   |---|---|---|---|---|
   | Hello world | 14 sp | 211, 49.2 | 218, 50.1 | 218 × 51 |
   | The quick brown fox | 14 sp | 379 | 392 | 392 |
-  | 0123456789 | 14 sp | 237 | 250 | 250 |
+  | 0123456789 | 14 sp | 237 | 261 | 261 |
   | WWWWW iiiii | 14 sp | 248 | 262 | 262 |
   | Hello world | 18 sp | 271, 63.3 | 270, 64.4 | 270 × 65 |
   | The quick brown fox | 18 sp | 487 | 487 | 487 |
-  | 0123456789 | 18 sp | 304 | 313 | 313 |
+  | 0123456789 | 18 sp | 304 | 327 | 327 |
   | WWWWW iiiii | 18 sp | 319 | 328 | 328 |
 
-  Paint and the labels agree to the pixel. Against Roboto, iOS text is 3 to 6 % wider at 14 sp and
-  0 to 3 % at 18 sp, and its lines 2 % taller: a layout sized in dp around Roboto text can wrap or
-  cut a word on the phone.
+  Paint and the labels agree to the pixel, which `atl-draw` checks (`widgets metrics ok`: label
+  width within 2 px of Paint's, `1111` as wide as `0000`, a width the font cache gives again after
+  its restart). Against Roboto, iOS text is 3 to 6 % wider at 14 sp and 0 to 3 % at 18 sp, digits
+  10 % and 8 % (tabular, wider than Roboto's), and its lines 2 % taller: a layout sized in dp
+  around Roboto text can wrap or cut a word on the phone.
 - Tests: the framework suite's `graphics` `TextTest` (relations only: each build has its own fonts),
   `InkBoundsTest` (expected to fail on headless) and `BlendModeTest#testStrokedText`, `text`
   `KeyListenerTest`, `LineLimitTest` and `TextViewTest` (a label's width against a Paint's on the
-  main thread and another one, line counts); DrawActivity's text and Layout ops in
-  `draw.displaylist`; `run-text.sh`'s pin letter and capped field.
+  main thread and another one, a digit string, line counts); `TextTest` (a line separator stays in
+  one line); DrawActivity's text and Layout ops in `draw.displaylist`; `run-text.sh`'s pin letter and
+  capped field; `atl-draw`'s `widgets metrics ok` (DrawStayActivity compares its own numbers).
 - Open: line separators besides `\n` ([ATL-10](bug-tracker.md#atl-10)); a capped field in a scroll
   view on iOS ([ATL-14](bug-tracker.md#atl-14)); TextView's font family
   ([ATL-15](bug-tracker.md#atl-15)); Layout's spans and Builder (M9,
   [ATL-17](bug-tracker.md#atl-17)); iOS serif ([ATL-19](general-todo.md#atl-19)); Roboto widths on
   iOS ([ATL-20](general-todo.md#atl-20)); TextKeyListener ([ATL-21](general-todo.md#atl-21));
-  CoreText off UIKit's thread ([ATL-22](general-todo.md#atl-22)).
+  CoreText off UIKit's thread ([ATL-22](general-todo.md#atl-22)); a font from an asset or a file
+  ([ATL-133](general-todo.md#atl-133)).
 
 #### M5d: paths, nine-patch, layers; Gravity Defied
 
@@ -1056,7 +1075,8 @@ suites and the runtime suite pass. As built:
 - `saveLayer` and `saveLayerAlpha` (every overload, through `Canvas.atlSaveLayer`): a save level
   whose first push is the layer. record's `layer` and `unlayer` ops; coregraphics a transparency
   layer at the paint's alpha and PorterDuff mode, its clips and layers ended last first, at a
-  list's end too; gsk an opacity push ([ATL-27](bug-tracker.md#atl-27)).
+  list's end too; gsk the layer's blend, an isolation and an opacity push; no build applies a layer
+  paint's color filter ([ATL-27](bug-tracker.md#atl-27)).
 - Nine-patch: `src/shared/ninepatch.c` reads a PNG's `npTc` as AOSP's NinePatchPeeker does
   (deserialized, then network to native order) into `Bitmap.getNinePatchChunk`; BitmapFactory fills
   `outPadding`. `Drawable.createFromResourceStream` and `createFromPath` decode the stream: a valid
@@ -1144,7 +1164,8 @@ As built:
   bounds in device space: `clipRect` and `clipPath` return whether any clip is left,
   `getClipBounds` maps the bounds back and rounds them as Android does. A view's draw starts at the
   view's size (gtk's one canvas per widget is reset before each draw), every other canvas at its
-  target's size (`new Canvas()` at 0x0); `setBitmap` resets the stack. A DIFFERENCE keeps the bounds, and clears them only when its shape is a rect
+  target's size (`new Canvas()` at 0x0); `getWidth` and `getHeight` answer that size; `setBitmap`
+  resets the stack. A DIFFERENCE keeps the bounds, and clears them only when its shape is a rect
   under a rect-keeping matrix that covers them.
 - Rotations from degrees (Matrix's rotate calls, record's canvas rotate) snap a sin or cos within
   1/4096 of 0 to 0, as Skia's `SkScalarSinCos` (`src/shared/matrix.h`); `setSinCos` keeps its values.
@@ -1153,9 +1174,10 @@ As built:
   as BACK; gtk sends keypad Enter as NUMPAD_ENTER, as uikit does. Android 10's TextView reads only
   ENTER, so an EditText gets keypad Enter through its key listener and the keymap; unchecked, and
   not on the phone (no hardware keyboard).
-- Drawables: DrawableWrapper's constant state (InsetDrawable, ClipDrawable, whose `mutate` takes a
-  state of its own); AnimatedVectorDrawable, ColorStateListDrawable, PictureDrawable and
-  ScaleDrawable copy through a state that makes a new one. `createFromXml` inflates `level-list`,
+- Drawables: DrawableWrapper's constant state (InsetDrawable, ClipDrawable and ScaleDrawable,
+  whose `mutate` takes a state of its own); AnimatedVectorDrawable, ColorStateListDrawable and
+  PictureDrawable copy through a state that makes a new one, and the first two draw nothing
+  ([ATL-134](general-todo.md#atl-134)). `createFromXml` inflates `level-list`,
   `animation-list` (frames, durations, oneshot) and `<nine-patch>` (its `src`'s chunk; AOSP's
   XmlPullParserException without one).
 - Color filters and tints on bitmaps: BitmapDrawable and NinePatchDrawable keep a color filter, a

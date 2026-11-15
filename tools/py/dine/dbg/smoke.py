@@ -193,8 +193,11 @@ SCENARIOS = {
         Scenario("atl-draw", [
             Step("atl", tap="atl"),
             # the bitmap redraws start when the draws are done, before the spin
-            Step("run draw", tap="draw", ok=("widgets bitmap pixel ffff0000 0", "widgets pixels ok", "widgets blend ok", "widgets layers ok", "widgets draw 3", "widgets draw done",
-                                               "widgets bitmap redraw done"), fail=ATL_FAIL, timeout=120),
+            # view pixels: the replay of the view's list (cg_list_draw) read back; metrics: Paint against the labels
+            Step("run draw", tap="draw", ok=("widgets bitmap pixel ffff0000 0", "widgets pixels ok", "widgets blend ok", "widgets layers ok",
+                                               "widgets view pixels ok scales 1 3", "widgets draw 3", "widgets draw done", "widgets metrics ok",
+                                               "widgets bitmap redraw done"),
+                 fail=ATL_FAIL + ("widgets metrics failed", r"widgets view pixels (?!ok\b)"), timeout=120),
             Step("spin", ok=(r"widgets spin \d+ in \d+ ms",), fail=ATL_FAIL),
             Step("Home", action="Home", ok=("nav: launcher root",)),
         ], uses_vm=True, needs_clean=True, alive=True, check=_spin_paced),

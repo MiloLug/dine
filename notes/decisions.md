@@ -36,7 +36,30 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   premultiplied one), strokes get miter limit 4, fill-and-stroke covers the union once
   (`draw_shape`, `draw_path`, gsk's `paint_draw` for a plain color; ATL-123), `Path.arcTo` takes its sweep mod 360,
   a round rect's radii follow SkRRect on every backend (`path_fit_round_rect_radii`), a new Paint's
-  stroke width is 0.
+  stroke width is 0, `drawCircle` of a radius of 0 or less draws nothing, `drawOval` sorts its rect.
+- `Paint.FILTER_BITMAP_FLAG` is the gfx paint's `filter_bitmap` (`gfx_paint_set_filter_bitmap`),
+  set on a new or reset Paint as Android's `HIDDEN_DEFAULT_PAINT_FLAGS` have it: a scaled bitmap is
+  sampled bilinearly with it and at the nearest texel without it (gsk `GSK_SCALING_FILTER_*`, cairo
+  `CAIRO_FILTER_*`, CoreGraphics `kCGInterpolationLow` and `kCGInterpolationNone`; bitmap shaders
+  and a BitmapDrawable's paint flag, from `setFilterBitmap`, `getPaint`, `android:filter` and a copy of
+  its constant state, follow it too). A draw with no Paint is Skia's default
+  one, so nearest, as AOSP's `SkiaCanvas::drawBitmap` with a null paint at matching densities
+  ([ATL-24](bug-tracker.md#atl-24) for the density cases; `ATLCanvas`'s own default paint);
+  `Bitmap.createScaledBitmap`'s filter argument
+  sets the flag. Upstream's `setFilterBitmap` is empty: port its Paint flag code onto this.
+  `ATLCanvas.drawBitmap` takes a float destination (`native_drawBitmap`:
+  float rects, `has_src`), and a source or destination with no area draws nothing, decided once in
+  that native.
+- `Paint.getFlags` reports AOSP's hidden defaults (`DEV_KERN_TEXT_FLAG`, `EMBEDDED_BITMAP_TEXT_FLAG`,
+  `FILTER_BITMAP_FLAG`; the constructor and `reset` set them) and the bits `setFlags` was given
+  (`isAntiAlias` reads its flag, which no backend honours: [ATL-137](bug-tracker.md#atl-137));
+  `getLetterSpacing` is what was set, 0 by default (upstream's answers 1 and so does TextPaint's).
+  `Canvas.drawPoint` draws what Skia's `SkDraw::drawPoints` does (a device pixel for a hairline, a
+  square of the stroke width, a circle with a round cap), `drawARGB` is `drawColor`, and
+  `Bitmap.createBitmap(..., matrix, filter)` takes the transformed bounds as AOSP's.
+- gsk's Paint text takes `\n`, `\r`, U+2028 and U+2029 as zero-width spaces (`to_utf8`), so
+  `measureText` and `drawText` stay on one line as record's do; Pango would break the layout there.
+  `android.text.Layout` splits its paragraphs before asking.
 - JNI headers: each Java target's `javac -h` writes into its own `<target>.p.h`, and ant copies
   into `src/api-impl-jni/generated_headers` only the headers whose text changed (the `build.xml` of
   `src/api-impl`, `ghax`, `gstub`, `test-runner`). Upstream writes them straight into the source
@@ -289,7 +312,8 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - Matrix natives are in `src/shared/android_graphics_Matrix.c` (graphene; the wrap
   `subprojects/graphene.wrap` outside the desktop build). Port upstream Matrix fixes there.
 - Paint state natives are shared behind `gfx_paint_*`; gsk's bodies are in
-  `src/backends/gfx/gsk/paint.c`. Text bounds and font metrics stay in upstream's file (gtk).
+  `src/backends/gfx/gsk/paint.c`. Text measure, widths, bounds and font metrics are shared too, over
+  `gfx_text_*` (`android_graphics_Paint.c`): port upstream Paint text edits there.
   `Paint(Paint)` and `set` copy the Java-side state too (xfermode, shader, align, color filter);
   the default align is LEFT, as Android's.
 - `getLocationInWindow/OnScreen`, `getGlobalVisibleRect`, `offset*RectInto*` and the observer's

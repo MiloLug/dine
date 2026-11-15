@@ -280,10 +280,12 @@ depend on it.
 
 ### ATL-10
 
-**A lone `\r`, U+2028 and U+2029 break a Layout's lines on gtk and iOS, not on headless.** Layout
-splits paragraphs at `\n` and `\r\n`; Pango and CoreText break the rest inside a paragraph, record
-breaks only at spaces.
-- State: what Android 10's StaticLayout does with them is unchecked.
+**A lone `\r`, U+2028 and U+2029 break a Layout's lines on iOS, not on headless and gtk.** Layout
+splits paragraphs at `\n` and `\r\n`; CoreText breaks the rest inside a paragraph, record breaks
+only at spaces, and gsk's text takes each of them as a zero-width space (`to_utf8`), which also
+keeps `Paint.measureText` and `Canvas.drawText` of a `\n` on one line, as record's.
+- State: what Android 10's StaticLayout does with them is unchecked, and so is the advance Android
+  gives a separator in `measureText` (gsk gives it none, record one unit).
 - Where: `dine-atl/src/shared/android_text_Layout.c` (the paragraph split), each backend's
   `gfx_text_break_lines`.
 
@@ -319,13 +321,18 @@ size: on the iPhone 13 (480 dpi) an hdpi PNG or nine-patch draws at half its dp 
 Defied's buttons and their borders).
 - Where: `dine-atl/src/api-impl/android/graphics/BitmapFactory.java`, `Bitmap.java`.
 - Fix: AOSP 10's scaling to `inTargetDensity` (bitmaps, and a nine-patch's chunk with them).
+- Also: AOSP's `Canvas.drawBitmap` native scales by the canvas's and the bitmap's densities and
+  samples bilinearly when the screen's density differs from the bitmap's, with no paint too
+  (`android_graphics_Canvas.cpp` `drawBitmap`, saved in `out/handoff/aosp/skia/`); ATL's null paint
+  samples the nearest whatever the densities.
 
 ### ATL-25
 
-**Text with a shader draws in the paint's color, and coregraphics shades without the paint's color
-filter.** `gfx_canvas_draw_text` ignores `Paint.setShader`; coregraphics' `draw_shader` applies
-only the paint's alpha over the gradient.
-- Where: `dine-atl/src/backends/gfx/{coregraphics/draw.c,gsk/canvas.c}`.
+**On the phone text with a shader draws in the paint's color.** coregraphics' `draw_text` sets
+the text drawing mode only, so a shader never reaches the glyphs (the paint's color, through its
+color filter, draws them); gsk masks the shader's colors with them, and the headless painter draws
+no text (ATL-46).
+- Where: `dine-atl/src/backends/gfx/coregraphics/draw.c` (`draw_text`).
 
 ### ATL-26
 
@@ -335,10 +342,10 @@ only (`gfx_canvas_draw_path`); `Path.op` and Region handle inverse.
 
 ### ATL-27
 
-**`saveLayer`'s paint: gsk ignores its PorterDuff mode, and no build applies its color filter.**
-`gfx_canvas_save_layer` takes alpha and mode; gsk pushes only an opacity (GSK has no layer blend
-with one child).
-- Where: `dine-atl/src/backends/gfx/gsk/canvas.c` `gfx_canvas_save_layer`, `src/api-impl/android/graphics/Canvas.java`.
+**`saveLayer`'s paint: no build applies its color filter.** `gfx_canvas_save_layer` takes alpha and
+mode (gsk opens the layer's blend before its isolation and opacity pushes, `composite_begin`);
+`Canvas.saveLayer` passes the paint's alpha and `atlBlend()` only.
+- Where: `dine-atl/src/api-impl/android/graphics/Canvas.java` (`saveLayer`), `src/slots/gfx.h`.
 
 ### ATL-28
 
@@ -425,10 +432,13 @@ steps only.
 
 ### ATL-46
 
-**On headless a Canvas(Bitmap) draws no text, a sweep gradient as 72 wedges and a hairline 1 unit
-wide.** The record backend measures text with fixed metrics and has no font; cairo
-(`dine-atl/src/backends/gfx/record/painter.c`) has no conic gradient or device-space hairline.
-- State: open; only bitmap pixels on headless (the display list keeps the text op).
+**On headless a Canvas(Bitmap) draws no text and a sweep gradient as 72 wedges; a hairline is 1
+unit wide on every backend.** The record backend measures text with fixed metrics and has no font;
+cairo (`dine-atl/src/backends/gfx/record/painter.c`) has no conic gradient or device-space
+hairline. A stroke width of 0 is 1 user unit in cairo, in gsk (`gfx_paint_set_stroke_width`) and
+in coregraphics (`set_stroke`), so a canvas scale widens it; Android's is one device pixel.
+- State: open; the text and the wedges only in bitmap pixels on headless (the display list keeps
+  the text op); the hairline checked in the code of all three (overhaul A4).
 
 ### ATL-47
 
@@ -1090,6 +1100,48 @@ code, not checked by a run):
   field of the same name and type in an app's subclass is read instead.
 - State: open.
 - Where: `dine-atl/src/api-impl/android/app/Activity.java`, `src/shared/activity.c`.
+
+### ATL-131
+
+**gtk redraws a view on a layout at the same size.** Android draws after `invalidate()` only.
+DrawActivity's draws come as `draw 1, 2, 3, hidden, done` on gtk, `1, 2, hidden, shown, 3, done`
+on headless.
+- State: open; found 2026-11-15 (overhaul A4), the order read from `linux smoke draw-gtk`'s log. The
+  cause is from the code, not checked by a run: `ui_view_request_layout` queues a GTK resize, GTK
+  draws the widget after it, and the wrapper snapshots the view again, which runs `onDraw`. gtk's
+  `run-draw.sh` compares no order.
+- Where: `dine-atl/src/backends/ui/gtk/view.c` (`ui_view_request_layout`).
+
+### ATL-132
+
+**TransitionDrawable draws its second layer whatever the state.** `draw` always draws the target
+layer, and `startTransition` and `setCrossFadeEnabled` do nothing; AOSP 10 draws the first layer
+until `startTransition`, then cross-fades.
+- State: open; found 2026-11-15 (overhaul A4), from a pixel read of `<transition>`; `XmlDrawableTest`'s
+  `testAnimatedKinds` takes either layer's color.
+- Where: `dine-atl/src/api-impl/android/graphics/drawable/TransitionDrawable.java`.
+
+### ATL-136
+
+**Canvas and NinePatch calls that draw nothing or don't exist.** `Canvas.drawTextOnPath` and
+`drawBitmap(int[] colors, ...)` log a STUB and draw nothing; `Canvas.quickReject(float, ...)`
+answers false. Missing, so an app that calls them gets a `NoSuchMethodError` (each checked against
+`Canvas.java`): `drawTextRun`, `clipOutRect`, `clipOutPath`, `drawVertices`, `drawBitmapMesh`,
+`drawPosText`, `quickReject(RectF, ...)`, `quickReject(Path, ...)`, `setDensity` and `getDensity`;
+`NinePatch` has no `draw`, `setPaint` or `getPaint`. AOSP 10 has all of them. Also: a hairline
+`drawPoint` recorded into a Picture is one device pixel under the matrix of the recording (a rect
+under that matrix's inverse), so it scales when the Picture is replayed under another matrix.
+- State: open; found 2026-11-15 (overhaul A4), from the code.
+- Where: `dine-atl/src/api-impl/android/graphics/{Canvas,NinePatch}.java`.
+
+### ATL-137
+
+**Paint's antialias flag and letter spacing are stored and reported, and nothing acts on them.**
+`isAntiAlias` and `getFlags` answer what `setAntiAlias` and `setFlags` set (a new Paint reports
+none, as AOSP 10's), but every backend antialiases whatever it says; `setLetterSpacing` is kept
+and `getLetterSpacing` returns it, but no backend measures or draws with it.
+- State: open; found 2026-11-15 (overhaul A4), from the code.
+- Where: `dine-atl/src/api-impl/android/graphics/Paint.java`, the gfx slot's text calls.
 
 ## DINE
 
