@@ -321,16 +321,28 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - Attach state is Java (`dispatchAttachedToWindow`/`dispatchDetachedFromWindow`, `isAttachedToWindow`
   a field); gtk's `notify::root` callback and `currently_unmapping` are gone. Port upstream attach
   fixes into View/ViewGroup Java.
-- Visibility, background drawable, invalidate, translation (`native_childrenMoved`), text runs,
-  multi-window, ImageView, ProgressBar and ViewTreeObserver natives are shared behind ui slot calls;
-  gtk's bodies are in `src/backends/ui/gtk/{view,widgets,window,text}.c`.
+- Visibility, background drawable, invalidate, text runs, multi-window, ImageView, ProgressBar and
+  ViewTreeObserver natives are shared behind ui slot calls; gtk's bodies are in
+  `src/backends/ui/gtk/{view,widgets,window,text}.c`. A translation has no call: `setTranslationX/Y`
+  send the view's own frame (`native_layout`, which adds it).
 - Fullscreen and keep-screen-on are Window state sent for the shown activity (`set_frame`,
   `set_keep_screen_on`); `View.nativeSetFullscreen` and `native_keep_screen_on` are gone.
   `FLAG_KEEP_SCREEN_ON` is Android's 0x80.
 - `View.layout` keeps AOSP's layout-required flag: `ui_view_layout` gets `relayout`, and records
-  lay out a node's children only then; `offsetTopAndBottom`/`offsetLeftAndRight` move and
-  invalidate without a layout. Port upstream layout edits onto the flag. Records cache text
+  lay out a node's children only then; a view's first `layout()` relays out too (`laidOut`; upstream's
+  `layouted` is the per-pass flag `layoutInternal` clears for its walk).
+  `offsetTopAndBottom`/`offsetLeftAndRight` move and invalidate without a layout. Port upstream
+  layout edits onto the flag. Records cache text
   measures (`records/ui.c`, keyed on every input, runs included) for every app in the VM.
+- The records ui backends' passes are AOSP's `performTraversals` (`records/ui.c` `traverse`): a
+  layout requested while a pass runs is done at once in one more round; one still requested then,
+  one requested after the layout (from `onDraw` or an observer) and a frame an OnPreDrawListener
+  cancelled (`atl_upcall_pre_draw` returns it; draw-only passes dispatch pre-draw too) go to the
+  app's Choreographer (`atl_upcall_frame_request`, `Window.atlPostFrame` as a `CALLBACK_TRAVERSAL`,
+  `ui_window_frame`), so a layout that is asked for forever comes at the frame rate (about 100 a
+  second: no vsync). `ViewTreeObserver.atlDispatchOnPreDraw` returns the cancel. gtk keeps its frame
+  clock, and a cancel there cannot stop its frame. Port upstream `ViewTreeObserver` and pass edits
+  onto these.
 - Styled text is ours: `Html` is AOSP 10's with its TagSoup parser (`doc/AOSP.md`), and TextView sends
   its CharacterStyles as runs (`ui_text_set_styled`: gtk Pango attributes, records' runs, uikit
   attributed strings). Upstream's markup path (`Html.fromHtml` keeping tags, `ui_text_set_markup`)
@@ -373,6 +385,11 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - Apple `parkUntil` becomes a timeout at entry: no wall-clock tracking, device sleep delays it
   ([ART-18](bug-tracker.md#art-18)).
 - Apple keeps pthread mutexes, condvars and RW locks; only park uses os_sync.
+- `System.nanoTime` (`ojluni/.../System.c`) reads `CLOCK_UPTIME_RAW` on Apple: it is the clock of ATL's
+  `SystemClock.uptimeMillis` (`android_os_SystemClock.c`), as on Android, where both are
+  `CLOCK_MONOTONIC`. Darwin's `CLOCK_MONOTONIC` counts sleep, which stalled ATL's Choreographer
+  (it schedules from nanoTime against uptimeMillis). `art::NanoTime` in libartbase is a different
+  function ([ART-29](bug-tracker.md#art-29)). Keep it across rebases of that file.
 
 ## dine
 

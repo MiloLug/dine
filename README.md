@@ -252,7 +252,7 @@ apps/<App>/xtool/<App>.app/<App>` (local Mach-O + debug info) → `target.sdk-pa
 
 ```sh
 tools/dine linux build                  # all stages; or: bionic art opensles atl atl-headless
-tools/dine linux smoke                  # 22 checks, one line each; --list names them
+tools/dine linux smoke                  # 23 checks, one line each; --list names them
 source env.sh                           # PATH + LD_LIBRARY_PATH for out/linux/prefix
 DINE_PREFIX=$PWD/out/linux/appdata \
   android-translation-layer third_party/apks/org.happysanta.gd_29.apk \

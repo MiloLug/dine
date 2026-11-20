@@ -205,6 +205,11 @@ def _text() -> str | None:
     return _widgets_apk() or _script("run-text.sh", HEADLESS_TESTS / "run-text.sh", HEADLESS_BUILD, WIDGETS_APK)
 
 
+def _frames() -> str | None:
+    _need_headless()
+    return _widgets_apk() or _script("run-frames.sh", HEADLESS_TESTS / "run-frames.sh", HEADLESS_BUILD, WIDGETS_APK)
+
+
 def _windows() -> str | None:
     _need_headless()
     return (_script("apk.py", sys.executable, paths.ROOT / "tests/harness/apk.py", HEADLESS_TESTS / "windows", WINDOWS_APK)
@@ -261,6 +266,7 @@ CHECKS = [
     Check("text", "headless: widgets.apk's text fields take cli -c text lines through filters, watchers, a composition, a held report, focus moves and Back", _text),
     Check("draw", "headless: widgets.apk's Canvas view redraws on invalidate, not on a same-size layout; display lists (clips, a PNG bitmap, a scrolled background, text, paths, arcs, gradients, a layer, nine-patches) match the golden; the view readback says it draws no views", _draw),
     Check("draw-gtk", "gtk: the same view draws its three times through gsk and the bitmap readbacks and the view's own replay's (clips, a PNG, a filtered drawable, a gradient, text) hold, with no missing native and no GTK critical; the draws' order and the display lists aren't compared", _draw_gtk),
+    Check("frames", "headless: widgets.apk's PassesActivity: an OnPreDrawListener that cancels three frames holds a view's draw back to the fourth, one that cancels an invalidate's draw-only pass does the same; a layout asked for from a global layout call is done before the next frame's callbacks; a listener that asks for a layout in every call gets passes at the frame rate, with the main loop still running its posted message", _frames),
     Check("windows", "headless: windows.apk's window state from an activity and a dialog in order with the task's moves, none from a stopped activity; a dialog's insets at 160 and 480 dpi; the order and frames of WindowManager windows, a popup, an AutoCompleteTextView's drop-down, a menu, and toasts with their durations", _windows),
     Check("windows-gtk", "gtk: a popup below its anchor, a native menu and a toast", _windows_gtk),
     Check("keyboard", "headless: windows.apk's fields under an IME inset: adjustPan moves the window up only as far as the field needs, adjustResize lays it out above the keyboard (keyboard-pan.viewtree, keyboard-resize.viewtree), both also against what their layout alone would give and at 480 dpi; no mode follows the scroll container", _keyboard),

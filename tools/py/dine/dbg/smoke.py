@@ -22,6 +22,7 @@ class Step:
     declined: bool = False      # the tap must be declined (a disabled control or alert action)
     ok: tuple[str, ...] = ()    # regexes that must all show up in the app's syslog
     ui: tuple[str, ...] = ()    # accessibility labels that must all show up, after ok
+    gone: tuple[str, ...] = ()  # accessibility labels that must all be off the screen, after ui
     fail: tuple[str, ...] = ()  # any of these ends the step as failed
     network: bool = False
     timeout: float = 60
@@ -37,7 +38,8 @@ class Scenario:
     alive: bool = False     # the app must still run afterwards
 
 
-_VIEWTREE_LINE = re.compile(r'viewtree: ( *)(\S+) (-?\d+),(-?\d+) (\d+)x(\d+)( ".*")?$')
+# a view's state (checked, scroll 0,20, ...) follows its text, and is no part of the shape
+_VIEWTREE_LINE = re.compile(r'viewtree: ( *)(\S+) (-?\d+),(-?\d+) (\d+)x(\d+)( ".*")?(?: (?:checked|pressed|invisible|gone|disabled|scroll -?\d+,-?\d+))*$')
 
 
 @dataclass
@@ -206,6 +208,26 @@ SCENARIOS = {
             Step("run lists", tap="lists", ok=(r"lists first [1-9]\d* of \d+ shown",), fail=ATL_FAIL, timeout=120),
             Step("Home", action="Home", ok=("nav: launcher root",)),
         ], uses_vm=True, needs_clean=True, alive=True),
+        Scenario("atl-frames", [
+            Step("atl", tap="atl"),
+            Step("run frames", tap="frames", ok=("frames shown",), ui=("target text", "move"), fail=ATL_FAIL, timeout=120),
+            # FramesActivity moves a text that draws nothing a screen to the right: UIKit has the new frame
+            # once the accessibility walk, which lists only what is on screen, no longer finds it
+            Step("move", tap="move", ok=("frames moved",), gone=("target text",), fail=ATL_FAIL),
+            Step("Home", action="Home", ok=("nav: launcher root",)),
+        ], uses_vm=True, needs_clean=True, alive=True),
+        Scenario("atl-passes", [
+            Step("atl", tap="atl"),
+            # an OnPreDrawListener cancels three frames, so the view draws after its fourth call, and an
+            # invalidate's after its second; a layout asked for from a global layout call is done in the same
+            # pass; one asked for from every call comes at the frame rate (20 to 399 calls in the 500 ms of a
+            # message that must still run)
+            Step("run passes", tap="passes", ok=("passes drawn after 4 calls", "passes invalidate drawn after 2 calls", "passes round 2",
+                                                 "passes frame", r"passes layouts ([2-9]\d|[1-3]\d\d) in [56]\d\d ms",
+                                                 "atl main returned 0", "nav: container dismissed exit"),
+                 fail=ATL_FAIL + (r"passes drawn after [0-3] calls", r"passes invalidate drawn after [01] calls"), timeout=120),
+            Step("back", back=True),
+        ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-windows", [
             Step("atl", tap="atl"),
             # a dialog's window state: keep-screen-on, its exclusion rect at the left edge and its
@@ -273,7 +295,7 @@ SCENARIOS = {
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-controls", [
             Step("atl", tap="atl"),
-            Step("run controls", tap="controls", ok=("controls shown",), ui=("PUSH", "lamp off"), fail=ATL_FAIL, timeout=120),
+            Step("run controls", tap="controls", ok=("controls shown",), ui=("PUSH", "lamp off", "BOLD & CAPS"), fail=ATL_FAIL, timeout=120),
             Step("PUSH", tap="PUSH", ok=("controls click push",), fail=ATL_FAIL),
             Step("locked", tap="locked", declined=True),
             Step("check", tap="check", ok=("controls checked check true",), fail=ATL_FAIL),
@@ -422,6 +444,7 @@ def listing(app: str) -> str:
                 "back" if st.back else st.title
             lines.append(f"  {what}" + (f"; wait for {', '.join(st.ok)}" if st.ok else "")
                          + (f"; shows {', '.join(map(repr, st.ui))}" if st.ui else "")
+                         + (f"; no longer shows {', '.join(map(repr, st.gone))}" if st.gone else "")
                          + (" [--network]" if st.network else ""))
     return "\n".join(lines)
 
@@ -501,6 +524,13 @@ def run(app: str, names: list[str], network: bool, relaunch: Callable[[], int], 
                 if resp["code"]:
                     out(f"{sc.name}: {st.title}: FAILED waiting for {label!r} on screen\n{resp['text']}")
                     return 1
+            for label in st.gone:
+                deadline = time.monotonic() + 5
+                while label in client.call("ui_ls", {})["text"]:
+                    if time.monotonic() > deadline:
+                        out(f"{sc.name}: {st.title}: FAILED: {label!r} is still on screen")
+                        return 1
+                    time.sleep(0.5)
             # the waits end at their first match: a forbidden line after it, or in a step with no
             # `ok`, shows only here
             if hit := logged(st.fail, step_start):

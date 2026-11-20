@@ -1143,6 +1143,35 @@ and `getLetterSpacing` returns it, but no backend measures or draws with it.
 - State: open; found 2026-11-15 (overhaul A4), from the code.
 - Where: `dine-atl/src/api-impl/android/graphics/Paint.java`, the gfx slot's text calls.
 
+### ATL-138
+
+**On the phone a view's own drawing lags UIKit's scroll.** A scroll node (or a view that `scrollTo`s
+itself) draws its background at `+scroll` into its list, and the list's layer follows the bounds'
+origin (`reframe_draw_layer`), so while UIKit drives a scroll the layer shows the old list at the
+new window until Java's scroll report reaches `View.scrolled` and the redraw comes back: the
+background (and the view's own drawing) trails the content by a report and a frame. Each tick also
+replays the whole list.
+- State: open; found 2026-11-20 (overhaul A5a, stage row M5b-3), from the code; not looked at on
+  the phone by hand.
+- Where: `dine-atl/src/backends/ui/uikit/view.m` (`reframe_draw_layer`, `scrollViewDidScroll:`),
+  `src/api-impl/android/view/View.java` (`scrolled`).
+- Fix: a list recorded for the whole scrollable extent, or a layer that draws its viewport part
+  from a tiled layer, so a tick moves it and no list is replayed.
+
+### ATL-140
+
+**A view whose padding or background changes with every `onLayout` or `onDraw` lays the window out
+every frame.** `View.internalSetPadding` and `setBackgroundDrawable` request a layout for each
+changed value, and the records ui backends pace a layout that is still requested after a pass's
+second round at the Choreographer's frames (about 100 a second). An app that animates its padding
+this way (AOSP does the same work, per frame) costs a layout pass, and on uikit a batch to UIKit,
+per frame.
+- State: open; found 2026-11-20 (overhaul A5a, stage row M6b3a-13), from the code; nothing times
+  it. Symptom to look for: `atl frames` stats lines with a pass count near the frame rate in an app
+  that shows no animation; the apps suite and Gravity Defied.
+- Where: `dine-atl/src/backends/ui/records/ui.c` (`traverse`),
+  `src/api-impl/android/view/View.java` (`internalSetPadding`, `setBackgroundDrawable`).
+
 ## DINE
 
 ### DINE-1

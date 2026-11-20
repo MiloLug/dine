@@ -51,6 +51,11 @@ class SmokeTableTest(unittest.TestCase):
     def test_viewtree_shape_against_golden(self):
         self.assertIsNone(smoke.viewtree_problem(GOLDEN, GOLDEN))
         self.assertIsNone(smoke.viewtree_problem(PHONE, GOLDEN))
+        # a view's state follows its text: part of no shape
+        stated = PHONE.replace('"hello PoC world!"', '"hello PoC world!" checked').replace(
+            '"second one (static)"', '"second one (static)" pressed scroll 0,20 disabled')
+        self.assertIsNone(smoke.viewtree_problem(stated, GOLDEN))
+        self.assertIsNone(smoke.viewtree_problem(PHONE, GOLDEN.replace('"hello PoC world!"', '"hello PoC world!" checked')))
         cases = [
             ("another tree", PHONE.replace('viewtree:     android.widget.TextView 0,51 402x51 "second one (static)"\n', "")),
             ("line 3: another view", PHONE.replace("hello PoC", "hello")),

@@ -403,6 +403,24 @@ of the whole bitmap) runs `filtered_image` nine times per redraw; a shader throu
 - Where: `dine-atl/src/backends/gfx/coregraphics/draw.c`.
 - Found 2026-11-15 (overhaul A4, audit A4-16, stage row M6b1-9).
 
+### ATL-139
+
+**Views redraw whole, and the display link runs on UIKit's main run loop.** A draw replaces a view's
+whole display list (`draw_view` in `records/ui.c`): no dirty rects, so a small invalidate records
+and replays everything. uikit's `CADisplayLink` is added to the main run loop and posts each
+waiting app's pass to its Android thread; one on the Android thread's own run loop would save the
+hop (unverified on iOS 27).
+- Where: `dine-atl/src/backends/ui/records/ui.c`, `src/backends/ui/uikit/view.m` (`records_draw_wanted`).
+- Found 2026-11-20 (overhaul A5a, stage row M5b-6), from M5b's Open line.
+
+### ATL-141
+
+**gtk prints no `viewfreed:` line.** `ATL_DUMP_VIEWTREE` makes the records backends print a
+`viewfreed:` line for each view freed, which `run-views.sh --headless` checks; gtk's `ui_view_free`
+prints nothing, so a wrapper that is never unreffed fails no check.
+- Where: `dine-atl/src/backends/ui/gtk/view.c`, `tests/headless/run-views.sh`.
+- Found 2026-11-20 (overhaul A5a, audit A5-17's last clause).
+
 ## DINE
 
 ### DINE-6

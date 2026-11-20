@@ -503,9 +503,9 @@ Natives that layouts and app setup reach before any input, moved behind the slot
   fullscreen) in `struct ui_frame`; keep screen on (`FLAG_KEEP_SCREEN_ON`, 0x80, or an attached
   view of the window) through `host_keep_screen_on`. iOS hides the status bar with the window kept
   below the notch (Android's default cutout mode); Dine disables the idle timer while the app shows.
-- ui slot: visibility, background drawable (held, drawn from M5b), invalidate, children moved
-  (translation), markup flag, multi-window, ViewTreeObserver observations (records: after each
-  layout pass), `ui_image_*` and `ui_progress_*` nodes (an ImageView draws nothing before M5b).
+- ui slot: visibility, background drawable (held, drawn from M5b), invalidate, multi-window,
+  ViewTreeObserver observations (records: in each pass), `ui_image_*` and `ui_progress_*` nodes (an
+  ImageView draws nothing before M5b).
 - `ProgressBar.setIndeterminate` keeps its argument, `attachViewToParent` adds a view that wasn't
   detached once, and the C targets wait for javac to rewrite the JNI headers.
 
@@ -787,12 +787,18 @@ graphics suite's Matrix and Paint tests pass on headless and on gtk (`tools/dine
   `Drawable.draw` goes through `gfx_canvas_draw_drawable`; record keeps a `drawable` op for a
   container, and a Drawable with no native paintable draws nothing.
 - Draw pass (records, so headless and iOS): a node whose class draws (`traits.draws`) redraws when
-  new, invalidated or resized, in tree order, skipping what isn't VISIBLE. It runs at the end of a
-  layout pass (after the preDraw observers, before `records_layout_done`) and from the one draw
-  post per window that `invalidate()`, or a view showing again from INVISIBLE, makes (Java
-  requests a layout only for a change to or from GONE). `View.atlDraw` runs `draw()` into a fresh
-  list and clears the canvas after. An invalidate inside `onDraw` draws in the next pass, unpaced
-  (M5b).
+  new, invalidated or resized, in tree order, skipping what isn't VISIBLE. It is the last step of
+  a traversal (`records/ui.c`, AOSP's `performTraversals`: a requested layout and the global
+  layout observers, the preDraw observers, the draw). A traversal comes from a layout request (a
+  post), or from the one draw post per window that `invalidate()`, a view showing again from
+  INVISIBLE or a frame moved outside a pass (`offsetLeftAndRight`, a direct `layout`) makes (Java
+  requests a layout only for a change to or from GONE; uikit: the display link). A layout
+  requested while the pass runs is done at once in one more round; what is still requested after
+  that, a layout requested from the draw or an observer, and a frame a preDraw listener cancelled
+  go to the next frame of the app's Choreographer (`ui_window_frame`). gtk keeps its frame clock:
+  its observers run in the clock's layout and paint signals, and a cancel there cannot stop the
+  frame. `View.atlDraw` runs `draw()` into a fresh list and clears the canvas after. An invalidate
+  inside `onDraw` draws in the next pass, unpaced (M5b).
   Dialog windows lay out and draw in the app window's pass on records (M6b2), on uikit in an
   overlay container over the activity roots (M6b3a).
 - record: each op keeps a copy of its paint and the matrix it was drawn under (Paint and Matrix
@@ -846,8 +852,10 @@ pass. As built:
 - Raster on CA's side: the `coregraphics` gfx backend is record's display list
   (`src/backends/gfx/record/`) plus `coregraphics/draw.c` (a list's replay into a CGContext) and
   `bitmap.c` (ImageIO, decoded at once on the Android thread). uikit gives a drawing node an
-  `ATLDrawLayer` (`drawsAsynchronously`, under the subviews by `zPosition`, no implicit actions, at
-  the bounds' origin so it scrolls with the content, `contentsScale` the window density's); an
+  `ATLDrawLayer` (`drawsAsynchronously`, under the subviews by `zPosition`, no implicit actions,
+  framed at the view's bounds' origin with the list drawn back from there, so a scrolled view shows
+  its own drawing and background past the first screen (checked by screenshot: the widgets APK's
+  `ScrolledActivity`, tile "scrolled"), `contentsScale` the window density's); an
   ATLLabel replays in `drawRect:` under its text. The Android thread only records. Lists are
   refcounted, any thread drops them, and they hold plain ops with refs to bitmaps, paths and
   shaders: Java draws
@@ -893,9 +901,11 @@ pass. As built:
   and stroked or shaded text on the view path on the phone (`BlendModeTest` reads blends and layers on gtk only).
 - RenderNode is [M9](#m9-heavy)'s.
 - Open: a clip under a perspective matrix on coregraphics; Choreographer stays timer-based (10 ms
-  frames); views redraw whole, without dirty rects; a background's offset while UIKit drives a scroll waits for Java's scroll report and
-  redraw; the display link on the Android thread's own run loop (saves a hop, unverified on iOS
-  27); a press on a selector row on the phone and gtk is unchecked by hand.
+  frames, [ATL-98](bug-tracker.md#atl-98)); views redraw whole, without dirty rects, and the
+  display link runs on UIKit's main run loop ([ATL-139](general-todo.md#atl-139)); a background's
+  offset while UIKit drives a scroll waits for Java's scroll report and redraw
+  ([ATL-138](bug-tracker.md#atl-138)); a press on a selector row on the phone and gtk is unchecked
+  by hand.
 
 #### M5c: text
 
@@ -1240,7 +1250,7 @@ and the release build builds.
 runtime suite, `test unit`, `ios build-atl` (dev and release) and `dbg smoke` (15 scenarios, with
 `atl-lists`) pass. On the iPhone 13 flower_finder lists its 11 flowers with their images, the
 controls screen shows `BOLD & CAPS` with "BOLD" bold (the build before showed
-`<b>BOLD</b> &amp; CAPS`), and the draw screen the masked adaptive icon. API 29 triage (headless):
+`<b>BOLD</b> &amp; CAPS`; `atl-controls` waits for the label, the bold by eye), and the draw screen the masked adaptive icon. API 29 triage (headless):
 
 | APK | Stop before | Stop after (owner) |
 |---|---|---|
@@ -1416,7 +1426,8 @@ the Status block.
   ([ATL-64](bug-tracker.md#atl-64), 2026-11-08): `setBackgroundDrawable` takes the drawable's
   padding and an XML padding attribute wins edge by edge; a view is at least its background's
   least size, toolkit-measured text views and images included (`minWidth` applies to them);
-  padding changes lay out again. Layer-lists nest or stack (ripples stack), selectors report
+  padding changes lay out again ([ATL-140](bug-tracker.md#atl-140): one per frame while it keeps
+  changing). Layer-lists nest or stack (ripples stack), selectors report
   padding; a window's padding is its background's and the theme's background goes on once, so a
   plain `Dialog` shows its card behind the whole content. On the iPhone a Button with a background
   and Android padding drops UIKit's own insets; one without padding keeps them
