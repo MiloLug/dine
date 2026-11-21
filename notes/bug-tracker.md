@@ -827,6 +827,8 @@ that mixes the two in a dialog is off by the window's origin.
 - PopupWindow is AOSP 10's without its transitions.
 - A `setView` toast draws under a presented plain alert.
 - A text toast whose app comes back to the front mid-toast stays hidden.
+- A toast made while the app is in the back shows once the app is in front, at its turn in the queue
+  (`android_widget_Toast.c`), and `run-windows.sh`'s absence check of it cannot fail.
 - On gtk a toast's label goes above an application overlay (AOSP keeps toasts under them).
 - A popup that goes with its removed dialog keeps its tree observers on the app window.
 - State: open; from M6b3b's Open line in `notes/atl-port.md`, not checked in code.
@@ -1343,6 +1345,77 @@ against the old one, or not at all. The C targets depend on `hax.jar` order-only
 - Where: `dine-atl/meson.build` (the `hax_jar` dependency, line 71 on, and the C targets), the tracked
   `src/api-impl-jni/generated_headers/`.
 
+### ATL-158
+
+**At Home the host gets the activity's own brightness for a moment.** An activity that sets
+`screenBrightness` and a dialog that sets another: when the task goes to the back, the dialog's window
+hides first, `windows_state_changed` sends the activity's value, and the end of the task resets it a
+step later.
+- State: open; found 2026-11-21 (overhaul A7, `run-windows.sh` StateActivity), not fixed.
+- Repro: headless `run-windows.sh` StateActivity: `home` gives `host: brightness 0.60` and then
+  `host: brightness -1.00` (the script pins both lines).
+- Where: `dine-atl/src/shared/activity.c` (`activity_update_current`, `atl_window_state_reset` after the
+  step-down's `windows_update`), `src/shared/windows.c` (`windows_state_changed`).
+
+### ATL-159
+
+**A popup under a field is placed again before the window's pan, and stays there.** With the keyboard
+up over an adjustPan activity, the popup anchored below the focused field ends at y=300, over the
+field (on screen 323 to 340) and half behind the keyboard; it is placed from the field's location
+before the pan, and the pan changes no scroll that would align it again (AOSP's `mCurScrollY` doesn't
+dispatch one either). Where AOSP puts it is not settled here.
+- State: open; found 2026-11-21 (overhaul A7, the `PopupKeyboardActivity` golden), unchecked on the phone.
+- Repro: `keyboard-popup.viewtree` (`window panel 0,417`) and `keyboard-popup-pan.viewtree` (`window
+  panel 0,300`, the field at 323), `dine-atl/tests/headless/run-keyboard.sh`.
+- Where: `dine-atl/src/api-impl/android/widget/PopupWindow.java` (`alignToAnchor`),
+  `src/api-impl/android/view/Window.java` (`updatePan`).
+
+### ATL-162
+
+**gtk: a plain alert is a separate non-modal window outside the registry's touch and order rules.** The
+alert is a transient `GtkWindow`; `ui_window_set_roots` and `windows_touch_target` skip roots without a
+view, so a click on the app window under it reaches the activity (a second `onClick` can open a second
+alert), the theme's close-on-outside default never reaches it (only `setCanceledOnTouchOutside` calls
+the native), and it stays above an in-window dialog or panel shown after it, where uikit has the
+covered state.
+- State: open; from the overhaul A7 audit (A7-16, stage rows M2-6 and M6b2-5), unchecked on gtk.
+- Fix, not made: the registry decides for plain alerts too: `windows_touch_target` returns a touch-modal
+  root without a view and the backend sends that touch to Java's outside-touch path (gtk: a capture
+  controller while the alert shows, or `gtk_window_set_modal`); record the order difference in
+  `notes/decisions.md` or hide the `GtkWindow` while a newer in-window root is above it.
+- Where: `dine-atl/src/backends/ui/gtk/dialog.c`, `window.c`, `input.c`, `src/shared/windows.c`.
+
+### ATL-163
+
+**A floating (dialog-themed) activity fills the window, undimmed, with the activity below hidden.** An
+activity with `Theme.Dialog` or any `windowIsFloating` theme is measured EXACTLY at the app window's
+area (`records/ui.c` `lay_out`), gets no dim and no placement, and `setLayout`, `setGravity` and
+`setDimAmount` on an activity's window do nothing; the caller is stopped and not drawn, where AOSP
+pauses it and keeps it behind a centred wrap-content card.
+- State: open; from the overhaul A7 audit (A7-3, stage row M6b2-1), checked in code on headless and gtk,
+  not on uikit.
+- Fix, not made: give a floating activity's root to the registry's placement (`windows_place` with the
+  activity's layout params and its dim, the activity below kept drawn), or leave the gap.
+- Where: `dine-atl/src/api-impl/android/view/Window.java` (`layoutChanged`, `styleBars`),
+  `src/backends/ui/records/ui.c`, `src/shared/activity.c`;
+  `tests/framework/windows/.../WindowAttributesTest.java:28` still says gtk sizes the top-level from
+  `setLayout`.
+
+### ATL-165
+
+**A window placed again after an inset change sees the insets and the pan of its old frame for one
+pass.** `Window.dispatchInsets` clips the host's insets to the frame it has; the placement that moves
+the frame comes in the layout pass it requests, so the window's views get a keyboard inset that doesn't
+overlap the new frame (and the window a pan for the old one) until the `requestInsets(false)` post of
+`atlSetFrame` settles it. An `OnApplyWindowInsetsListener` or a global layout listener of a dialog
+reads the stale value; the window line of the dump is right after the next pass.
+- State: open; found 2026-11-21 (overhaul A7 correction round 1), not fixed.
+- Repro: `dine-atl/tests/headless/run-keyboard.sh`, the lines marked ATL-165 (`dialogpan ime 65 ... top -45`,
+  then `ime 0 ... top 20`; the same for `dialogbottom`, `dialogtall`, `dialogover`, `dialogresize`).
+- Fix: clip the insets after the placement, in the pass that places the window, or place before dispatching.
+- Where: `dine-atl/src/api-impl/android/view/Window.java` (`dispatchInsets`, `atlSetFrame`),
+  `src/shared/insets.c` (`get_insets`), `src/shared/windows.c` (`windows_place`).
+
 ## DINE
 
 ### DINE-1
@@ -1546,3 +1619,8 @@ dine-atl e7a207c6.
 ### ATL-75
 
 **`TextView.getLineCount()` always returned 1.** 2026-11-09, bugs step, dine-atl c0784ce8.
+
+### ATL-160
+
+**A floating dialog was placed in the whole window, AOSP places it above the keyboard.** 2026-11-21,
+overhaul A7, dine-atl 5cfdb9ca.

@@ -396,6 +396,41 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   pre-API-30 dispatch; `fitsSystemWindows` is real (default false). The host's insets come through
   `atl_nav_set_insets` and `Window.dispatchInsets`; exclusion rects through the Window's tracker and
   `src/shared/insets.c`. Port upstream insets edits there.
+- Windows follow AOSP 10's window manager more closely (overhaul A7). `windows_place` takes each
+  window's container and display frame from `DisplayPolicy.layoutWindowLw`: a window with no parent and
+  no `FLAG_LAYOUT_IN_SCREEN` lies in the content frame (the app's window inside the bars the host shows;
+  a toast keeps clear of them always), a sub-panel in its parent's, and `Gravity.applyDisplay` moves
+  each inside its display frame unless `FLAG_LAYOUT_NO_LIMITS`. `Window.styleBars` sets
+  `FLAG_LAYOUT_IN_SCREEN | FLAG_LAYOUT_INSET_DECOR` on every non-floating window as `generateLayout`
+  does. The content frame is cut at the keyboard's top whatever the adjust mode
+  (`offsetInputMethodWindowLw`): a floating dialog is centred in the room above the keyboard, and pans
+  only if its field is still covered there. As in AOSP the display frame it is then moved into is not
+  cut by the keyboard unless adjustResize, and a WRAP_CONTENT window is measured against the screen
+  less the bars (`screenHeightDp`; the room above the keyboard for adjustResize, where `windows_area`
+  cuts the window's area), so a dialog taller than the room is shifted, not shrunk. The window's owner is `Window.creator`, the Activity or
+  Dialog that made it, which `setCallback` doesn't change (AppCompat's delegate replaces the callback).
+  `Dialog.dismiss()`, `hide()` and `show()` run on the app's main looper; `hide()` makes the decor GONE
+  and a show after a hide keeps the window's place (only a new add goes to the top of its layer);
+  `cancel()` dismisses first and posts the cancel listener, so it hears a dialog that is gone;
+  `show()` calls `onStart()` after `onCreate()` and `dismiss()` calls `onStop()`.
+- An AlertDialog's views of AOSP's layout (`android.R.id.message`, `alertTitle`, `button1` to `button3`)
+  are undrawn stand-ins outside any window, as the buttons are; their `setText` is `setMessage` or
+  `setTitle`. `AlertDialog.findViewById` finds them after `onCreate`, the decor's views first;
+  `getWindow().findViewById` doesn't see them. An alert with no field to type into sets
+  `FLAG_ALT_FOCUSABLE_IM`, as AlertController does.
+- The soft input state is applied as `InputMethodManagerService` does when a window gains the focus
+  (`Window.atlSoftInputState`): at an activity's first window focus after its resume (forward: opened,
+  or its task brought to the front, not uncovered by a finished activity) and at a Dialog's show. The
+  keyboard shows for a focused text editor only (AOSP shows one without an editor below target SDK 28);
+  `screenLayout` isn't populated, so no screen counts as large. AOSP runs the switch again when an
+  activity's window regains the focus after a dialog closes; ours doesn't.
+- A night change reaches the roots of every added window of the app, a hidden dialog's too, whose owner
+  handles uiMode or that has none (`windows_dispatch_configuration`, `Window.atlConfigurationChanged`).
+- uikit's text toast is placed by `atl_gravity_apply` (`src/shared/gravity.h`, windows.c's
+  `Gravity.apply`), so FILL stretches it; gtk keeps GTK's alignment, with margins that move a centred
+  label by the offset. uikit's plain alerts stack in the registry's order: UIKit's dismiss on a controller
+  that presents another takes the child down too, so an alert goes with the ones above it first and they
+  present again after it (`take_down` and the lift in `present`, `dialog.m`).
 - Last merge: upstream d658957d (2026-10-20); hand ports start there.
 
 ## dine-art

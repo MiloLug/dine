@@ -199,10 +199,9 @@ work on every backend since M6b3b (2026-11-08). The user left it out of M6b3 (20
 
 ### ATL-65
 
-**`Dialog.create`, `onStart` and `onStop`.** Android 10's Dialog has them (`create` runs `onCreate`
-early, so `findViewById` and `getButton` work before `show`; `onStart` and `onStop` come with each
-show and dismiss); ATL's has none, so an app that calls `create()` or overrides them (AppCompat's
-dialogs, DialogFragment) gets a NoSuchMethodError or no callback.
+**`Dialog.create`.** Android 10's Dialog has it (`create` runs `onCreate` early, so `findViewById` and
+`getButton` work before `show`); ATL's has none, so an app that calls `create()` (AppCompat's dialogs,
+DialogFragment) gets a NoSuchMethodError. `onStart` and `onStop` came with overhaul A7 (2026-11-21).
 - Found 2026-11-07 (M6b3a review).
 - Where: `dine-atl/src/api-impl/android/app/Dialog.java`.
 
@@ -564,6 +563,34 @@ claim some stage's notes make that no check would fail without; none shows a def
 - State: open; found 2026-11-21 (overhaul A5b round 1, stage rows M0-4, nav-9, PreM4-M4a-16,
   PreM4-M4a-18, M5a-4, M6b1-7, M6b3a-14, M6b3b-4, M6b3c-9, M6b3c-10, M6b3c-12, M6b3c-13, MA2-3).
 
+### ATL-164
+
+**Window behaviour no test shows.** Claims of M2 to M6b3c whose checks need the phone or two running
+apps, or that no suite reads; each is a line to turn into a check when a stage next touches it.
+- Phone: the Cancel action of a cancelable list and its absence from an alert that isn't cancelable (the agent
+  lists neither; `dialog.m` `build`); light mode of the menu, the toast capsule and the panels, a text toast over a plain alert,
+  VoiceOver on the menu and on the toast's announcement, Dynamic Type and a long list (M6b3a-1, M6b3b-6);
+  a panel's field panning, popups and drop-downs following their anchor in a panned or resized window,
+  a popup's own soft input mode (M6b3a-4, M6b3b-3, M6b3c-1, M6b3c-5, M6b3c-6); non-sticky immersive that
+  never clears (M6b3c-4, nav-5); `OnSystemUiVisibilityChangeListener` from the controller paths
+  (M6b3c-8); pre-iOS-26 panel look (M6b3a-12).
+- gtk: a click outside a plain alert and the alert's close request (M2-6, ATL-162), the host refusing the
+  move to the back (M2-3), custom-content dialogs driven through the agent (M6b2-3).
+- Checks to add: `setCancelable(false)` against RESULT_CANCEL and Back (M2-1), a targetSdk 19 fixture's
+  `window: frame none` and the light status bar flag (M3-6), layout XML attributes of the View
+  constructor (PreM4-M4a-6), `check` and `switch` control sizes in `run-controls.sh` (M4b-8), flower_finder's
+  list (M6b1-2, TOOL-8), a Fragment's permission result (M6b1-16), a LENGTH_LONG toast's duration (M6b3b-8),
+  a focusable popup closed by an outside tap and a `ListPopupWindow` case (M6b3b-11), the drop-down not
+  taking keys (M6b3b-12), `SystemUiTest` cases for `setDecorFitsSystemWindows(false)`,
+  `FLAG_LAYOUT_NO_LIMITS`, cutout mode ALWAYS and show after hide (M6b3c-11, nav-8), the AOSP rows of
+  `AlertDialog` against its Cursor and `ListAdapter` lists (M6b3a-8), a worker thread's `setProgress`
+  (M6b3a-10), a thread in the root ThreadGroup (MA2-4).
+- Pending lines with no owner until now: AppCompat and Material dialogs draw Android's own layouts
+  (M6b3a-2); `setIcon`, `setIconAttribute` and ProgressDialog's secondary progress and number formats
+  are ignored (M6b3a-9); the agent's accessibility taps still reach Android views under an open menu
+  (M6b3b-7, [TOOL-8](general-todo.md#tool-8)).
+- Checks that need two running apps (dialog answers, the night switch): the area A9 two-app scenario.
+
 ## DINE
 
 ### DINE-6
@@ -691,6 +718,16 @@ VM) has no stage. Until it exists the AOSP run-tests never run on arm64, and of 
 `dine-0005-embedder-tag`, `dine-0007-native-libs` (their JNI code isn't linked into
 `native/dev/runtimetests`) and `dine-0009-no-dex2oat` (a `run` script) stay Linux-only: the Apple
 rule that a library outside the embedder's symbol lists doesn't load has no test.
+
+### TOOL-15
+
+**The debug agent reaches only the first 28 tiles of the atl screen's grid.** The grid is lazy
+(`LazyVGrid`): it builds the tiles on the screen, and `dbg ui` lists built elements only, so a smoke
+step can't tap a later tile (seen 2026-11-21, overhaul A7: with a 29th tile before `config` the
+`atl-keyboard-dialog` step found no `keyboard dialog`). Workaround: `AtlView.swift` lists the tiles the
+scenarios tap first.
+- Fix: a grid that builds every tile, or a scroll action in the agent.
+- Where: `apps/Dine/Sources/Dine/Dev/AtlView.swift`, `native/dev/dbgagent`.
 
 ## Done
 

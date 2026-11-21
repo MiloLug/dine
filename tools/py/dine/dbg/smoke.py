@@ -150,6 +150,7 @@ ATL_FAIL = ("atl is still starting", "atl needs a process without a VM", "atl: c
 # never part of a passing scenario, whatever its steps wait for
 FATAL = ("UnsatisfiedLinkError", "JNI DETECTED ERROR", "Runtime aborting", "FATAL EXCEPTION",
          "hacky_uncaught_exception_handler", "atl: app exception cleared")
+DIALOG_UNDER_KEYBOARD = r"keyboard: dialogbottom ime [1-9]\d* .* above false"  # atl-keyboard-dialog: ATL-160
 NAV_LIST_FAIL = (r"nav: list \d", "nav: list canceled")  # an answer nobody gave
 
 SCENARIOS = {
@@ -246,6 +247,20 @@ SCENARIOS = {
             Step("run keyboard resize", tap="keyboard resize", ok=(r"keyboard: resize ime 0 nav [1-9]\d* size",),
                  ui=("resize field",), fail=ATL_FAIL + ("nav: window size",), timeout=120),
             Step("type into the field", type=("resize field", "a"), ok=(r"keyboard: resize ime 0 nav 0 size",), fail=ATL_FAIL),
+            Step("Home", action="Home", ok=("nav: launcher root",)),
+        ], uses_vm=True, needs_clean=True, alive=True),
+        Scenario("atl-keyboard-dialog", [
+            Step("atl", tap="atl"),
+            # a floating dialog at the bottom of the window, wholly under the keyboard when it comes: the window manager
+            # places it above the keyboard, so its field ends above it (the activity's own check of that)
+            # stateVisible: the keyboard comes with the dialog, no tap; the dialog sees an inset first, none once placed above it
+            # a line with the keyboard's inset and the field still under it is the failure (the dialog's first layout
+            # line, ime 0, is the same before and after, and `ok` alone would match it); the lines of the placed
+            # window carry ime 0, the one in between the old frame's inset with the field above (ATL-165)
+            Step("run keyboard dialog", tap="keyboard dialog",
+                 ok=(r"keyboard: dialogbottom ime [1-9]\d* ", r"keyboard: dialogbottom ime 0 .* above true"),
+                 ui=("dialogbottom field",), fail=ATL_FAIL + ("nav: window size", DIALOG_UNDER_KEYBOARD), timeout=120),
+            Step("type into the field", type=("dialogbottom field", "a"), fail=ATL_FAIL + (DIALOG_UNDER_KEYBOARD,)),
             Step("Home", action="Home", ok=("nav: launcher root",)),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-config", [
@@ -370,6 +385,47 @@ SCENARIOS = {
             Step("Salt", tap="Salt", ok=("choice multi 0 true",), fail=ATL_FAIL),
             Step("OK multi", tap="OK", ok=("choice multi ok 0,1", "choice adapter shown"), ui=("Apple", "Pear", "Skip"), fail=ATL_FAIL),
             Step("Pear", tap="Pear", ok=("choice adapter 1", "choice done", "nav: container dismissed exit"), fail=ATL_FAIL),
+            Step("back", back=True),
+        ], uses_vm=True, needs_clean=True, alive=True),
+        Scenario("atl-dialog-alerts", [
+            Step("atl", tap="atl"),
+            Step("run dialog alerts", tap="dialog alerts", ok=("alerts first shown", 'dialog: presented "First"'),
+                 ui=("Show second", "Cover"), fail=ATL_FAIL, timeout=120),
+            # a window with a view over the plain alert: it goes while the window shows (covered), and comes back
+            Step("Cover", tap="Cover", ok=("alerts cover shown",), ui=("Uncover",), gone=("Show second",), fail=ATL_FAIL),
+            Step("Uncover", tap="Uncover", ok=("alerts cover closed", 'dialog: presented "First"'), ui=("Show second", "Cover"),
+                 gone=("Uncover",), fail=ATL_FAIL),
+            # the button kept the first alert open, the second shows over it, as in the registry: UIKit stacks the
+            # controllers in the order they present, and the first is presented again after a tap (the lines name
+            # the alert a presented one is over; the first one's labels stay in the tree under the second's)
+            Step("Show second", tap="Show second", ok=("alerts second shown", 'dialog: presented "Second" above "First"'),
+                 ui=("Close first", "Done"), fail=ATL_FAIL),
+            # a button of the second dismisses the second before its listener runs, so the first changes and goes from a
+            # timer, with the second up (presented again): UIKit's dismiss of a controller that presents another takes
+            # that one down too; the second must be put back over the rebuilt first, and stay when the first goes
+            Step("Later", tap="Later", ok=("alerts first rebuilt",), ui=("the first alert, rebuilt", "Close first", "Done"),
+                 fail=ATL_FAIL),
+            # (the second timer is 6 s after the tap: this step starts about 2.5 s after it, and waits from its own mark)
+            Step("first goes", ok=("alerts first dismissed later",), ui=("Close first", "Done"),
+                 gone=("Show second", "the first alert, rebuilt"), fail=ATL_FAIL, timeout=30),
+            Step("Done", tap="Done", ok=("alerts done", "nav: container dismissed exit"), fail=ATL_FAIL),
+            Step("back", back=True),
+        ], uses_vm=True, needs_clean=True, alive=True),
+        Scenario("atl-dialog-late", [
+            Step("atl", tap="atl"),
+            Step("run dialog late", tap="dialog late", ok=('dialog: presented "Late test"',), ui=("Yes", "No", "Later"), fail=ATL_FAIL, timeout=120),
+            # "No" disables "Yes" and hides "Later" while the alert is presented: UIKit's alert can't change its
+            # actions, a new one replaces it with the new labels
+            Step("No", tap="No", ok=("late no kept", 'dialog: presented "Late test"'), ui=("Yes", "No"), gone=("Later",), fail=ATL_FAIL),
+            Step("Yes", tap="Yes", declined=True),
+            Step("Home", action="Home", ok=("nav: launcher root",)),
+        ], uses_vm=True, needs_clean=True, alive=True),
+        Scenario("atl-dialog-modal", [
+            Step("atl", tap="atl"),
+            # not cancelable: only its buttons close it
+            Step("run dialog modal", tap="dialog modal", ok=('dialog: presented "Modal test"',), ui=("Done", "More"),
+                 fail=ATL_FAIL, timeout=120),
+            Step("Done", tap="Done", ok=("modal done", "nav: container dismissed exit"), fail=ATL_FAIL),
             Step("back", back=True),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-dialog-progress", [

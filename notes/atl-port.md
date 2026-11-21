@@ -1383,7 +1383,8 @@ As built:
 #### M6b2: windows
 
 - Window attributes and screen brightness on every build: `Window.setAttributes`, `setLayout` and
-  `setGravity` through the ui slot (with the dim amount); brightness
+  `setGravity` through the ui slot (with the dim amount) for windows over the activities; an
+  activity's own window ignores them ([ATL-163](bug-tracker.md#atl-163)); brightness
   (`LayoutParams.screenBrightness`) as window state of the shown activity, sent through the host
   slot as keep-screen-on is. The gtk host sets the desktop's through GNOME's power settings over
   D-Bus, else `/sys/class/backlight`; on iOS it's a no-op ([DINE-11](general-todo.md#dine-11)): no
@@ -1398,7 +1399,8 @@ every earlier suite passes against expectations that weren't loosened; on the ph
 passes; both builds build.
 
 **Status: done (2026-11-03).** Built: AOSP 10's `WindowManager.LayoutParams` (constants, fields,
-constructors), `ui_window_set_layout`, `host_screen_brightness` on every host (the gtk host saves
+constructors), `ui_window_set_roots` and `windows_place` (a window's layout reaches the registry through
+`Window.set_layout`), `host_screen_brightness` on every host (the gtk host saves
 and restores the desktop's level, which no run checks: [ATL-129](general-todo.md#atl-129); the
 embedded host's is a no-op, DINE-11); records lay out a shown
 Dialog's content view over the activity (Gravity.apply, a floating window's least width, the
@@ -1519,7 +1521,7 @@ the Status block.
   ([ATL-92](bug-tracker.md#atl-92)); "Dismiss" shows also when the dialog doesn't cancel on an outside touch; an app's own
   `getListView().setItemChecked` after the show doesn't reach the native rows; a panel ignores
   `Window.setLayout`'s width; AppCompat and Material dialogs draw Android's own layouts;
-  `Dialog.create`, `onStart` and `onStop` are missing ([ATL-65](general-todo.md#atl-65)); a
+  `Dialog.create` is missing ([ATL-65](general-todo.md#atl-65)); a
   panel's field pans above the keyboard by the dialog theme's adjustPan (M6b3c), unchecked on
   the phone.
 
@@ -1529,8 +1531,8 @@ the Status block.
   ViewTreeObserver observations, insets clipped by their frame, exclusion rects.
 - `WindowManager.addView` roots, PopupWindow, ListPopupWindow and AutoCompleteTextView's
   drop-down as registry entries on every backend; PopupMenu as a native menu; Toast.
-  PopupWindow puts its background straight on the app's content view today, so a padded popup
-  background replaces the content's padding; AOSP's background wrapper view fixes that.
+  PopupWindow put its background straight on the app's content view, so a padded popup
+  background replaced the content's padding; AOSP's background wrapper view fixed that.
 
 **Done when:** `linux smoke windows windows-gtk views-gtk gd` pass with the state, popup, menu
 and toast steps; the framework `windows` suite passes on headless, gtk and one VM; on the phone
