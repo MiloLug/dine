@@ -105,7 +105,7 @@ cost of the font files in the app and of iOS's own look.
 
 **TextKeyListener for text fields.** A text EditText has no key listener: `getKeyListener()` is
 null, where AOSP returns a TextKeyListener, so app code that reads it (editability, its
-capitalization) finds none.
+capitalization) finds none. The number, phone and datetime classes have theirs.
 
 ### ATL-22
 
@@ -432,6 +432,14 @@ smoke steps would need a new line or agent output for.
   UIKit returns for arrows and function keys was never observed); a held key cancelled by the
   system (Control Center) clicks nothing (`pressesCancelled` sets `FLAG_CANCELED`; headless
   proves the shared half, `key cancel`).
+- Text input (M4c-5, M4c-13): the software keyboard's own typing, a CJK keyboard's marked text,
+  the selection handles and edit menu, a selectable TextView's Copy, the return keys and the pads'
+  Done bar, password dots, the number keyboard, the keyboard after Home and front; toggling
+  `secureTextEntry` or swapping the field while it is first responder (the multi-line change) may
+  drop the keyboard or clear the text; on gtk typing, Enter and the selection, the signal order
+  inside `gtk_editable_insert_text`, focus leave on window deactivation. A keyboard shown with an
+  empty `inputView` (a field with no `tap_keyboard`) was seen on iOS 27 (overhaul A6): no keyboard,
+  the caret stays.
 - A drag through the real touch path (UITouch ids 0 and 1 for two fingers, `delaysContentTouches`,
   the scroll pan against a child, [ATL-142](bug-tracker.md#atl-142)).
 - A press on a selector row on the phone and on gtk (M5b); the redraw `View.invalidateDrawable` asks
@@ -474,16 +482,39 @@ taken and it reached neither the stage's section nor an entry.
 - Where: `dine-atl/src/api-impl/android/view/ATLInput.java` (`performFocusNavigation`).
 - Found 2026-11-20 (overhaul A5b, stage row PreM4-M4a-4).
 
-### ATL-147
+### ATL-155
 
-**`dbg smoke atl-text` reads no field's own text.** Its steps assert Java's log lines only, so a
-uikit that applied no snapshot (`ui_edit_set_state`, M4c) would still pass: after `fill` the report
-with a stale base lands at Java's cursor and logs `text after "filled!"`. The drop rule is graded on
-headless only (`run-text.sh`). Fix: label an iOS text field `hint: text` in the debug agent as the
-gtk agent does, and add `ui=('name: hi',)` and `ui=('name: filled',)` to `atl-text` (the agent's
-text insertion in `native/dev/dbgagent/agent.mm` is frozen for the overhaul: A6's).
-- Where: `tools/py/dine/dbg/smoke.py` (`atl-text`), `native/dev/dbgagent/agent.mm`.
-- Found 2026-11-20 (overhaul A5b, stage row M4c-2).
+**Text and widget behaviour no run fails without.** Claims of the text and widget stages that the
+overhaul's area A6 read and left unproven; none shows a defect. Each names the run that would close
+it.
+- Typeface style: the dump prints no base style, so a `setTypeface(BOLD)` that stopped reaching a
+  backend fails nothing (M3-8): a `textstyle:` line in `records/dump.c` and a bold TextView in
+  `run-controls.sh`. Likewise the alignment (`ui_text_set_alignment`, M4b-6): a dump word and the
+  `centered` TextView.
+- `HorizontalScrollView` has no test (PreM4-M4a-7): a ScrollTest case (clamp, echo) and a drag step.
+- Inflated controls and fields (M4b-7, M4c-4, M5c-6, M5c-11): no test APK inflates a ToggleButton
+  with `textOn`, a CheckBox with `checked`, an EditText with `inputType`, `maxLength`, `digits`,
+  `imeOptions` or `singleLine`, a TextView with `maxLines`, `minLines` or `lines`; `android:height`
+  isn't read; `setMinHeight` and `setHeight` have no `LineLimitTest` case.
+- Keyboard follow (M4c-8, M4c-9, late-1 to late-4): `text dismiss` is sent by no script (then Back
+  must reach the app on the first press); no test moves focus off every EditText and reads the
+  keyboard; a toolkit tap's request following Java's focus (`text tap`, then `text action`);
+  `atlToolkitFocus(false, false)` after a show.
+- `setText` makes a different Editable and the old one stops reporting (M4c-10): `assertNotSame`
+  across two `setText` calls and a watcher the old Editable's edits don't reach.
+- gtk: a non-ASCII run before a styled run, to prove `atl_utf8_offset` in `text.c` against Paint's
+  width (M6b1-11); a TextView with no `setTextSize` against its own Paint (bugs-ab-6, M5c-12);
+  `getLineHeight` against `getFontMetricsInt` (M5c-12); the CSS providers a view frees when it
+  replaces them (M6a-7).
+- `getLayout` rebuilds when the typeface changes (bugs-ab-7): `testLayoutFollowsTypeface`.
+  `getLayout`'s lines and `getLayout` under `setTextAlignment` come from Paint, not the toolkit's
+  label (bugs-ab-3): accepted, as the plan says; no test compares them.
+- Phone: ATL-13's uikit EditText and ATL-37's installer tile were never run (bugs-ab-8). On
+  headless and uikit a compound drawable takes no space, so `getLineCount` counts for a narrower
+  width than the label has ([ATL-86](bug-tracker.md#atl-86), bugs-ab-2).
+- State: open; found 2026-11-21 (overhaul A6, stage rows M3-8, PreM4-M4a-7, M4b-6, M4b-7, M4c-4,
+  M4c-8 to M4c-10, M5c-6, M5c-11, M5c-12, M6a-7, M6b1-11, bugs-ab-2, -3, -6, -7, -8, late-1 to
+  late-4).
 
 ### ATL-148
 
@@ -662,6 +693,11 @@ VM) has no stage. Until it exists the AOSP run-tests never run on arm64, and of 
 rule that a library outside the embedder's symbol lists doesn't load has no test.
 
 ## Done
+
+### ATL-147
+
+**`dbg smoke atl-text` reads no field's own text.** 2026-11-21, overhaul A6: the debug agent lists a
+field's text as its `accessibilityValue`, `atl-text` asserts it, and `text-gtk` does for gtk.
 
 ### ATL-18
 

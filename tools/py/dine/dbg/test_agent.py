@@ -67,6 +67,14 @@ class RequestTest(unittest.TestCase):
         self.assertEqual(self.got, b"ls\n")
         self.assertEqual(agent.labels_of(r), [(True, "art")])
 
+    # a field's text is its value, apart from its label (the hint)
+    def test_values_follow_the_labels(self):
+        reply = {"labels": [[True, "fill"], [True, "name"]], "values": [None, "hi"]}
+        self.assertEqual(agent.values_of(reply), [None, "hi"])
+        self.assertEqual(agent.listing(agent.labels_of(reply), agent.values_of(reply)), "#0 fill\n#1 name = hi")
+        self.assertEqual(agent.listing(agent.labels_of(reply)), "#0 fill\n#1 name")
+        self.assertEqual(agent.values_of({"labels": []}), [])
+
     def test_error_reply(self):
         with self.assertRaisesRegex(CmdError, "screen changed"):
             agent.request('tap 1 "x"', 5, connect=self.serve(b'{"error": "the screen changed"}\n'))

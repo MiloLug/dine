@@ -47,6 +47,7 @@ class IosTarget(AgentUi, LldbCommands, Target):
         self.host = None
         self._syslog: subprocess.Popen | None = None
         self._ui: agent.Labels = []
+        self._values: list[str | None] = []
 
     def setup(self) -> None:
         from ..lldbhost import LldbHost

@@ -193,11 +193,32 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - The records ui backends run a draw pass upstream has no counterpart for (`records/ui.c`): a
   drawing view's `draw()` records into its display list through `View.atlDraw`.
 - EditText's text is Java's Editable (AOSP's TextView setText, ChangeWatcher and listener list, in
-  `EditText.java`); the toolkit field reports each edit to `EditText.atlEdited` and takes Java's
+  `TextView.java`); the toolkit field reports each edit to `EditText.atlEdited` and takes Java's
   snapshots (`ui_edit_*`, `src/shared/android_widget_EditText.c`). The gtk GtkText is
   `src/backends/ui/gtk/edit.c`; the legacy EditText natives are gone: port upstream EditText fixes
   into the Java or that file. InputMethodManager's keyboard state is Java; only a view with its
-  own InputConnection reaches the gtk IM context (`nativeInit`, lazily).
+  own InputConnection reaches the gtk IM context (`nativeInit`, lazily; its natives are gtk-only,
+  [ATL-96](bug-tracker.md#atl-96)).
+- A tap the toolkit takes on a field follows Android's rule, which `ui_edit_config` carries as
+  `tap_focus`, `tap_keyboard` and `editable` (`EditText.atlSendConfig`, sent again when an input
+  changes): no focus without `tap_focus`, no keyboard without `tap_keyboard` (uikit: an empty
+  `inputView` until Java's `showSoftInput`), no toolkit edits without `editable`. `hidden` (the
+  transformation method alone) is apart from `secure` (the input type or the transformation: what
+  the keyboard learns). The focus-in upcall carries the keyboard it gave. uikit marks every
+  first-responder change Java commands with one flag (`java_moves_responder`), which `editor_began`
+  and `editor_ended` read: port upstream focus code behind it.
+- `EditText.atlEdited` sets the caret before `Editable.replace`, as `BaseInputConnection.replaceText`
+  does, and leaves the selection to the Editable's spans and the watchers. A toolkit caret strictly
+  inside the inserted run is put back there after the replace when no watcher or filter moved the
+  selection: that step is ours (AOSP's IME does it with a second `setSelection`). InputMethodManager serves
+  every focused EditText; the keyboard moves only while a request stands.
+- TextView has AOSP's `onTextChanged` and `onSelectionChanged` hooks, the `ellipsize` mode
+  (`ui_text_set_ellipsize`; marquee is none), colors per drawable state and, without text, its hint
+  in the hint color; `setTextSize`, `setTypeface` and `setAllCaps` request a layout. ImageView's
+  `setImageDrawable` requests one for a drawable of another size. The toolkit keeps its own text
+  color until a `textColor` or `setTextColor` sets one (`text_color_set`); when a hint hides on a
+  view with none, the toolkit gets the theme's `textColorPrimary` (`defaultTextColor()`, opaque
+  black when the theme has none), as the slot can't restore its own.
 - Input is AOSP's Java: View/ViewGroup touch dispatch and `onTouchEvent`, focus, FocusFinder, the
   Activity/Dialog key chain. Backends call `atl_upcall_touch`/`atl_upcall_key`
   (`src/shared/input.c`) for a window's root view, which reach `android.view.ATLInput`
@@ -226,7 +247,7 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   which sets `Display.window_*` and `Display.density_dpi`; `DisplayMetrics.getDeviceDensity` and
   `AssetManager_init` read it, `atl_display_apply` writes dp. Port upstream density code there.
 - TextView sizes go through one px method, package-private `setRawTextSize`; `setTextSize(float)`
-  is sp. EditText overrides `setRawTextSize`, not `setTextSize`: port upstream overrides that way.
+  is sp. Port upstream `setTextSize` overrides onto `setRawTextSize`.
 - `setTypeface(tf, style)` calls `native_setTextStyle` (`ui_text_set_style`); gtk's `ATL-font-*`
   CSS classes are in `src/backends/ui/gtk/text.c`. `setAllCaps` upper-cases the shown text in
   TextView's Java, `setTextAlignment` calls `ui_text_set_alignment`, and the gtk button backend sets

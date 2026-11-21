@@ -161,6 +161,19 @@ class Session:
         n = agent.pick(labels, label)
         self.ask(f'tap {n} {_json(labels[n][1])}')
 
+    def field_labels(self, hint: str) -> list[str]:
+        """The labels of the fields with that hint: gtk's agent words a field with text "hint: text"."""
+        return [l for _, l in self.labels() if l == hint or l.startswith(hint + ": ")]
+
+    def type(self, hint: str, text: str, key: tuple[int, int] | None = None) -> None:
+        """The agent's `type`: the text goes into the field with that hint; with a key, its press and
+        release follow in the same main-loop call."""
+        labels = self.labels()
+        n = next((i for i, (_, l) in enumerate(labels) if l == hint or l.startswith(hint + ": ")), None)
+        if n is None:
+            raise self.fail(f"no field {hint!r} on screen; there is: {[l for _, l in labels]}")
+        self.ask(f"type {n} {json.dumps([labels[n][1], text, *(key or ())])}")
+
     def centre(self, label: str) -> tuple[float, float]:
         labels = self.wait_label(label)
         n = agent.pick(labels, label)

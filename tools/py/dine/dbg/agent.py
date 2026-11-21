@@ -80,6 +80,11 @@ def labels_of(reply: dict) -> Labels:
     return [(bool(flag), label) for flag, label in reply.get("labels", [])]
 
 
+def values_of(reply: dict) -> list[str | None]:
+    """What each label's element holds (a text field's text), parallel to labels_of."""
+    return list(reply.get("values", []))
+
+
 def pick(labels: Labels, query: str) -> int:
     """Index of the element `query` names: loose match; an exact label beats looser ones, and an
     accessibility element beats a container with the same label."""
@@ -95,14 +100,16 @@ def pick(labels: Labels, query: str) -> int:
     return next((i for i in pool if labels[i][0]), pool[0])
 
 
-def listing(labels: Labels) -> str:
-    """`#N label` per distinct label; N is what `ui tap #N` sends."""
+def listing(labels: Labels, values: list[str | None] | None = None) -> str:
+    """`#N label` per distinct label, `#N label = value` for an element with a value; N is what
+    `ui tap #N` sends."""
     seen = set()
     lines = []
     for i, (_, label) in enumerate(labels):
         if label not in seen:
             seen.add(label)
-            lines.append(f"#{i} {label}")
+            value = values[i] if values and i < len(values) else None
+            lines.append(f"#{i} {label}" + (f" = {value}" if value else ""))
     return "\n".join(lines) or "(no accessibility elements)"
 
 

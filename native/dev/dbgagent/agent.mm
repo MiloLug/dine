@@ -1,6 +1,7 @@
 // In-app debug agent behind `tools/dine dbg ui …`: UI work without lldb or the host's accessibility
 // inspector. One request line, one JSON reply line per connection:
-//   ls               {"labels": [[isElement, label], …]} of the key window's accessibility walk
+//   ls               {"labels": [[isElement, label], …], "values": [value or null, …]} of the key window's
+//                    accessibility walk; a text field's value is its text (its label is its hint)
 //   tap N "LABEL"    activates element N of the last walk if it still has LABEL (a JSON string): its
 //                    accessibilityActivate, else a control's tap events, else the alert action with
 //                    that title; replies before the activation runs, so a breakpoint it hits can't
@@ -43,6 +44,7 @@ os_log_t Log() {
 // Main thread only.
 NSArray *gItems;   // elements of the last walk
 NSArray *gLabels;  // their [isElement, label] pairs
+NSArray *gValues;  // their accessibilityValue strings, NSNull for none
 NSArray *gBefore;  // gLabels when the last tap/back was asked for
 id gResult;        // nil until that tap/back ran; back without a handler: NSNull
 
@@ -61,7 +63,7 @@ UIWindow *KeyWindow() {
 // reach: hidden subtrees and elements off screen (a pushed-over screen stays in the hierarchy). A
 // getter that throws (SwiftUI's _UIButtonBarButton does) only skips that element.
 void Walk() {
-  NSMutableArray *items = [NSMutableArray array], *labels = [NSMutableArray array];
+  NSMutableArray *items = [NSMutableArray array], *labels = [NSMutableArray array], *values = [NSMutableArray array];
   NSHashTable *seen = [NSHashTable hashTableWithOptions:NSPointerFunctionsObjectPointerPersonality];
   NSMutableArray *stack = [NSMutableArray array];
   UIWindow *window = KeyWindow();
@@ -80,6 +82,8 @@ void Walk() {
           !CGRectIsEmpty(CGRectIntersection([e accessibilityFrame], screen))) {
         [items addObject:e];
         [labels addObject:@[@([e isAccessibilityElement]), label]];
+        id value = [e accessibilityValue];
+        [values addObject:[value isKindOfClass:NSString.class] && [value length] ? value : NSNull.null];
       }
       NSArray *children = [e accessibilityElements];
       if ([children isKindOfClass:NSArray.class]) [stack addObjectsFromArray:children];
@@ -89,6 +93,7 @@ void Walk() {
   }
   gItems = items;
   gLabels = labels;
+  gValues = values;
 }
 
 bool Transitioning(UIViewController *vc) {
@@ -266,7 +271,7 @@ void Appearance(int fd, UIUserInterfaceStyle style) {
 // activation.
 void Settle(int fd, NSInteger ms) {
   CFAbsoluteTime start = CFAbsoluteTimeGetCurrent();
-  __block NSArray *labels = nil, *before = nil;
+  __block NSArray *labels = nil, *before = nil, *values = nil;
   __block id result = nil;
   __block BOOL moving = NO;
   NSArray *prev = nil;
@@ -275,6 +280,7 @@ void Settle(int fd, NSInteger ms) {
     OnMain(^{
       Walk();
       labels = gLabels;
+      values = gValues;
       before = gBefore;
       result = gResult;
       moving = Transitioning(KeyWindow().rootViewController);
@@ -288,7 +294,7 @@ void Settle(int fd, NSInteger ms) {
     prev = labels;
     usleep(100000);
   }
-  Reply(fd, @{@"labels": labels ?: @[], @"settled": @(settled), @"ran": @(result != nil),
+  Reply(fd, @{@"labels": labels ?: @[], @"values": values ?: @[], @"settled": @(settled), @"ran": @(result != nil),
               @"result": result ?: NSNull.null});
 }
 
@@ -301,12 +307,13 @@ void Handle(int fd) {
   NSString *line = ReadLine(fd);
   NSArray<NSString *> *words = [line componentsSeparatedByString:@" "];
   if ([line isEqualToString:@"ls"]) {
-    __block NSArray *labels;
+    __block NSArray *labels, *values;
     OnMain(^{
       Walk();
       labels = gLabels;
+      values = gValues;
     });
-    Reply(fd, @{@"labels": labels});
+    Reply(fd, @{@"labels": labels, @"values": values});
   } else if ([line isEqualToString:@"back"]) {
     Back(fd);
   } else if (words.count == 2 && [words[0] isEqualToString:@"appearance"]) {

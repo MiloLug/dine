@@ -23,6 +23,7 @@ class Step:
     ok: tuple[str, ...] = ()    # regexes that must all show up in the app's syslog
     ui: tuple[str, ...] = ()    # accessibility labels that must all show up, after ok
     gone: tuple[str, ...] = ()  # accessibility labels that must all be off the screen, after ui
+    text: tuple[str, str] | None = None  # (label, text): that field shows this text, after ui and gone
     fail: tuple[str, ...] = ()  # any of these ends the step as failed
     network: bool = False
     timeout: float = 60
@@ -39,7 +40,7 @@ class Scenario:
 
 
 # a view's state (checked, scroll 0,20, ...) follows its text, and is no part of the shape
-_VIEWTREE_LINE = re.compile(r'viewtree: ( *)(\S+) (-?\d+),(-?\d+) (\d+)x(\d+)( ".*")?(?: (?:checked|pressed|invisible|gone|disabled|scroll -?\d+,-?\d+))*$')
+_VIEWTREE_LINE = re.compile(r'viewtree: ( *)(\S+) (-?\d+),(-?\d+) (\d+)x(\d+)( ".*")?(?: (?:checked|pressed|invisible|gone|disabled|scroll -?\d+,-?\d+|ellipsize (?:start|middle|end)))*$')
 
 
 @dataclass
@@ -309,11 +310,23 @@ SCENARIOS = {
         Scenario("atl-text", [
             Step("atl", tap="atl"),
             Step("run text", tap="text", ok=("text shown",), ui=("name", "fill"), fail=ATL_FAIL, timeout=120),
-            # the field's filter drops the digit: Java's watcher sees the filtered text
-            Step("type into name", type=("name", "hi1"), ok=('text after "hi"',), fail=ATL_FAIL),
+            # the field's filter drops the digit: Java's watcher sees the filtered text, and the field shows it
+            Step("type into name", type=("name", "hi1"), ok=('text after "hi"',), text=("name", "hi"), fail=ATL_FAIL),
             Step("show", tap="show", ok=('text show "hi" 2,2',), fail=ATL_FAIL),
-            Step("fill", tap="fill", ok=('text after "filled"',), fail=ATL_FAIL),
-            Step("type after fill", type=("name", "!"), ok=('text after "filled!"',), fail=ATL_FAIL),
+            Step("fill", tap="fill", ok=('text after "filled"',), text=("name", "filled"), fail=ATL_FAIL),
+            Step("type after fill", type=("name", "!"), ok=('text after "filled!"',), text=("name", "filled!"), fail=ATL_FAIL),
+            # Java moves the focus to notes and back to name at once, the keyboard stays on name: it is still
+            # Java's request that hide answers
+            Step("swap", tap="swap"),
+            Step("hide", tap="hide", ok=("text hide true",), fail=ATL_FAIL + ("text hide false",)),
+            # a field Android's tap rule gives no keyboard (showSoftInputOnFocus false, no input type) takes
+            # the focus and no keyboard: nothing to hide. Its edits are refused only by the text field's
+            # delegate, which the agent's insertText: bypasses: no step types into a field with no input type
+            Step("type into calc", type=("calc", "7"), ok=("text focus calc true", 'text calc "7"'), text=("calc", "7"),
+                 fail=ATL_FAIL),
+            Step("calc has no keyboard", tap="hide", ok=("text hide false",), fail=ATL_FAIL + ("text hide true",)),
+            # the native view of a text with a colored first word is swapped for a selectable one
+            Step("select", tap="select", ok=("text selectable",), ui=("Error: disk full",), fail=ATL_FAIL),
             Step("Home", action="Home", ok=("nav: launcher root",)),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-dialog-keep", [
@@ -445,6 +458,7 @@ def listing(app: str) -> str:
             lines.append(f"  {what}" + (f"; wait for {', '.join(st.ok)}" if st.ok else "")
                          + (f"; shows {', '.join(map(repr, st.ui))}" if st.ui else "")
                          + (f"; no longer shows {', '.join(map(repr, st.gone))}" if st.gone else "")
+                         + (f"; {st.text[0]!r} shows the text {st.text[1]!r}" if st.text else "")
                          + (" [--network]" if st.network else ""))
     return "\n".join(lines)
 
@@ -453,6 +467,21 @@ def table(app: str) -> list[Scenario]:
     if app not in SCENARIOS or app not in STARTUP:
         raise DineError(f"no smoke checks for {app} in {__file__}")
     return SCENARIOS[app]
+
+
+def field_text_problem(label: str, want: str) -> str | None:
+    """What is wrong with the text the field `label` shows: the agent's listing words it `#N label = text`
+    (nothing after the label while the field is empty). It retries for 5 s: a report may be on its way."""
+    deadline = time.monotonic() + 5
+    pattern = re.compile(rf"#\d+ {re.escape(label)}(?: = (.*))?")
+    while True:
+        found = [m for line in client.call("ui_ls", {})["text"].splitlines() if (m := pattern.fullmatch(line))]
+        shown = found[0][1] or "" if found else None
+        if shown == want:
+            return None
+        if time.monotonic() > deadline:
+            return f"no field {label!r} on screen" if shown is None else f"{label!r} shows {shown!r}, want {want!r}"
+        time.sleep(0.3)
 
 
 def fail_hit(text: str, fail: tuple[str, ...]) -> str | None:
@@ -531,6 +560,9 @@ def run(app: str, names: list[str], network: bool, relaunch: Callable[[], int], 
                         out(f"{sc.name}: {st.title}: FAILED: {label!r} is still on screen")
                         return 1
                     time.sleep(0.5)
+            if st.text and (problem := field_text_problem(*st.text)):
+                out(f"{sc.name}: {st.title}: FAILED: {problem}")
+                return 1
             # the waits end at their first match: a forbidden line after it, or in a step with no
             # `ok`, shows only here
             if hit := logged(st.fail, step_start):

@@ -53,6 +53,7 @@ class GtkTarget(AgentUi, LldbCommands, Target):
         self._reader: threading.Thread | None = None
         self.host = None
         self._ui: agent.Labels = []
+        self._values: list[str | None] = []
         self.socket = store.dir / "agent.sock"
         # kept across launches, as an installed app keeps its data
         self.data = store.dir / "data"

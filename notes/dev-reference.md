@@ -47,7 +47,10 @@ touches. Commands and setup live in `tools/dine <group> --help`, `README.md` and
   newline), `text delete <before> <after>`, `text select <start> <end>` (UTF-16 code units),
   `text tap <x> <y>` (the field there takes the keyboard as a toolkit's own tap gives it),
   `text action` (the return key), `text dismiss`, and `text hold` / `text release` (reports wait,
-  so Java's snapshots meet a newer report). The field prints `edit:` and `keyboard:` lines.
+  so Java's snapshots meet a newer report). The field prints `edit:` and `keyboard:` lines; the
+  `keyboard:` line carries the field's `ui_edit_config` (`kind=`, `return=`, `autocap=`, `secure=`,
+  `hidden=`, `multiline=`, `autocorrect=`, `tap_focus=`, `tap_keyboard=`, `editable=`), and a field
+  with no `editable` answers an edit with `edit: refused`.
 - An authored test APK by hand:
   `tests/harness/apk.py dine-atl/tests/headless/looper out/tests/apks/looper.apk`.
 
@@ -107,7 +110,8 @@ actions run on the GTK main thread, which is the Android main thread on gtk.
   events reach after `on_pointer_event` read them; SEQ is a made-up handle for the pointer (0: the
   mouse's NULL handle; two handles are two fingers). `key down|up KEYVAL KEYCODE [STATE]` feeds a key
   through the capture and then the bubble phase of the key controllers (`input_key`). Both run before
-  the reply and reply whether Java took the event. `linux smoke input-gtk` drives them
+  the reply and reply whether Java took the event. `type N ["LABEL", "TEXT", KEYVAL, KEYCODE]` also
+  presses and releases that key in the same main-loop call as the text. `linux smoke input-gtk` and `text-gtk` drive them
   (`tools/py/dine/gtkinput.py`); the tools' own `dbg ui` has no verb for them. GTK 4 has no public
   `GdkEvent` constructor, so the events can't be real ones.
 - The same hook calls `prctl(PR_SET_PTRACER, PR_SET_PTRACER_ANY)`: with Yama's `ptrace_scope` 1,

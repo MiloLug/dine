@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from . import display, gtkinput, paths
+from . import display, gtkinput, gtktext, paths
 from .paths import DineError
 
 GTK_BUILD = paths.ATL_GTK_BUILD
@@ -248,6 +248,11 @@ def _input_gtk() -> str | None:
             or gtkinput.run(_gtk_env()))
 
 
+def _text_gtk() -> str | None:
+    _need_gtk()
+    return _widgets_apk(GTK_BUILD) or gtktext.run(_gtk_env())
+
+
 def _draw() -> str | None:
     _need_headless()
     return _widgets_apk() or _script("run-draw.sh", HEADLESS_TESTS / "run-draw.sh", "--headless", HEADLESS_BUILD,
@@ -284,6 +289,7 @@ CHECKS = [
     Check("windows", "headless: windows.apk's window state from an activity and a dialog in order with the task's moves, none from a stopped activity; a dialog's insets at 160 and 480 dpi; the order and frames of WindowManager windows, a popup, an AutoCompleteTextView's drop-down, a menu, and toasts with their durations", _windows),
     Check("windows-gtk", "gtk: a popup below its anchor, a native menu and a toast", _windows_gtk),
     Check("input-gtk", "gtk: pointer events fed through the debug agent: in the dialog APK's OutsideActivity a touch outside its dialog closes it from its own UP, the next gesture reaches the activity behind, and two pointers get ids 0 and 1; in the nav APK an activity that finishes on its DOWN gets a CANCEL and the activity below gets nothing of that gesture; in widgets.apk keys fed through the key controllers move focus and click, and a release with no press goes nowhere", _input_gtk),
+    Check("text-gtk", "gtk: widgets.apk's TextActivity: text typed through the debug agent into a GtkText goes through Java's filter and the field shows Java's text, also after Java's setText and typing on; a Return typed with a character in one main-loop call reaches Java's key listener after the character", _text_gtk),
     Check("keyboard", "headless: windows.apk's fields under an IME inset: adjustPan moves the window up only as far as the field needs, adjustResize lays it out above the keyboard (keyboard-pan.viewtree, keyboard-resize.viewtree), both also against what their layout alone would give and at 480 dpi; no mode follows the scroll container", _keyboard),
     Check("config", "headless: windows.apk under night changes from cli -c: an activity whose manifest covers uiMode, its view and the Application hear them and resolve night resources; one that doesn't keeps its configuration", _config),
 ]

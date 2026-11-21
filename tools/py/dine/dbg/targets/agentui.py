@@ -11,7 +11,7 @@ from .base import CmdError
 class AgentUi:
     """Mixin for a Target. It provides `_request(line, timeout)` (raises agent.AgentDown when nothing
     listens), `_stopped_at()` (where lldb holds the app, or None), `_no_agent()` and `_went_away()`
-    (what to say when the agent is missing before or after an action), and sets `_ui = []`."""
+    (what to say when the agent is missing before or after an action), and sets `_ui = []` and `_values = []`."""
 
     def _agent(self, line: str, timeout: float = 10) -> dict:
         if where := self._stopped_at():
@@ -22,7 +22,9 @@ class AgentUi:
             raise CmdError(self._no_agent()) from None
 
     def _ls(self) -> agent.Labels:
-        self._ui = agent.labels_of(self._agent("ls"))
+        r = self._agent("ls")
+        self._ui = agent.labels_of(r)
+        self._values = agent.values_of(r)
         return self._ui
 
     def _settle(self) -> tuple[str, dict]:
@@ -35,6 +37,7 @@ class AgentUi:
         if "stopped" in r:
             return f"; stopped at {r['stopped']}", r
         self._ui = agent.labels_of(r)
+        self._values = agent.values_of(r)
         if not r["ran"]:
             return "; the app's main thread hasn't run it yet after 3 s (busy?)", r
         return "\nscreen: " + agent.screen(self._ui) + ("" if r["settled"] else " (still changing after 3 s)"), r
@@ -48,7 +51,7 @@ class AgentUi:
         return agent.pick(self._ls(), arg)
 
     def do_ui_ls(self):
-        return agent.listing(self._ls())
+        return agent.listing(self._ls(), self._values)
 
     def ui_find(self, label: str, timeout: float) -> str | None:
         """None also while the agent can't answer: the wait's own stop and exit checks report those."""

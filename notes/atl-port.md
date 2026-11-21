@@ -452,7 +452,7 @@ the Linux golden: `1170x2391` roots, TextViews `315x51` and `375x51` at y 0 and 
   `atl_vm_init` (a `ui_window` per task with several apps: multi-app MA6); `Display.density_dpi` feeds `DisplayMetrics.DENSITY_DEVICE` and
   `AssetManager_init`; `atl_display_apply` writes dp. The cli host takes `-d DPI`;
   `run-demo.sh --density 480` and `linux smoke demo-480` cover sp, dp and px on Linux.
-- TextView: one px method `setRawTextSize` (package-private, a no-op in EditText);
+- TextView: one px method `setRawTextSize` (package-private);
   `setTextSize(float)` is sp, `setTextSize(unit, size)` converts. `setTypeface` style goes through
   `ui_text_set_style` (gtk: the old CSS classes; uikit: bold and italic system font).
 - Dine: `Navigator.run` creates the surface (`AppSurfaceView`) and reads the window from the key
@@ -660,8 +660,8 @@ pass. Not checked by hand: the controls' look on gtk, and the hover styling `can
   checked state, toggle in `performClick`, listener order, the widget listener RadioGroup uses and
   `state_checked` are AOSP 10's; RadioButton never unchecks itself; ToggleButton shows its on or off
   text from its constructor; ImageButton is an ImageView node, focusable as in AOSP. `setAllCaps`
-  upper-cases the shown text in Java (markup's tags and entities kept) and `getText` keeps the
-  app's; `getTextAlignment` resolves INHERIT, and `ui_text_set_alignment` gets start, center or
+  upper-cases the shown text in Java (a Spanned's runs stay when the upper case keeps the
+  length) and `getText` keeps the app's; `getTextAlignment` resolves INHERIT, and `ui_text_set_alignment` gets start, center or
   end (GRAVITY is start: ATL ignores TextView gravity, [ATL-79](bug-tracker.md#atl-79)).
   `setCompoundDrawables` goes through `ui_text_set_drawables` (gtk draws them; the records backends
   keep nothing before M5b).
@@ -692,7 +692,8 @@ pass. Not checked by hand: the controls' look on gtk, and the hover styling `can
 - Open: a Switch's thumb can't be dragged on iOS (a tap toggles it); a view with INHERIT keeps its
   native alignment when its parent's changes later; Button text gravity, and with it
   `setTextAlignment` on iOS buttons (a push button's text stays centered: the slot's start can't
-  tell an explicit start from none); button drawables and tints are kept, not drawn (M5b).
+  tell an explicit start from none); button drawables and tints are not drawn on any build, and
+  `android:button`, `android:buttonTint` and `setButtonTintList` do nothing ([ATL-86](bug-tracker.md#atl-86)).
 
 ### M4c: text input
 
@@ -717,24 +718,31 @@ keyboard, the keyboard after Home and front. As built:
   span moves to it), and the old one stops reporting. The toolkit's field is the IME's side: it
   applies the user's edit at once and reports `{prev, prev selection, text, selection, seq}`
   (`atl_upcall_edit_report`, positions in UTF-16 code units). `EditText.atlEdited` finds the change
-  around prev's selection and replaces Java's own selection widened by the same amounts through
-  `Editable.replace` (filters, watchers), so a report on a base Java moved on from lands at Java's
-  cursor, as an IME's `commitText` does. A state that differs from the report's goes back as a
+  around prev's selection, puts the caret in (the toolkit's, mapped), and replaces Java's own
+  selection widened by the same amounts through `Editable.replace` (filters, watchers), as
+  `BaseInputConnection.replaceText` does: the Editable's spans and the watchers decide where the
+  caret ends, and a report on a base Java moved on from lands at Java's cursor, as an IME's
+  `commitText` does. A caret the toolkit put strictly inside the inserted run (marked text whose
+  caret moved) is set back there afterwards when no watcher or filter moved the selection, as an
+  IME's second `setSelection` does. A state that differs from the report's goes back as a
   snapshot (`ui_edit_set_state`, acking the seq); Java's own changes send one per message. A field
   takes a snapshot only when it acks the field's last report and no marked text is open; otherwise
   its newer report makes Java answer. Marked text stays in the field until committed, and its end
   always reports.
 - Slot: `ui_edit_new` (a text node: color, size, style and alignment apply, text and markup
-  don't), `ui_edit_set_config` (keyboard kind, return key, autocap, secure, multi-line,
-  autocorrect, hint, resolved in Java from `inputType` and `imeOptions`), `ui_edit_set_state`,
+  don't), `ui_edit_set_config` (keyboard kind, return key, autocap, secure (what the keyboard
+  learns), hidden (the text shows as dots), multi-line, autocorrect, what a tap the toolkit takes
+  does (`tap_focus`, `tap_keyboard`, `editable`), hint, resolved in Java from `inputType`, the
+  transformation method, the focus flags and `imeOptions`), `ui_edit_set_state`,
   `ui_edit_set_keyboard`, `ui_text_set_selectable`; upcalls `atl_upcall_edit_report`, `_action`
   and `_focus`.
-- Keyboard and focus: InputMethodManager holds the EditText the keyboard serves, the app's show
-  request (AOSP's `mInputShown`: `hideSoftInputFromWindow` answers it, on gtk too) and whether the
+- Keyboard and focus: InputMethodManager holds the EditText the keyboard serves (every focused
+  one), the app's show request (AOSP's `mInputShown`: `hideSoftInputFromWindow` answers it, on gtk too) and whether the
   toolkit's keyboard shows. The keyboard follows Java's focus between EditTexts and hides when
   focus leaves them, on Done, and on Back (its down and up both go to a shown keyboard; gtk shows
   none, so Back reaches the app). A tap the toolkit takes itself gives
-  the field the keyboard and Java's focus (`atl_upcall_edit_focus`); on headless a tap goes through
+  the field Java's focus and, with `tap_keyboard`, the keyboard (`atl_upcall_edit_focus` says
+  which); a field Java won't focus gives the toolkit's focus back; on headless a tap goes through
   Java (EditText takes `clickable` from its style by hand). gtk keeps GTK's focus with Java's
   (`ui_view_set_focused`), and `ui_edit_set_keyboard` does nothing there. Configuration says which:
   `ui_display.keys` gives gtk a hard QWERTY keyboard (QWERTY, keyboardHidden NO, hardKeyboardHidden
@@ -748,11 +756,14 @@ keyboard, the keyboard after Home and front. As built:
   Enter key with `IME_FLAG_NO_ENTER_ACTION`; gtk's Enter is a hardware key.
   `Context.INPUT_METHOD_SERVICE` is `"input_method"`.
 - headless: the field with the keyboard takes the `-c` text lines (`notes/dev-reference.md`) and
-  prints `edit:` and `keyboard:` lines; `text hold` keeps reports back, so the drop rule runs. It
+  prints `edit:` and `keyboard:` lines (the config: kind, return key, autocap, secure, hidden,
+  multiline, autocorrect, the three tap flags); `text hold` keeps reports back, so the drop rule runs. It
   measures the text or the hint, a multi-line field by its lines.
-- gtk: a GtkText, single-line. It reports from an idle (typing over a selection is one report) and
-  upcalls focus enter and leave; the config sets the placeholder, visibility, input purpose and
-  hints. An EditText takes a hardware Enter before its GtkText, as Android takes a physical
+- gtk: a GtkText, single-line. It reports from an idle (typing over a selection is one report;
+  a key or touch Java gets first flushes the focused field's report) and upcalls focus enter and
+  leave; the config sets the placeholder, visibility (`hidden`), input purpose and hints (`secure`),
+  editability and focus on click; Java's `requestFocus` grabs focus without selecting the text; an
+  EditText's text alignment reaches `gtk_editable_set_alignment`. An EditText takes a hardware Enter before its GtkText, as Android takes a physical
   keyboard's (an open preedit's Enter stays the IM's): a single-line field moves focus down, a
   listener gets `IME_NULL` with the key, and a multi-line one takes it as a confirm key, with no
   newline. A selectable TextView's GtkLabel is selectable and takes its own presses; its Ctrl+C
@@ -764,14 +775,23 @@ keyboard, the keyboard after Home and front. As built:
   doesn't edit) for a selectable TextView. A report waiting for the Android thread takes the next
   change too. A field Java gave the keyboard before its root was in a window gets the first
   responder when the root shows; a field that resigns (another activity shows, Dine leaves the
-  front) tells Java the keyboard is gone. Return on a single-line field is the editor action; the
+  front) tells Java the keyboard is gone. A field with no `tap_focus` takes no tap
+  (`textFieldShouldBeginEditing:`), one with no `tap_keyboard` has an empty `inputView` (focus and
+  caret, no system keyboard; Java's `showSoftInput` clears it until the field ends editing), one
+  with no `editable` refuses the delegate's changes; every first-responder change Java commands
+  (`records_edit_keyboard`, `root_take_responder`, `replace_native`, a freed field) is marked by one
+  flag, so the field it resigns sends no focus-out. Return on a single-line field is the editor action; the
   number and phone pads, which have no return key, get a round glass button above the pad's corner
   (M6b3c). The hint is the
   accessibility label. A scratch UITextField or UITextView measures, an empty one as a space.
-- Debug agent: `ui type <label> <text>` (`insertText:`; no marked text).
-- Tests: `run-text.sh` (`linux smoke text`, the widgets APK's `TextActivity`), the framework suite
-  `text`, smoke `atl-text`.
-- Open: `atl-text` reads no field's own text ([ATL-147](general-todo.md#atl-147)); a keypad Enter
+- Debug agent: `ui type <label> <text>` (`insertText:`; no marked text, and no delegate call: it
+  doesn't prove an edit refused); `ui ls` lists a field's text as `#N hint = text` (the elements'
+  `accessibilityValue`).
+- Tests: `run-text.sh` (`linux smoke text`, the widgets APK's `TextActivity`: it reads each field's
+  config from the `keyboard:` line), `linux smoke text-gtk` (typing through the gtk agent, a key
+  behind a character), the framework suite `text`, smoke `atl-text` (the fields' text, Java moving
+  the keyboard, a field with no keyboard).
+- Open: a keypad Enter
   in an EditText has no key listener to type it ([ATL-96](bug-tracker.md#atl-96)); Java's click and touch listeners on a field or a selectable
   TextView where the toolkit takes its touches (gtk; on iOS unchecked); a hardware keyboard types
   only into the field with the keyboard (no KeyListener); gtk multi-line; ClipboardManager (M7); `onCreateInputConnection` on EditText,
@@ -1002,15 +1022,15 @@ shows its last lines with the cursor. As built:
 - Layout: one shared implementation (`src/shared/android_text_Layout.c`), a line array: paragraphs
   at `\n`, the backend breaks each, every line one `FontMetricsInt` height, horizontal positions
   from the carets, `draw` one text op per line. Ellipsize (start, middle, end) keeps each paragraph
-  on one line, as Pango's does.
+  on one line, as Pango's does, and cuts on a cluster's edge; the line widths and lefts are floats.
 - Paint: `measureText`, `getTextWidths`, `getTextBounds` (rounded outward), `getFontMetrics`,
   `getFontMetricsInt` (Skia's rounding), `ascent`, `descent`, `breakText`. Typeface keeps a family
   and a style, Paint keeps its Typeface. TextView's TextPaint starts at the toolkit's size
   (`ui_text_get_size`) and follows `setTextSize` and `setTypeface`; `getTextSize` and
   `getLineHeight` read it.
-- Key listeners: AOSP's `NumberKeyListener` (its filter), `DigitsKeyListener` and
-  `DialerKeyListener` (`dine-atl/doc/AOSP.md`). EditText makes one from a number or phone input
-  type or from `digits`, and puts it after the app's filters on the Editable only: a typed letter
+- Key listeners: AOSP's `NumberKeyListener` (its filter), `DigitsKeyListener`, `DialerKeyListener`
+  and the date and time listeners (`dine-atl/doc/AOSP.md`). EditText makes one from a number, phone
+  or datetime input type or from `digits`, and puts it after the app's filters on the Editable only: a typed letter
   is dropped and `setText` keeps it, as on Android. In AOSP's order the pin field's `1a2345` passes
   LengthFilter(4) as `1a23`, then the digits filter: `123`. Text fields get no key listener (no
   TextKeyListener).
@@ -1340,8 +1360,17 @@ As built:
   the cached ones).
 - Styled text: AOSP 10's `Html` with its TagSoup parser; TextView sends its CharacterStyles as runs
   (`ui_text_set_styled`), drawn as Pango attributes on gtk and attributed strings on uikit;
-  headless prints `textruns:`. allCaps keeps the runs when the length stays. Links take no taps
-  ([ATL-49](general-todo.md#atl-49)); string resources stay plain ([ATL-50](general-todo.md#atl-50)).
+  headless prints `textruns:` and, for a node with a toolkit color, `textcolor: #aarrggbb`.
+  allCaps keeps the runs when the length stays. Links take no taps
+  ([ATL-49](general-todo.md#atl-49)); string resources stay plain ([ATL-50](general-todo.md#atl-50));
+  paragraph spans (bullets, quotes, alignment) and images show as plain text
+  ([ATL-151](bug-tracker.md#atl-151)); spans in an EditText show on no build
+  ([ATL-156](bug-tracker.md#atl-156)); ScaleXSpan isn't drawn on gtk
+  ([ATL-152](bug-tracker.md#atl-152)).
+- Ellipsize: `setEllipsize` and the attribute reach the toolkit (`ui_text_set_ellipsize`; uikit's line
+  break mode with the line count, headless's dump says `ellipsize end`, gtk ellipsizes a label of
+  one line only: [ATL-153](bug-tracker.md#atl-153)). A TextView with no text shows its hint in the
+  hint color; its color follows the drawable state.
 - Tests: framework `ActionBarTest`, `PermissionTest`, `SystemResTest`, `LifecycleCallbacksTest`,
   `ThemedColorTest`, `BitmapTest`, `VectorDrawableTest`, `BitmapShaderTest`, `PictureTest`,
   `XmlDrawableTest`, `ColorFilterTest`, `RegionTest`, `ListScrollTest`, `HtmlTest`, `SpanTest`;

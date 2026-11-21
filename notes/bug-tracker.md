@@ -751,7 +751,11 @@ GtkSettings:gtk-interface-color-scheme instead`.
 **Compound drawables and a Button's drawables and tints aren't drawn on headless and iOS.**
 `setCompoundDrawables` reaches `ui_text_set_drawables`; gtk draws them, and the records backends
 (headless, uikit) have an empty body. M4b in `notes/atl-port.md` says they are drawn from M5b, whose
-section doesn't list them.
+section doesn't list them. On headless and uikit a compound drawable takes no space, so
+`getLineCount` counts for a narrower width than the label has (it subtracts the drawables' bounds).
+A CompoundButton's `android:button` and `android:buttonTint` are ignored on every build (the
+constructor reads `checked` alone), `setButtonTintList` is an empty body and `getButtonTintList`
+and `getButtonTintMode` return null: gtk draws no button drawable either.
 - State: open; found 2026-11-09 (sweep of the notes for ignored features); the empty body is
   code-checked.
 - Where: `dine-atl/src/backends/ui/records/ui.c` `ui_text_set_drawables`,
@@ -848,7 +852,11 @@ button.**
 
 **EditText leftovers.**
 - `onCreateInputConnection` on EditText and BaseInputConnection (a stub whose own `Editable` class
-  shadows `android.text.Editable`) aren't implemented.
+  shadows `android.text.Editable`) aren't implemented. A view that returns an InputConnection from
+  its own `onCreateInputConnection` still throws `UnsatisfiedLinkError` at
+  `InputMethodManager.showSoftInput` on headless and iOS: `nativeInit` and `nativeShowSoftInput` are
+  gtk-only natives (`legacy_srcs`, moved behind a slot by M7). A view with none (the default)
+  gets false.
 - A hardware keyboard types only into the field that holds the keyboard (no KeyListener, which is
   [ATL-21](general-todo.md#atl-21) in part). A keypad Enter in a field reaches Java as
   `NUMPAD_ENTER`, and `View.onKeyDown` consumes it as a confirm key (the EditText is
@@ -1012,6 +1020,24 @@ called from an unnamed frame, and no more.
   - 263452a9 as committed: 0 (and 0 of 16 earlier gtk runs);
   - 263452a9 as committed, with 16 busy loops: 0;
   - `graphics` alone, with the bugs step's changes, 6 runs: 0.
+  Counts on 2026-11-21, dine-atl at overhaul area A6, which adds 24 tests to `text` (the trigger
+  above) and an `ImageView.setImageDrawable` that requests a layout:
+  - full gtk runs (`tools/dine test framework --gtk`, 7 suites): 4 crashes in about 9 runs, each
+    in `testColorAfterImageLaysOutAgain` with this signature (SIGSEGV in `pthread_mutex_lock` on
+    `blocking-1`; run dirs `out/tests/framework/runs/20261121-133529-516919` and
+    `20261121-135409-544789`; each rerun was green);
+  - `-f '^graphics$'`, 6 runs: 0 (`out/handoff/overhaul/a6/flake/graphics-*.log`);
+  - `-f 'text|graphics'`, 6 runs: 1 crash, in run 5, the same signature
+    (`out/handoff/overhaul/a6/flake/text-graphics-5.log`, run dir
+    `out/tests/framework/runs/20261121-140733-569545`).
+  - three more full gtk runs after the A6 correction rounds: 2 crashes with the same signature
+    (run dirs `20261121-142451-582338` and `20261121-142525-583517`), the third green.
+  - the ImageView relayout, measured on 2026-11-21 (A6 correction round 3, `tools/dine test framework
+    --gtk`, 7 suites, no `--update-expectations`, `out/handoff/overhaul/a6/c3-gtk-*-summary.txt`): the
+    final tree 6 runs, 0 crashes; the same tree with the `requestLayout()` and `invalidate()` of
+    `ImageView.setImageDrawable` taken out 6 runs, 0 crashes (each of those runs had the one
+    regression the missing relayout causes, `WidgetsTest#testImageViewResizesToItsImage`). Neither
+    set shows the crash, so the 12 runs say nothing for or against the relayout.
 - State: open, cause unchecked. No core dump: ART's handler ends the process.
 - Where: `dine-atl/src/backends/gfx/gsk/bitmap.c` (`gdk_pixbuf_loader`), `/usr/lib/libglycin-2.so.0`.
 
@@ -1233,6 +1259,89 @@ and lets it keep the gesture (`WindowState.cantReceiveTouchInput` is false while
 - State: open; found 2026-11-21 (overhaul A5b review); no stage owns translucent activities.
 - Where: `dine-atl/src/backends/ui/records/ui.c` and `src/backends/ui/gtk/window.c`
   (`ui_window_show_activity`), `src/shared/activity.c` (`activity_focus`).
+
+### ATL-151
+
+**Html's lists, quotes, alignment and images show as plain text in a TextView.**
+`TextView.sendText` walks CharacterStyle spans only and `struct ui_text_run` has character fields
+only, so `BulletSpan`, `QuoteSpan`, `AlignmentSpan` and `ImageSpan` (which `Html.fromHtml` builds)
+reach no backend: `<ul><li>` shows two plain lines with no bullet or indent, `<blockquote>` has no
+bar, `<img>` leaves U+FFFC in the label.
+- State: open; found 2026-11-21 (overhaul A6, finding A6-21, stage row M6b1-3).
+- Where: `dine-atl/src/api-impl/android/widget/TextView.java` (`sendText`), `src/slots/ui.h`
+  (`struct ui_text_run`), `doc/AOSP.md` (the style spans "without drawing").
+- Fix: carry leading margin, bullet, quote and alignment per paragraph through
+  `ui_text_set_styled` and draw them in each backend.
+
+### ATL-152
+
+**ScaleXSpan isn't drawn on gtk, and no other state of the text run tells.** `apply_attributes` has
+no branch for `UI_RUN_SCALE_X`; uikit draws it (`NSExpansionAttributeName`), headless dumps it.
+- State: open; found 2026-11-21 (overhaul A6, finding A6-11, stage row M6b1-13).
+- Where: `dine-atl/src/backends/ui/gtk/text.c` (`apply_attributes`).
+
+### ATL-153
+
+**gtk ellipsizes a label of one line only.** Pango ellipsizes a paragraph to one line when an
+ellipsis is set and no height is, so `ui_text_set_ellipsize` reaches the GtkLabel only while
+`maxLines` is 1 (`apply_ellipsize`); with more lines, `TextCapLayout` cuts the label and the last
+line shows no ellipsis. uikit and headless take the mode with any line count. The label itself
+(`gtk_label_set_ellipsize` inside `TextCapLayout`) was not looked at on screen: no run reads a
+gtk label's ellipsis.
+- State: open; found 2026-11-21 (overhaul A6, finding A6-20).
+- Where: `dine-atl/src/backends/ui/gtk/text.c` (`apply_ellipsize`, `TextCapLayout`).
+- Fix: Pango's height set to the lines (negative: per paragraph) cannot count lines across
+  paragraphs; `TextCapLayout` would have to cut and ellipsize the last line itself.
+
+### ATL-154
+
+**An EditText whose IME action is unspecified gets its return key when its config is sent, not
+when the keyboard shows.** `EditText.imeAction()` chooses Next or Done from `focusSearch(FOCUS_DOWN)`
+in `atlSendConfig`, which runs at construction and on input changes, when a field in a layout still
+inflating has no next sibling. A keyboard Java shows (`showSoftInput`) sends the config again; a tap
+the toolkit takes (uikit: every tap) shows the keyboard with the config last sent, so such a field
+can show Done where Android shows Next. Seen on headless: a field first in its column printed
+`return=done` at its first tap while a field followed it.
+- State: open; found 2026-11-21 (overhaul A6, while writing the config line's checks); not run on
+  the phone.
+- Where: `dine-atl/src/api-impl/android/widget/EditText.java` (`atlSendConfig`, `imeAction`),
+  `InputMethodManager.atlToolkitFocus`.
+- Fix: send the config in `atlToolkitFocus` when the toolkit's focus-in arrives (uikit has shown the
+  keyboard by then: the return key changes with `reloadInputViews`).
+
+### ATL-156
+
+**Spans in an EditText show on no build.** records return before storing runs for an edit node, gtk
+returns when the handle has no label, and `TextView.sendText` sends an EditText's text through
+`EditText.sync` without runs, so a `ForegroundColorSpan` or `StyleSpan` in the Editable is Java's
+alone.
+- State: open; found 2026-11-21 (overhaul A6, stage row M6b1-8); AOSP draws them.
+- Where: `dine-atl/src/backends/ui/records/ui.c` (`ui_text_set_styled`), `src/backends/ui/gtk/text.c`,
+  `src/api-impl/android/widget/EditText.java` (`sendText`, `sync`).
+
+### ATL-157
+
+**A changed Java constant reaches the C files that read it only on the second build.** The JNI
+headers (`dine-atl/src/api-impl-jni/generated_headers/*.h`) are tracked files that `hax.jar`'s javac
+(`-h`) rewrites during the build. Cause, inferred and not traced in ninja: ninja marks the C files
+dirty before that step runs, so a C file that includes a header the same build rewrites is compiled
+against the old one, or not at all. The C targets depend on `hax.jar` order-only
+(`notes/decisions.md`), which orders the steps and rebuilds nothing.
+- State: open; found 2026-11-21 (overhaul A6, while mutating `EditText.KEYBOARD_*`); not fixed.
+- Repro (headless build): swap two values of `EditText`'s `KEYBOARD_*` constants
+  (`dine-atl/src/api-impl/android/widget/EditText.java`) and run `tools/dine linux build atl-headless`.
+  The first build ends with rc 0 and no `Compiling C` line, though
+  `generated_headers/android_widget_EditText.h` now holds the new values
+  (`out/handoff/overhaul/a6/i14-mut-swap-build.log`), so the `_Static_assert`s in
+  `src/shared/android_widget_EditText.c` that compare them with `enum ui_keyboard` don't run. The second
+  build compiles the file and an assert fails
+  (`out/handoff/overhaul/a6/i14-mut-swap-build2.log`: `static assertion failed: "EditText's KEYBOARD_*
+  are the slot's ui_keyboard"`). The gtk build (`tools/dine linux build atl`) writes the same headers;
+  it was not run for this case.
+- Effect: a constant Java and C share can differ in a build that reports success until the next
+  build; the asserts that guard them fire a build late.
+- Where: `dine-atl/meson.build` (the `hax_jar` dependency, line 71 on, and the C targets), the tracked
+  `src/api-impl-jni/generated_headers/`.
 
 ## DINE
 
