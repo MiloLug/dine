@@ -343,7 +343,7 @@ SCENARIOS = {
             # a selection that ends before it starts stays Java's: UIKit's ordered range is no change
             Step("reverse", tap="reverse", ok=("text reversed 5,2",), fail=ATL_FAIL),
             Step("show reversed", tap="show", ok=('text show "filled!" 5,2',), fail=ATL_FAIL + ('text show "filled!" 2,5',)),
-            # UIKit's notification on a tap into the field, the text and its range unchanged
+            # a tap into the field, its text and range unchanged: the range stays Java's
             Step("tap name", tap="name"),
             Step("show after tap", tap="show", ok=(r'text show "filled!" \d+,\d+',), fail=ATL_FAIL + ('text show "filled!" 2,5',)),
             # Java moves the focus to notes and back to name at once, the keyboard stays on name: it is still
