@@ -274,11 +274,11 @@ fixed for its life, since apps read `maxMemory` and `getMemoryClass` once to siz
 call). The caps may add up to more than `-Xmx`, since the drop order handles a full shared heap.
 
 Shared limits raised (the user: "can't we also increase global cap?"):
-- JNI globals: `kGlobalsMax` and `kWeakGlobalsMax` (51,200, `java_vm_ext.cc:60-62`) are constants
-  in our fork. The index encoding has room for more than 16 bits (`indirect_reference_table.h:
-  342-348`); the ceiling is `kMaxTableSizeInBytes`, 128 MB (`indirect_reference_table.cc:39`). The
-  table is mapped whole at start (`indirect_reference_table.cc:81-86`), so a larger one costs only
-  the pages it touches.
+- JNI globals: `kGlobalsMax` and `kWeakGlobalsMax` (51,200,
+  `dine-art/art/runtime/jni/java_vm_ext.cc:69-71`) are constants in our fork. The index encoding has
+  room for more than 16 bits (`indirect_reference_table.h:342-348`); the ceiling is
+  `kMaxTableSizeInBytes`, 128 MB (`indirect_reference_table.cc:39`). The table is mapped whole at
+  start (`indirect_reference_table.cc:81-86`), so a larger one costs only the pages it touches.
 - Descriptors: Dine raises the soft `RLIMIT_NOFILE` to the hard limit at start; nothing raises it
   today. iOS 27 (MA0): soft 2560, hard unlimited, `kern.maxfilesperproc` 10240, and raising the
   soft limit to 10240 works.
@@ -303,9 +303,9 @@ Shared limits raised (the user: "can't we also increase global cap?"):
   whatever)". microG's clients accept a target with a Google or microG signature
   (`findings-apps.md`), so no system flag is needed. Signature spoofing (decided; the user chose
   "B"): an app that requests `android.permission.FAKE_PACKAGE_SIGNATURE` is reported with the
-  signature it declares (how it declares it is unchecked here), in place of ATL's list of GMS
-  package names (`ATLLoadedApp.play_services`). The install confirmation shows the request, and the
-  permission is granted only if the user accepts it there.
+  signature its `<application>` meta-data `fake-signature` declares (hex), in place of upstream
+  ATL's list of GMS package names. The install confirmation shows the request, and the permission is
+  granted only if the user accepts it there.
 - `ATLGStub` (decided, the user took the lean): ATL's fake `com.google.android.gms`, `gsf` and
   `vending` (`FLAG_SYSTEM`, Google's signatures, a `ProviderInstaller` and a Maps creator) become
   preinstalled packages in the registry, as a phone ships Play Services; installing microG

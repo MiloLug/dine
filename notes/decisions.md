@@ -448,6 +448,21 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   the title and the progress leave of the header's room (`atl_alert_header_cap`, half of it beside
   Android content), and the progress sits below them. The shown alert's model (copy, buttons, progress, row checks) is
   `src/shared/alert.h`, which headless, gtk and uikit keep; gtk's scripted answers read it.
+- Packages follow AOSP 10 where ATL's answers differed. A PackageInstaller session is its creating
+  app's: `getMySessions` lists only those, `openSession` and `abandonSession` of another app's or a
+  missing id throw SecurityException (`getAllSessions` lists all), and the install names that app as
+  installer, which `getInstallerPackageName` reads from the row (null for the CLI's and the generated
+  rows; IllegalArgumentException for a missing package). A session's files are stored and synced as
+  `base.apk` and `split<i>.apk`, whatever the installer named them. Query results are ordered by
+  ComponentResolver's sorter (priority, CATEGORY_DEFAULT, match, package name), ATL's browser beside
+  the installed apps for an http or https VIEW intent; `Intent.resolveActivity` asks PackageManager.
+  `getPackageArchiveInfo` reads certificates for GET_SIGNING_CERTIFICATES alone too (AOSP 10 only for
+  GET_SIGNATURES; Android 11 for either). `getDir(name)` is `app_<name>` in the data dir. Shared user
+  ids aren't built: each package keeps its own uid and `sharedUserId` only reports the manifest
+  ([ATL-170](general-todo.md#atl-170)).
+- An uninstall that fails, or is killed before its commit, keeps the package: its dirs come back from
+  the trash in the call, or at the next registry open, whose sweep puts back a trash dir that holds
+  its row's files.
 - Last merge: upstream d658957d (2026-10-20); hand ports start there.
 
 ## dine-art

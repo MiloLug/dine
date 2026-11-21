@@ -296,10 +296,15 @@ without glib").
 
 ### ATL-106
 
-**The cli host doesn't unpack an APK's `lib/<arch>/`; only the gtk host does.** A native-library
-app's headless stop is that gap (`notes/atl-port.md` M9).
-- State: the gtk side is code-checked; the cli side is from the notes, not checked in code.
-- Where: `dine-atl/src/main-executable/main.c` (`extract_from_apk`); the cli host's APK loading.
+**The cli host doesn't unpack an APK's `lib/<arch>/`, and the gtk host's unpacking throws.** A
+native-library app's headless stop is that gap (`notes/atl-port.md` M9). The gtk host calls
+`extract_from_apk` before `atl_app_create` joins its thread to the app; `AssetManager.extractFromAPK`
+writes under `Environment.getExternalStorageDirectory()`, which reads the calling thread's app
+(`ofCurrentThreadOrThrow`) and throws there for an APK with a `lib/<arch>/` entry.
+- State: the gtk side is code-checked (overhaul A9, 2026-11-21; no run with such an APK); the cli side
+  is from the notes, not checked in code.
+- Where: `dine-atl/src/main-executable/main.c` (`extract_from_apk`), `src/api-impl/android/content/res/AssetManager.java`
+  (`extractFromAPK`); the cli host's APK loading.
 
 ### ATL-120
 
@@ -611,6 +616,25 @@ mean rebuilding UIAlertController's accessibility, Dynamic Type, keys, iPad popo
   alerts (separate windows, [ATL-162](bug-tracker.md#atl-162)) can take the same rule.
 - Where: `dine-atl/src/backends/ui/uikit/dialog.m`, `view.m` (`records_roots_changed`).
 
+### ATL-170
+
+**Shared user ids aren't built.** Each package gets its own uid at install (`ATLInstaller.commit`;
+the registry's `uid` column is UNIQUE) whatever its `android:sharedUserId`; `PackageInfo.sharedUserId`
+reports the manifest's value (upstream's parser), `getPackagesForUid` lists one package and
+`getUidForSharedUser` returns 1000. Android gives the packages that share the id, with one signer, one
+uid. Recorded in `notes/decisions.md`.
+- Where: `dine-atl/src/api-impl/android/atl/ATLInstaller.java`, `ATLRegistry.java` (schema,
+  `rowsForUid`), `src/api-impl/android/content/pm/PackageManager.java`.
+
+### ATL-173
+
+**No run drives the gtk-only paths MA2a moved to the app's handle or Context:** D-Bus actions
+(`src/main-executable/actions.c`), `intent_deserialize` (`src/api-impl-jni/gtk_util.c`), notifications
+(`src/api-impl-jni/app/android_app_NotificationManager.c`), UnifiedPush (`Context.exportUnifiedPush`)
+and MPRIS. A check: one D-Bus action and one notification on the gtk build, in `linux smoke` (hidden
+display).
+- Where: as named; `tools/py/dine/linux.py`.
+
 ## DINE
 
 ### DINE-6
@@ -748,6 +772,38 @@ step can't tap a later tile (seen 2026-11-21, overhaul A7: with a 29th tile befo
 scenarios tap first.
 - Fix: a grid that builds every tile, or a scroll action in the agent.
 - Where: `apps/Dine/Sources/Dine/Dev/AtlView.swift`, `native/dev/dbgagent`.
+
+### TOOL-16
+
+**Test gaps routed to overhaul A9 and left there.** Each passes today with the rule it would guard
+broken (found 2026-11-14 to 2026-11-21: the instruments audit, the A9 review, the stage claims).
+- The package suite's harness: a JUnit test no longer discovered lowers the row count and the run stays
+  green; unused scripted answers and missing `dialog:` lines aren't graded; refusals are graded on the
+  exit status alone (`cli:provider_conflict` takes any non-zero); the fixtures dir is never emptied;
+  `test_package.py` covers `grade_scenario` only; no `--gtk` mode for the gtk host's `--uninstall` and
+  `--allow-fake-signature`.
+- Installs: no split APK (CLI or session); no session written at an offset, with no file, with an
+  invalid APK or abandoned; no second operation in one driver process; no session install of `gms` over
+  its generated row; no reinstall that grants the fake signature; no equal-size fixtures that differ past
+  one 64 KiB compare chunk; no Cancel to an intent install or uninstall, no dismissed dialog, no refused
+  uninstall of a preinstalled package; `cli:path_run` doesn't check that the app started or which
+  version ran.
+- The registry: no committed blob of the current `PackageCodec` format; the codec's round trip has no
+  `<instrumentation>`, `<uses-library>` or `<uses-configuration>`; `cli:reparse` passes any blob longer
+  than a byte and no later process decodes it; no generated row is made stale;
+  `RegistryTest#testStaleRows`' last assertion can only see null; no update changes a package's
+  components, so no check reads the index tables after one.
+- `PackageContextTest` loads no class or resource through a package context.
+- No run reaches a commit that throws: `ATLInstaller.end`'s `landed` reads for an install and an
+  uninstall are code-path proof only (no failure can be planted there without a product hook).
+- `AppStateTest` (`--one-vm`) checks receivers, preferences and installer sessions per app; jobs and
+  providers aren't (an authority can't be shared; graphics has no job service).
+- Multidex, per-ABI native libraries ([ATL-106](#atl-106)) and broken zips have no fixture.
+- The framework suites pin targetSdkVersion 27: api-impl's branches for 28 and up never run.
+- The draw golden: `drawLines` runs with offset 0 and the whole array only, and nothing calls `drawOval`
+  (`DrawActivity`).
+- Where: `tests/harness/package.py`, `tests/harness/test_package.py`, `dine-atl/tests/package/`,
+  `dine-atl/tests/framework/*/AndroidManifest.xml`, `dine-atl/tests/headless/` (DrawActivity).
 
 ## Done
 

@@ -15,6 +15,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from typing import Callable
 from pathlib import Path
@@ -52,8 +53,11 @@ FIXTURES = (
     Fixture("app-v3", "app", "a", _version(3)),
     Fixture("app-v1", "app", "a", _version(1)),
     Fixture("app-keyb", "app", "b", _version(4)),
+    # its service filter outranks app's (priority 100)
     Fixture("plain", "app", None, (*_version(1), "--rename-manifest-package", "dev.dine.pkg.plain"),
-            (("dev.dine.pkg.app.prov", "dev.dine.pkg.plain.prov"),)),
+            (("dev.dine.pkg.app.prov", "dev.dine.pkg.plain.prov"),
+             ('<service android:name=".Svc">\n\t\t\t<intent-filter>',
+              '<service android:name=".Svc">\n\t\t\t<intent-filter android:priority="100">'))),
     Fixture("provdup", "app", None, (*_version(1), "--rename-manifest-package", "dev.dine.pkg.provdup")),
     Fixture("spoof", "spoof", "a"),
     Fixture("spoofdeny", "spoof", "a", ("--rename-manifest-package", "dev.dine.pkg.spoofdeny")),
@@ -131,6 +135,33 @@ def stored(prefix: Path, row: dict) -> Path:
     return prefix / row["apks"].split(":")[0]
 
 
+def sql(prefix: Path, statement: str) -> None:
+    db = sqlite3.connect(prefix / "registry.sqlite")
+    try:
+        with db:
+            db.execute(statement)
+    finally:
+        db.close()
+
+
+def index_rows(prefix: Path, table: str, package: str) -> list[tuple]:
+    db = sqlite3.connect(f"file:{prefix / 'registry.sqlite'}?mode=ro", uri=True)
+    try:
+        return db.execute(f"SELECT * FROM {table} WHERE pkg = ?", (package,)).fetchall()
+    finally:
+        db.close()
+
+
+def left_behind(prefix: Path) -> list[str]:
+    """What an operation that ended must not leave: a stored APK that is missing, staging, trash."""
+    problems = [f"{name}: {path} is missing" for name, row in rows(prefix).items() if row["apks"]
+                for path in row["apks"].split(":") if not (prefix / path).is_file()]
+    for left in ("apps/.staging", ".trash"):
+        if (prefix / left).is_dir() and any((prefix / left).iterdir()):
+            problems.append(f"left in {left}: {sorted(p.name for p in (prefix / left).iterdir())}")
+    return problems
+
+
 @check
 def install(work: Path, prefix: Path) -> None:
     run(work, prefix, "install", "--install", str(APKS / "ext.apk"))
@@ -151,12 +182,32 @@ def install(work: Path, prefix: Path) -> None:
 def replace(work: Path, prefix: Path) -> None:
     run(work, prefix, "install-v2", "--install", str(APKS / "app.apk"))
     old = rows(prefix)["dev.dine.pkg.app"]
+    marker = prefix / "data/dev.dine.pkg.app/files/marker"
+    marker.parent.mkdir(parents=True)
+    marker.write_text("kept")
     run(work, prefix, "install-v3", "--install", str(APKS / "app-v3.apk"))
     new = rows(prefix)["dev.dine.pkg.app"]
     assert new["uid"] == old["uid"] and new["version_code"] == 3, (old, new)
     assert new["first_install_time"] == old["first_install_time"], (old, new)
     assert not stored(prefix, old).parent.exists(), "the replaced version's dir is left"
     assert stored(prefix, new).read_bytes() == (APKS / "app-v3.apk").read_bytes()
+    assert marker.read_text() == "kept", "the update removed the app's data"
+
+
+@check
+def install_failure(work: Path, prefix: Path) -> None:
+    """A commit that fails after its APK moved into apps/ leaves no version dir; the same install then works."""
+    run(work, prefix, "install-v2", "--install", str(APKS / "app.apk"))
+    v2 = rows(prefix)["dev.dine.pkg.app"]
+    sql(prefix, "CREATE TRIGGER planted BEFORE INSERT ON packages WHEN NEW.name = 'dev.dine.pkg.app' "
+                "AND NEW.version_code = 3 BEGIN SELECT RAISE(ABORT, 'planted'); END")
+    run(work, prefix, "install-v3", "--install", str(APKS / "app-v3.apk"), status=1)
+    sql(prefix, "DROP TRIGGER planted")
+    versions = sorted(p.name for p in (prefix / "apps/dev.dine.pkg.app").iterdir())
+    assert versions == [stored(prefix, v2).parent.name], f"version dirs {versions}"
+    assert not left_behind(prefix), left_behind(prefix)
+    run(work, prefix, "install-v3-again", "--install", str(APKS / "app-v3.apk"))
+    assert rows(prefix)["dev.dine.pkg.app"]["version_code"] == 3
 
 
 @check
@@ -171,14 +222,70 @@ def cli_replaces_anything(work: Path, prefix: Path) -> None:
 @check
 def uninstall(work: Path, prefix: Path) -> None:
     run(work, prefix, "install", "--install", str(APKS / "app.apk"))
+    removed_uid = rows(prefix)["dev.dine.pkg.app"]["uid"]
     run(work, prefix, "uninstall", "--uninstall", "dev.dine.pkg.app")
     assert "dev.dine.pkg.app" not in rows(prefix)
     for left in ("apps/dev.dine.pkg.app", "data/dev.dine.pkg.app"):
         assert not (prefix / left).exists(), f"{left} is left"
     assert not any((prefix / ".trash").iterdir()), "trash is left"
+    for table in ("authorities", "component_actions"):
+        assert not index_rows(prefix, table, "dev.dine.pkg.app"), f"{table} keeps rows of the removed package"
     run(work, prefix, "uninstall-again", "--uninstall", "dev.dine.pkg.app", status=1)
     run(work, prefix, "uninstall-generated", "--uninstall", "com.android.vending", status=1)
     assert rows(prefix)["com.android.vending"]["generated"] == 1
+    # provdup holds app's authority, free again
+    run(work, prefix, "install-provdup", "--install", str(APKS / "provdup.apk"))
+    assert rows(prefix)["dev.dine.pkg.provdup"]["uid"] > removed_uid, "a removed package's uid was given again"
+
+
+@check
+def uninstall_failure(work: Path, prefix: Path) -> None:
+    """An uninstall whose row removal fails keeps the package, its APK and its data; a retry removes it."""
+    run(work, prefix, "install", "--install", str(APKS / "app.apk"))
+    row = rows(prefix)["dev.dine.pkg.app"]
+    kept = prefix / "data/dev.dine.pkg.app/files/kept"
+    kept.parent.mkdir(parents=True)
+    kept.write_text("kept")
+    sql(prefix, "CREATE TRIGGER planted BEFORE DELETE ON packages WHEN OLD.name = 'dev.dine.pkg.app' "
+                "BEGIN SELECT RAISE(ABORT, 'planted'); END")
+    run(work, prefix, "uninstall", "--uninstall", "dev.dine.pkg.app", status=1)
+    sql(prefix, "DROP TRIGGER planted")
+    assert "Failure [status 1]" in (work / "uninstall.stdout").read_text(errors="replace"), "no failure reported"
+    assert "dev.dine.pkg.app" in rows(prefix), "the row is gone"
+    assert stored(prefix, row).is_file(), "the APK is gone"
+    assert kept.is_file() and kept.read_text() == "kept", "the data is gone"
+    assert not left_behind(prefix), left_behind(prefix)
+    run(work, prefix, "uninstall-again", "--uninstall", "dev.dine.pkg.app")
+    assert "dev.dine.pkg.app" not in rows(prefix)
+
+
+@check
+def sweep(work: Path, prefix: Path) -> None:
+    """At registry open: trash that holds its row's files (an uninstall that never committed) goes back; other
+    trash, version dirs no row names and staging dirs older than a day go."""
+    run(work, prefix, "install", "--install", str(APKS / "app.apk"))
+    row = rows(prefix)["dev.dine.pkg.app"]
+    apps, data = prefix / "apps/dev.dine.pkg.app", prefix / "data/dev.dine.pkg.app"
+    kept = data / "files/kept"
+    kept.parent.mkdir(parents=True)
+    kept.write_text("kept")
+    (apps / "9-999").mkdir()
+    dead = prefix / ".trash" / f"dev.dine.pkg.app-{row['generation'] + 1}"
+    dead.mkdir()
+    apps.rename(dead / "apps")
+    data.rename(dead / "data")
+    (prefix / ".trash/dev.dine.pkg.gone-7/apps/1-7").mkdir(parents=True)
+    old, fresh = prefix / "apps/.staging/1-1", prefix / "apps/.staging/1-2"
+    old.mkdir()
+    fresh.mkdir()
+    two_days_ago = time.time() - 2 * 24 * 3600
+    os.utime(old, (two_days_ago, two_days_ago))
+    run(work, prefix, "open", "--install", str(APKS / "ext.apk"))
+    assert stored(prefix, row).is_file(), "the APK in the trash didn't come back"
+    assert kept.is_file() and kept.read_text() == "kept", "the data in the trash didn't come back"
+    assert sorted(p.name for p in apps.iterdir()) == [stored(prefix, row).parent.name], "an unreferenced version dir is left"
+    assert not any((prefix / ".trash").iterdir()), "trash is left"
+    assert not old.exists() and fresh.is_dir(), "the staging sweep"
 
 
 @check
@@ -283,7 +390,7 @@ def _row(name: str, **want) -> Callable[[dict], str | None]:
 
 def _installed(package: str) -> tuple[str, ...]:
     """A session install that asks the user (-1) and succeeds."""
-    return (f"status -1 {package}", f"status 0 {package}", f"added {package} replacing=false")
+    return (f"status -1 {package}", f"status 0 {package}", "installer dev.dine.pkg.driver", f"added {package} replacing=false")
 
 
 SCENARIOS = (
@@ -298,7 +405,8 @@ SCENARIOS = (
              ("status -1 dev.dine.pkg.app", "status 7 dev.dine.pkg.app"), setup=("app",),
              rows=_row("dev.dine.pkg.app", version_code=2)),
     Scenario("session_update", "session:app-v3", "Install",
-             ("status -1 dev.dine.pkg.app", "status 0 dev.dine.pkg.app", "removed dev.dine.pkg.app replacing=true",
+             ("status -1 dev.dine.pkg.app", "status 0 dev.dine.pkg.app", "installer dev.dine.pkg.driver",
+              "removed dev.dine.pkg.app replacing=true",
               "added dev.dine.pkg.app replacing=true", "replaced dev.dine.pkg.app replacing=true"), setup=("app",),
              rows=_row("dev.dine.pkg.app", version_code=3)),
     Scenario("spoof_allow", "session:spoof", "Install;Allow", _installed("dev.dine.pkg.spoof"),
@@ -307,7 +415,15 @@ SCENARIOS = (
              rows=_row("dev.dine.pkg.spoof", fake_signature=0)),
     Scenario("app_context", "session-app-context:ext", "Install", _installed("dev.dine.pkg.ext"),
              rows=_row("dev.dine.pkg.ext")),
-    Scenario("intent_install", "intent-install:ext", "Install", ("result -1 1", "added dev.dine.pkg.ext replacing=false"),
+    Scenario("intent_install", "intent-install:ext", "Install",
+             ("result -1 1", "installer dev.dine.pkg.driver", "added dev.dine.pkg.ext replacing=false"),
+             rows=_row("dev.dine.pkg.ext", installer="dev.dine.pkg.driver")),
+    # the APK comes from the driver's own provider
+    Scenario("intent_install_content", "intent-install-content:ext", "Install",
+             ("result -1 1", "installer dev.dine.pkg.driver", "added dev.dine.pkg.ext replacing=false"),
+             rows=_row("dev.dine.pkg.ext")),
+    # the driver names its session file my:app.apk; the registry joins stored paths with ':'
+    Scenario("session_named", "session-named:ext", "Install", _installed("dev.dine.pkg.ext"),
              rows=_row("dev.dine.pkg.ext")),
     Scenario("session_provider_conflict", "session:provdup", "Install",
              ("status -1 dev.dine.pkg.provdup", "status 5 dev.dine.pkg.provdup"), setup=("app",),
@@ -315,11 +431,19 @@ SCENARIOS = (
     Scenario("intent_provider_conflict", "intent-install:provdup", "Install", ("result 1 -13",), setup=("app",),
              rows=_row("dev.dine.pkg.provdup", absent=True)),
     Scenario("intent_uninstall", "intent-uninstall:dev.dine.pkg.ext", "Uninstall",
-             ("result -1 0", "removed dev.dine.pkg.ext replacing=false"), setup=("ext",),
+             ("result -1 none", "removed dev.dine.pkg.ext replacing=false"), setup=("ext",),
              rows=_row("dev.dine.pkg.ext", absent=True)),
+    Scenario("intent_delete", "intent-delete:dev.dine.pkg.ext", "Uninstall",
+             ("result -1 none", "removed dev.dine.pkg.ext replacing=false"), setup=("ext",),
+             rows=_row("dev.dine.pkg.ext", absent=True)),
+    # the driver doesn't finish after this result: it ends as Android kills an app that removed itself
+    Scenario("self_uninstall", "self-uninstall:dev.dine.pkg.driver", "Uninstall",
+             ("result -1 none", "removed dev.dine.pkg.driver replacing=false"),
+             rows=_row("dev.dine.pkg.driver", absent=True)),
     # ends by itself after the result, as Android kills an app it replaced
     Scenario("self_update", "self-update:driver-v2", "Install",
-             ("status -1 dev.dine.pkg.driver", "status 0 dev.dine.pkg.driver", "removed dev.dine.pkg.driver replacing=true",
+             ("status -1 dev.dine.pkg.driver", "status 0 dev.dine.pkg.driver", "installer dev.dine.pkg.driver",
+              "removed dev.dine.pkg.driver replacing=true",
               "added dev.dine.pkg.driver replacing=true", "replaced dev.dine.pkg.driver replacing=true"),
              rows=_row("dev.dine.pkg.driver", version_code=2)),
 )
@@ -334,6 +458,7 @@ def run_scenario(s: Scenario, runs: Path) -> tuple[str, str, str]:
             return row, "fail", f"setup install of {name} failed"
     proc = atl(work, "driver", [str(APKS / "driver.apk")], prefix, DINE_TEST_SCENARIO=s.arg, ATL_DIALOG_ANSWERS=s.answers)
     problems = grade_scenario(s, proc.returncode, (work / "driver.stdout").read_text(errors="replace"), rows(prefix))
+    problems += left_behind(prefix)
     return row, "fail" if problems else "pass", "; ".join(problems)
 
 

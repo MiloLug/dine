@@ -150,11 +150,12 @@ suite is `dine-atl/tests/package/` (`tools/dine test package`).
   the CLI grants it with `--allow-fake-signature`. Whether current GmsCore declares the meta-data:
   unchecked (MA9).
 - `[x]` `PackageInstaller` sessions (`createSession`, `openWrite`, `fsync`, `commit` with an
-  `IntentSender`, `STATUS_PENDING_USER_ACTION`), `ACTION_INSTALL_PACKAGE` with
-  `EXTRA_RETURN_RESULT`, `ACTION_UNINSTALL_PACKAGE` and `ACTION_DELETE`; the CLI's `--install` and
-  `--uninstall` write the same rows. The confirmation is an `AlertDialog` through the `ui` slot;
-  an app-started install keeps Android's rules (same signer, no downgrade). A session takes split
-  APKs as one package.
+  `IntentSender`, `STATUS_PENDING_USER_ACTION`), `ACTION_INSTALL_PACKAGE` (its result goes to
+  `startActivityForResult` whether or not `EXTRA_RETURN_RESULT` is set:
+  [ATL-174](../bug-tracker.md#atl-174)), `ACTION_UNINSTALL_PACKAGE` and `ACTION_DELETE`; the CLI's
+  `--install` and `--uninstall` write the same rows. The confirmation is an `AlertDialog` through
+  the `ui` slot; an app-started install keeps Android's rules (same signer, no downgrade). A session
+  takes split APKs as one package.
 - `[x]` `PackageManager` reads the registry: `getInstalledPackages` and `getInstalledApplications`
   with flags (meta-data, signatures, signing certificates, `reqFeatures`), `getPackageArchiveInfo`,
   `getPackageInfo`, intent resolution across packages (action, categories, data scheme),
@@ -206,6 +207,9 @@ while each VM still runs one app; MA2b runs several apps in one VM. The record m
 - `[x]` The host API takes app handles (`nav.h`, `host.h`, the embedded listener); the embedder
   makes the handle before the start (`dine_atl_app_new`), so insets still go in before it.
 - `[x]` The notes follow the code: no note but a findings file describes a primary app.
+- Unverified: the gtk-only paths MA2a moved to the app's handle or Context (D-Bus actions,
+  `intent_deserialize`, notifications, UnifiedPush, MPRIS): no run drives them
+  ([ATL-173](../general-todo.md#atl-173)).
 - Not in MA2a: the gtk host keeps its one window and app handle, and gtk's C IME context and
   MediaSession stay per process (one app per gtk process); the screen's density stays VM-wide,
   the window size is per app (M6b3c) and per task with MA6; the headless and uikit input state (touch, scroll, edit
@@ -360,7 +364,8 @@ while each VM still runs one app; MA2b runs several apps in one VM. The record m
 - `[ ]` `PendingIntent.send` from the registry rows: starts the owner if needed and delivers.
 - `[ ]` `PACKAGE_ADDED/REPLACED/REMOVED` to apps in other processes, from MA1; what to watch:
   `design.md` "Linux: the static model".
-- `[ ]` An app whose APK another process replaced or removed ends, from MA1.
+- `[ ]` An app whose package another app or process replaced or removed ends, from MA1; in one VM
+  it keeps running today ([ATL-169](../bug-tracker.md#atl-169)).
 - `[ ]` The gtk D-Bus intent API kept as the desktop's entry point into the same delivery
   (`design.md`).
 - Done when: a client APK binds a service APK and queries its provider in both the headless test

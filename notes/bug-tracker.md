@@ -391,7 +391,8 @@ main thread or the receiver's `Handler`; `sendOrderedBroadcast` only prints.
 (`F_FULLFSYNC` does), so after a power loss the registry's row (written with SQLite's `fullfsync`)
 may point at an APK whose blocks never reached the disk.
 - State: unchecked.
-- Where: `dine-atl/src/api-impl/android/atl/ATLInstaller.java` (`copy`, `fsyncDir`).
+- Where: `dine-atl/src/api-impl/android/atl/ATLInstaller.java` (`copy`), `ATLRegistry.java` (`fsync`);
+  a session's files are synced at its commit (`PackageInstaller.Session.commit`).
 
 ### ATL-39
 
@@ -1441,6 +1442,59 @@ character map gives the character (unverified: no InputReader or `Generic.kl` so
   beyond the US keycodes the smoke feeds) through a table of `Generic.kl`'s rows; keep the keyval only
   for `unicode`.
 - Where: `dine-atl/src/backends/ui/gtk/input.c` (`map_key_code`), `src/shared/keys.h`.
+
+### ATL-169
+
+**An app keeps running on a package another app of its VM replaced or removed.**
+`ATLInstallerUi.announce` ends the installing app only when it replaced or removed itself. A running
+app of the same VM whose package another app replaced (the old version dir is deleted after the
+commit) or removed (its APKs and data dir go to the trash and are deleted) keeps its record, class
+loader and paths. Android kills that app's process.
+- State: open; found 2026-11-21 (overhaul A9), from the code; no `--one-vm` run installs over a
+  running app.
+- Owner: MA7 (`notes/multi-app-support/todo.md`, "An app whose package another app or process
+  replaced or removed ends").
+- Where: `dine-atl/src/api-impl/android/atl/ATLInstallerUi.java` (`announce`),
+  `ATLLoadedAppManager.java`, `ATLInstaller.java` (`commit`, `uninstall`).
+
+### ATL-171
+
+**No locale-qualified resource is ever chosen: the native `setConfiguration` drops the locale.**
+`Resources.updateConfiguration` passes `Configuration.locale` as a BCP 47 string to
+`AssetManager.setConfiguration`; `android_content_res_AssetManager.c` takes it and sets no language
+or country in the `ResTable_config`, and libandroidfw's C entry
+(`dine-art/libandroidfw/androidfw_c_api.cpp`, `AssetManager_setConfiguration`) has the parameter
+commented out. AOSP 10 calls `setBcp47Locale` with it (`core/jni/android_util_AssetManager.cpp`,
+`NativeSetConfiguration`). The other fields Java passes (touchscreen, navigation, keyboardHidden as
+`inputFlags`) reach the config as in AOSP 10, which passes no navigationHidden either; that Java sets
+none of them is [ATL-117](#atl-117).
+- State: open; found 2026-11-21 (overhaul A9), from the code; no run with a `values-<lang>`
+  resource. What `Configuration.locale` holds on each host: unchecked.
+- Fix: a locale argument on the C entry that calls `setBcp47Locale`, the native passing the string;
+  a framework test with a `values-de` string under a German configuration.
+- Where: as named.
+
+### ATL-172
+
+**Intents the host opens resolve to no activity.** `ContextImpl.startActivity` hands a SEND intent to
+`nativeShareFile` and any other intent with data to the host (`nativeOpenFile`, `nativeOpenURI`);
+`PackageManager` answers only http and https VIEW intents, with ATL's browser
+(`PackageManager.browser`). `resolveActivity` and `Intent.resolveActivity` return null for a share or
+a `mailto:` link the host would open, so an app that checks first never starts it.
+- State: open; found 2026-11-21 (overhaul A9, beside the browser's answer), from the code.
+- Where: `dine-atl/src/api-impl/android/content/pm/PackageManager.java` (`browser`, `query`),
+  `src/api-impl/android/app/ContextImpl.java` (`startActivity`).
+
+### ATL-174
+
+**`ACTION_INSTALL_PACKAGE` returns its result whether or not the app asked.** `ATLInstallerUi.install`
+sends RESULT_OK or RESULT_FIRST_USER with `EXTRA_INSTALL_RESULT` to `startActivityForResult`
+without reading `EXTRA_RETURN_RESULT`. AOSP 10's installer sets that result only with the extra
+(`packages/PackageInstaller/.../InstallSuccess.java`, `InstallFailed.java`); without it, it shows its
+own done or failure screen, and what the caller then gets back is unchecked. The package suite's
+driver always sets the extra.
+- State: open; found 2026-11-21 (overhaul A9 review), from the code.
+- Where: `dine-atl/src/api-impl/android/atl/ATLInstallerUi.java` (`install`, `result`).
 
 ## DINE
 
