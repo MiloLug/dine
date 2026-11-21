@@ -426,11 +426,28 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   activity's window regains the focus after a dialog closes; ours doesn't.
 - A night change reaches the roots of every added window of the app, a hidden dialog's too, whose owner
   handles uiMode or that has none (`windows_dispatch_configuration`, `Window.atlConfigurationChanged`).
-- uikit's text toast is placed by `atl_gravity_apply` (`src/shared/gravity.h`, windows.c's
-  `Gravity.apply`), so FILL stretches it; gtk keeps GTK's alignment, with margins that move a centred
+- uikit's text toast is placed by `atl_gravity_place` (`src/shared/gravity.h`, windows.c's
+  `Gravity.apply` and `applyDisplay`) in the safe area, so FILL stretches it and an offset past the area's
+  edge stays inside it; gtk keeps GTK's alignment, with margins that move a centred
   label by the offset. uikit's plain alerts stack in the registry's order: UIKit's dismiss on a controller
   that presents another takes the child down too, so an alert goes with the ones above it first and they
   present again after it (`take_down` and the lift in `present`, `dialog.m`).
+- gtk maps a key to Android's code from its hardware keycode's keyval without modifiers in the first
+  layout: Shift+1 is KEYCODE_1 (with META_SHIFT_ON and '!'), Shift is SHIFT_LEFT, the keypad's keys are
+  NUMPAD_* in both NumLock states, any other key KEYCODE_UNKNOWN; a first layout that isn't Latin gives
+  its letters no code ([ATL-168](bug-tracker.md#atl-168)). The codes and metas of both toolkits'
+  maps are `src/shared/keys.h`.
+- `enabled` stops a view's own toolkit input, not its children's, and alpha stops none, as Android's
+  dispatch: gtk keeps a disabled scroll node sensitive and leaves alpha out of the sensitivity; uikit
+  keeps every view whose touches go to Java interactive and hit-tests ATLView and ATLScrollView without
+  UIKit's alpha rule. A toolkit focus Java refuses (blocksDescendants) goes back to the view Java holds
+  focused (`EditText.atlToolkitFocusRefused`, posted after the toolkit's focus handler).
+- An AlertDialog with a message at its first `onCreate` shows no list (setItems, the choice lists,
+  setAdapter), as AlertController's `setupContent`, which runs once: a later `setMessage` neither
+  removes the list nor shows beside it. A panel alert's title takes at most two lines; the message, or the rows, scrolls in what
+  the title and the progress leave of the header's room (`atl_alert_header_cap`, half of it beside
+  Android content), and the progress sits below them. The shown alert's model (copy, buttons, progress, row checks) is
+  `src/shared/alert.h`, which headless, gtk and uikit keep; gtk's scripted answers read it.
 - Last merge: upstream d658957d (2026-10-20); hand ports start there.
 
 ## dine-art

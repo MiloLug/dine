@@ -531,7 +531,9 @@ claim some stage's notes make that no check would fail without; none shows a def
 - gtk's view-tree dump (`ATL_DUMP_VIEWTREE`) is read by no gtk run: `run-views.sh` diffs the tree
   under `--headless` only, so a broken gtk dump or a gtk layout that drifts from the headless shape
   fails nothing (M0-4). Compare its shape with the headless golden, as `smoke.py`'s
-  `viewtree_problem` does for the phone.
+  `viewtree_problem` does for the phone. The gtk dump also prints an EditText as `GtkText` without its
+  text, an ImageView as `GtkPicture`, a ProgressBar as a fixed name, and skips a scroll node's
+  subtree (`gtk/dump.c`, overhaul A8-7): a shape compare needs those first.
 - `fitsSystemWindows` from the XML attribute and `requestApplyInsets` have no test
   (`WindowInsetsTest` covers the setter), and AppCompat's subdecor padding was never seen in an
   apps-suite APK (nav-9, PreM4-M4a-16): a framework case that inflates `android:fitsSystemWindows`,
@@ -547,9 +549,8 @@ claim some stage's notes make that no check would fail without; none shows a def
   scroll; a framework test of two TextViews that differ only in runs or max lines.
 - The release library must hold no test line (M6b3a-14): a release-build step that greps the built
   library for the known test-line prefixes.
-- gtk's dispatch of ACTION_OUTSIDE to watching windows and the drop-down's registry entry have no
-  gtk run (M6b3b-4): `windows-gtk` dismisses its popup from code; a step that taps outside an
-  outside-touchable popup and opens the drop-down through the agent.
+- The drop-down's registry entry has no gtk run (M6b3b-4): a step that opens the drop-down through
+  the agent.
 - adjustPan's offset applying to touch (M6b3c-9: `run-keyboard.sh` sends `insets` and `dump` only:
   a `touch` at the field's panned y), `getWindowVisibleDisplayFrame` leaving out the bars and the
   keyboard (M6b3c-10: log the rect after the 20-number `insets`), and `atl_exclusion_update` reading
@@ -561,7 +562,8 @@ claim some stage's notes make that no check would fail without; none shows a def
 - gtk's portal path for night (`settings_changed_cb`, `display.c`) is driven by nothing; the gtk
   framework run sets night through `ATLTestHooks.setNight` (M6b3c-13).
 - State: open; found 2026-11-21 (overhaul A5b round 1, stage rows M0-4, nav-9, PreM4-M4a-16,
-  PreM4-M4a-18, M5a-4, M6b1-7, M6b3a-14, M6b3b-4, M6b3c-9, M6b3c-10, M6b3c-12, M6b3c-13, MA2-3).
+  PreM4-M4a-18, M5a-4, M6b1-7, M6b3a-14, M6b3b-4, M6b3c-9, M6b3c-10, M6b3c-12, M6b3c-13, MA2-3);
+  2026-11-21 (A8): gtk's ACTION_OUTSIDE runs in `input-gtk`; the gtk dump's gaps.
 
 ### ATL-164
 

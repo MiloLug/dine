@@ -109,6 +109,16 @@ def _demo_viewtree(since: int) -> str | None:
     return viewtree_problem(resp["text"], (paths.ROOT / "dine-atl/tests/headless/demo_app.viewtree").read_text())
 
 
+_LONG_CONTENT = re.compile(r"text long content (\d+) of (\d+)")
+
+
+# TextActivity's long alert: its view gets the height it asks for beside the message
+def _text_layout(since: int) -> str | None:
+    resp = client.call("log", {"op": "grep", "pattern": "text long content", "since": since, "src": ["syslog"], "text": True, "n": 20})
+    heights = [(int(m[1]), int(m[2])) for m in _LONG_CONTENT.finditer(resp["text"])]
+    return None if any(got == asks for got, asks in heights) else f"the long alert's view got heights (of what it asks) {heights}"
+
+
 _SPIN = re.compile(r"widgets spin (\d+) in (\d+) ms")
 
 
@@ -330,6 +340,12 @@ SCENARIOS = {
             Step("show", tap="show", ok=('text show "hi" 2,2',), fail=ATL_FAIL),
             Step("fill", tap="fill", ok=('text after "filled"',), text=("name", "filled"), fail=ATL_FAIL),
             Step("type after fill", type=("name", "!"), ok=('text after "filled!"',), text=("name", "filled!"), fail=ATL_FAIL),
+            # a selection that ends before it starts stays Java's: UIKit's ordered range is no change
+            Step("reverse", tap="reverse", ok=("text reversed 5,2",), fail=ATL_FAIL),
+            Step("show reversed", tap="show", ok=('text show "filled!" 5,2',), fail=ATL_FAIL + ('text show "filled!" 2,5',)),
+            # UIKit's notification on a tap into the field, the text and its range unchanged
+            Step("tap name", tap="name"),
+            Step("show after tap", tap="show", ok=(r'text show "filled!" \d+,\d+',), fail=ATL_FAIL + ('text show "filled!" 2,5',)),
             # Java moves the focus to notes and back to name at once, the keyboard stays on name: it is still
             # Java's request that hide answers
             Step("swap", tap="swap"),
@@ -342,8 +358,13 @@ SCENARIOS = {
             Step("calc has no keyboard", tap="hide", ok=("text hide false",), fail=ATL_FAIL + ("text hide true",)),
             # the native view of a text with a colored first word is swapped for a selectable one
             Step("select", tap="select", ok=("text selectable",), ui=("Error: disk full",), fail=ATL_FAIL),
+            # a message taller than the screen scrolls in the alert's panel; the view under it keeps room (_text_layout)
+            # the header's cap binds here: records' chrome must match the panel's laid-out header
+            Step("long alert", tap="long alert", ok=(r"dialog: chrome measured .* ok",), ui=("Long", "Close"),
+                 fail=ATL_FAIL + ("dialog: chrome measured .* differs",)),
+            Step("Close", tap="Close", ok=("text long closed",), fail=ATL_FAIL),
             Step("Home", action="Home", ok=("nav: launcher root",)),
-        ], uses_vm=True, needs_clean=True, alive=True),
+        ], uses_vm=True, needs_clean=True, alive=True, check=_text_layout),
         Scenario("atl-dialog-keep", [
             Step("atl", tap="atl"),
             # onShow disabled "Yes", hid "Later" and took over "No"

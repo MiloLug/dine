@@ -132,7 +132,9 @@ combinations.
 ### Interface rules
 
 - **Downcalls:** shared code calls slot functions with C types only (rects, colors, paint
-  state, opaque handles). Backends contain no JNI.
+  state, opaque handles). Backends contain no JNI, with two exceptions: host backends own the VM
+  and call JNI; the gtk ui backend uses the legacy WrapperWidget (`legacy_srcs`, `jni.h`), whose
+  `jobj` holds the view's `atl_ref` (`wrapper_widget_ref`), until M7 takes it out.
 - **Upcalls:** backends report back through one shared C API implemented once with JNI: measure
   and layout requests, draw requests, touch and key events, dialog results, loop dispatch.
 - **Handles:** each slot defines its opaque types (view node, window, canvas, path, bitmap);

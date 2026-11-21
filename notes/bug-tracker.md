@@ -1416,6 +1416,32 @@ reads the stale value; the window line of the dump is right after the next pass.
 - Where: `dine-atl/src/api-impl/android/view/Window.java` (`dispatchInsets`, `atlSetFrame`),
   `src/shared/insets.c` (`get_insets`), `src/shared/windows.c` (`windows_place`).
 
+### ATL-167
+
+**gtk's host never reports its window's size: `atl_app_window_size` stays the launch size.** gtk places
+the windows over the activity in its overlay's size (`gtk/window.c` `place_child`), records and uikit
+in `windows_area`; both agree while gtk has no insets or pan, so nothing shows it today. After a resize
+of the gtk window `windows_area` (adjustResize's room, `get_insets`' clip) reads the old size.
+- State: open; found 2026-11-21 (overhaul A8-9 and A8-14), dormant.
+- Fix: report the allocation's size to the app, as uikit's host does. `atl_nav_set_window_size` takes
+  dp (it rounds px through dp) and posts an insets dispatch per call: called from an allocation
+  callback it needs a px compare first, else it can loop.
+- Where: `dine-atl/src/backends/ui/gtk/window.c`, `src/backends/host/` (gtk), `src/shared/nav.h`.
+
+### ATL-168
+
+**gtk's key codes follow the first layout's keyvals, Android's the key's position.** `map_key_code`
+(`gtk/input.c`) translates the hardware keycode with no modifiers in group 0: on a first layout whose
+digits are shifted (AZERTY) or whose letters aren't Latin (Russian), those keys get KEYCODE_UNKNOWN.
+Android's InputReader maps the scan code through `Generic.kl`, whatever the layout, and its key
+character map gives the character (unverified: no InputReader or `Generic.kl` source was read).
+- State: open; found 2026-11-21 (overhaul A8 review), not fixed: the hidden display's keymap is US, so
+  no run shows it.
+- Fix: map the evdev code (GDK's hardware keycode less 8 on Wayland and X11's evdev driver; unverified
+  beyond the US keycodes the smoke feeds) through a table of `Generic.kl`'s rows; keep the keyval only
+  for `unicode`.
+- Where: `dine-atl/src/backends/ui/gtk/input.c` (`map_key_code`), `src/shared/keys.h`.
+
 ## DINE
 
 ### DINE-1

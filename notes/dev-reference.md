@@ -111,7 +111,9 @@ actions run on the GTK main thread, which is the Android main thread on gtk.
   mouse's NULL handle; two handles are two fingers). `key down|up KEYVAL KEYCODE [STATE]` feeds a key
   through the capture and then the bubble phase of the key controllers (`input_key`). Both run before
   the reply and reply whether Java took the event. `type N ["LABEL", "TEXT", KEYVAL, KEYCODE]` also
-  presses and releases that key in the same main-loop call as the text. `linux smoke input-gtk` and `text-gtk` drive them
+  presses and releases that key in the same main-loop call as the text. `state N "LABEL"` replies
+  element N's `sensitive` (`gtk_widget_is_sensitive`) and `focused` (its window's focus widget;
+  `gtk_widget_has_focus` needs an active window, which the hidden display's isn't). `linux smoke input-gtk` and `text-gtk` drive them
   (`tools/py/dine/gtkinput.py`); the tools' own `dbg ui` has no verb for them. GTK 4 has no public
   `GdkEvent` constructor, so the events can't be real ones.
 - The same hook calls `prctl(PR_SET_PTRACER, PR_SET_PTRACER_ANY)`: with Yama's `ptrace_scope` 1,

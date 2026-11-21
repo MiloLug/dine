@@ -180,6 +180,12 @@ class Session:
         at = self.ask(f'at {n} {_json(labels[n][1])}')
         return at["x"], at["y"]
 
+    def state(self, label: str) -> dict:
+        """The toolkit's `sensitive` and `focused` of the element `label` of a fresh walk."""
+        labels = self.wait_label(label)
+        n = agent.pick(labels, label)
+        return self.ask(f'state {n} {_json(labels[n][1])}')
+
     def touch(self, what: str, sequence: int, x: float, y: float) -> bool:
         """One pointer's event; whether the gesture is Java's."""
         return self.ask(f"touch {what} {sequence} {x:.2f} {y:.2f}")["claimed"]

@@ -57,7 +57,53 @@ def key_behind_text(env: dict[str, str]) -> None:
             raise s.fail(f"Java's key listener read {got}, want the text with the character")
 
 
-CHECKS = [typing, key_behind_text]
+def input_state(env: dict[str, str]) -> None:
+    """GTK gives input where Android's dispatch does: to a field in a disabled ScrollView and to a
+    transparent one, not to a disabled one; a tap on a field under blocksDescendants, whose focus Java
+    refuses, leaves GTK's focus on the field Java holds focused."""
+    with Session(WIDGETS_APK, "dev/dine/widgets/InputStateActivity", env) as s:
+        s.wait_line("inputstate shown")
+        want = {"scrolled": True, "faded": True, "off": False, "blocked": True}
+        got = {hint: s.state(hint)["sensitive"] for hint in want}
+        problems = [f"the fields' GTK sensitivity is {got}, want {want}"] if got != want else []
+        s.tap("scrolled")
+        s.wait_line("inputstate focus scrolled true")
+        mark = s.mark()
+        s.tap("blocked")
+        s.ask("settle 3000")
+        deadline = time.monotonic() + 3
+        while s.state("blocked")["focused"] or not s.state("scrolled")["focused"]:
+            if time.monotonic() > deadline:
+                problems.append("GTK's focus didn't go back from the field under blocksDescendants to the one Java holds focused")
+                break
+            time.sleep(0.1)
+        focus = [l for l in s.lines_since(mark) if "inputstate focus blocked" in l]
+        if focus:
+            problems.append(f"Java focused the blocked field: {focus}")
+        if problems:
+            raise s.fail("; ".join(problems))
+
+
+def long_alert(env: dict[str, str]) -> None:
+    """An alert whose message is taller than the window keeps room for the view under the message."""
+    with Session(WIDGETS_APK, "dev/dine/widgets/TextActivity", env) as s:
+        s.wait_line("text shown")
+        mark = s.mark()
+        s.tap("long alert")
+        # the last layout's: the box gets the height it asks for
+        deadline = time.monotonic() + 10
+        while True:
+            heights = [l.split("text long content ", 1)[1] for l in s.lines_since(mark) if "text long content " in l]
+            if heights and heights[-1].split(" of ")[0] == heights[-1].split(" of ")[1] != "0":
+                break
+            if time.monotonic() > deadline:
+                raise s.fail(f"the alert's view got heights (of what it asks) {heights}")
+            time.sleep(0.2)
+        s.tap("Close")
+        s.wait_line("text long closed", mark)
+
+
+CHECKS = [typing, key_behind_text, input_state, long_alert]
 
 
 def run(env: dict[str, str]) -> str | None:

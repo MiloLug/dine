@@ -11,11 +11,18 @@ from .gtkdrive import Problem, Session
 DIALOG_APK = paths.OUT / "tests/apks/dialog.apk"
 NAV_APK = paths.OUT / "tests/apks/nav.apk"
 WIDGETS_APK = paths.OUT / "tests/apks/widgets.apk"
+WINDOWS_APK = paths.OUT / "tests/apks/windows.apk"
 
 # GDK keyval and hardware keycode
 TAB = (0xFF09, 23)
 RETURN = (0xFF0D, 36)
 T = (0x74, 28)
+# the US keymap's key 1, with Shift and without; Shift_L; the keypad's 1 without NumLock
+EXCLAM = (0x21, 10)
+ONE = (0x31, 10)
+SHIFT_L = (0xFFE1, 50)
+KP_END = (0xFF9C, 87)
+SHIFT_MASK = 1
 
 # a point in the app window outside a dialog around its centre
 OUTSIDE = 300
@@ -54,6 +61,21 @@ def outside_touch(env: dict[str, str]) -> None:
                 "outside behind ACTION_UP ids 1")
         if s.died():
             raise s.fail(s.died())
+
+
+def popup_outside(env: dict[str, str]) -> None:
+    """A touch outside a PopupWindow that watches outside touches reaches it as ACTION_OUTSIDE, which
+    closes it, and the activity under it still gets the touch."""
+    with Session(WINDOWS_APK, "dev/dine/windows/PopupActivity", env) as s:
+        s.wait_line("popup activity created")
+        s.tap("anchor")
+        s.wait_line("popup shown")
+        x, y = s.centre("elsewhere")
+        mark = s.mark()
+        s.touch("down", 0, x, y)
+        s.touch("up", 0, x, y)
+        s.wait_line("popup dismissed", mark, timeout=10)
+        s.wait_line("popup elsewhere", mark, timeout=10)
 
 
 def gesture_of_a_hidden_activity(env: dict[str, str]) -> None:
@@ -112,14 +134,38 @@ def keys(env: dict[str, str]) -> None:
         s.key("up", *T)
         s.wait_line("widgets keyup 48", mark)
         time.sleep(0.5)
-        got = [l.split(": ", 1)[-1] for l in s.lines_since(mark) if l.startswith("I/widgets")]
+        got = [l.split(": ", 1)[-1] for l in s.lines_since(mark) if l.startswith("I/widgets") and " keycode " not in l]
         want = ["widgets focus tap true", "widgets focus tap false", "widgets focus hold true", "widgets focus hold false",
                 "widgets focus one true", "widgets keychar 66 10", "widgets click one", "widgets key 48", "widgets keyup 48"]
         if got != want:
             raise s.fail(f"the widgets lines after the keys are {got}, want {want}")
 
 
-CHECKS = [outside_touch, gesture_of_a_hidden_activity, gesture_outlives_activity, keys]
+def key_codes(env: dict[str, str]) -> None:
+    """A key's code is the key's, whatever the modifiers: Shift+1 goes down as '!' and up as '1', both
+    KEYCODE_1; Shift is SHIFT_LEFT; the keypad's 1 without NumLock is NUMPAD_1."""
+    with Session(WIDGETS_APK, "dev/dine/widgets/MainActivity", env) as s:
+        s.wait_line("widgets shown")
+        mark = s.mark()
+        s.key("down", *SHIFT_L)
+        s.key("down", *EXCLAM, SHIFT_MASK)
+        s.key("up", *SHIFT_L, SHIFT_MASK)
+        s.key("up", *ONE)
+        s.key("down", *KP_END)
+        s.key("up", *KP_END)
+        deadline = time.monotonic() + 5
+        while True:
+            got = [l.split(": ", 1)[-1] for l in s.lines_since(mark) if l.startswith("I/widgets") and " keycode " in l]
+            if len(got) >= 6 or time.monotonic() > deadline:
+                break
+            time.sleep(0.1)
+        want = ["widgets keycode down 59 0", "widgets keycode down 8 33", "widgets keycode up 59 0", "widgets keycode up 8 49",
+                "widgets keycode down 145 0", "widgets keycode up 145 0"]
+        if got != want:
+            raise s.fail(f"the key lines are {got}, want {want}")
+
+
+CHECKS = [outside_touch, popup_outside, gesture_of_a_hidden_activity, gesture_outlives_activity, keys, key_codes]
 
 
 def run(env: dict[str, str]) -> str | None:
