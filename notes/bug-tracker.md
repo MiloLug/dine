@@ -1221,6 +1221,19 @@ HorizontalScrollView takes a drag whatever its content.
 - State: open; found 2026-11-20 (overhaul A5b, stage rows PreM4-M4a-4, M4b-2, M4b-10), from the code
   and the old plans.
 
+### ATL-150
+
+**A translucent or floating activity hides the one under it, and cancels its gesture.** Dine shows
+one activity at a time: records keep one `shown` root, gtk's window stack one visible child, so an
+activity whose theme sets `windowIsTranslucent` or `windowIsFloating` gets a blank backdrop instead
+of the activity below. Touch follows the same rule: starting such an activity mid-gesture cancels
+the gesture of the one below (`ui_window_show_activity`), where Android leaves that activity visible
+and lets it keep the gesture (`WindowState.cantReceiveTouchInput` is false while it is not
+`hiddenRequested`).
+- State: open; found 2026-11-21 (overhaul A5b review); no stage owns translucent activities.
+- Where: `dine-atl/src/backends/ui/records/ui.c` and `src/backends/ui/gtk/window.c`
+  (`ui_window_show_activity`), `src/shared/activity.c` (`activity_focus`).
+
 ## DINE
 
 ### DINE-1

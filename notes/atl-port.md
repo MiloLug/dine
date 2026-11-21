@@ -596,9 +596,11 @@ Gravity Defied stops at `NinePatchDrawable.nativeCreate` (M5d). As built:
   `ui_window_show_activity` with another root, `ui_window_remove_activity` and `ui_window_set_roots`
   (gtk: `input_root_gone`). The CANCEL is posted: the window may close from inside its own
   dispatch; it is dropped when the root's decor is detached by then (an activity that finished),
-  as AOSP's dead ViewRootImpl gets no event. When Android flips `hiddenRequested` against the
-  activity's `onPause` and `onStop` is not read; Dine's CANCEL comes after the new activity's
-  `onResume`.
+  as AOSP's removed window gets none (`ViewRootImpl.dispatchDetachedFromWindow` detaches the
+  views, then disposes the input receiver, then removes the window:
+  `out/handoff/aosp/fw/ViewRootImpl.aosp10.java:4146-4177`). When Android flips `hiddenRequested`
+  against the activity's `onPause` and `onStop` is not read; Dine's CANCEL comes after the new
+  activity's `onResume`. A translucent activity over another: [ATL-150](bug-tracker.md#atl-150).
 - uikit: every node view hands its touches to `input.m` (UITouch → `pointers.c`'s lowest free
   pointer id, surface points → px); a MOVE waiting for the Android thread takes the newer
   pointers. Each app has its own gesture, key down times and waiting MOVE (`ATLInput`, in
