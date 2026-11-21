@@ -812,6 +812,8 @@ that mixes the two in a dialog is off by the window's origin.
 - "Dismiss" shows also when the dialog doesn't cancel on an outside touch.
 - An app's own `getListView().setItemChecked` after `show` doesn't reach the native rows.
 - It ignores the width in `Window.setLayout`.
+- A cancelable dialog's container takes no `accessibilityPerformEscape` (M6b3a's step; nothing
+  in `dine-atl/src` or `apps` has it).
 - State: open; from M6b3a's Open line in `notes/atl-port.md`, not checked in code.
 - Where: `dine-atl/src/backends/ui/uikit/panel.m`, `dialog.m`.
 
@@ -845,10 +847,18 @@ button.**
 ### ATL-96
 
 **EditText leftovers.**
-- `onCreateInputConnection` on EditText, BaseInputConnection (a stub whose own `Editable` class
-  shadows `android.text.Editable`) and `onKeyPreIme` aren't implemented.
+- `onCreateInputConnection` on EditText and BaseInputConnection (a stub whose own `Editable` class
+  shadows `android.text.Editable`) aren't implemented.
 - A hardware keyboard types only into the field that holds the keyboard (no KeyListener, which is
-  [ATL-21](general-todo.md#atl-21) in part).
+  [ATL-21](general-todo.md#atl-21) in part). A keypad Enter in a field reaches Java as
+  `NUMPAD_ENTER`, and `View.onKeyDown` consumes it as a confirm key (the EditText is
+  long-clickable), so the keymap's fallback to ENTER never runs. AOSP 10's `TextView.doKeyDown`
+  handles `KEYCODE_ENTER` only in its switch and offers the other keys to the editor's key
+  listener first (`out/handoff/aosp/fw/TextView.java:8303-8447`), so its EditText doesn't reach
+  the fallback either; what the key listener does with a keypad Enter (a newline in a multi-line
+  field) is not read, and ATL has none. The `KeyTest` case the old M6a plan names (160 to an
+  EditText through its key listener and the keymap) can only assert the key listener's two lines
+  (`0:160, 1:160`, `out/handoff/overhaul/a5b/i6-keytest-numpad-edittext.log`) and was dropped.
 - Java's click and touch listeners on a field or a selectable TextView aren't reached where the
   toolkit takes its touches (gtk; iOS unchecked).
 - Multi-line EditText on gtk: the notes name it as open and say no more.
@@ -1171,6 +1181,45 @@ per frame.
   that shows no animation; the apps suite and Gravity Defied.
 - Where: `dine-atl/src/backends/ui/records/ui.c` (`traverse`),
   `src/api-impl/android/view/View.java` (`internalSetPadding`, `setBackgroundDrawable`).
+
+### ATL-142
+
+**On uikit a scroll node's pan can't be refused, and a child's `requestDisallowInterceptTouchEvent`
+never reaches it.** headless and Android's rules are carried (`ui_scroll_disallow_intercept`,
+`linux smoke pan`); uikit's `ATLScrollView` is a `UIScrollView` whose pan takes a drag past the
+slop from a child that asked for the whole gesture. `alwaysBounceVertical` is off for a vertical
+node, so one whose content fits starts no pan (UIScrollView leaves a fitting drag to the child:
+unverified, no run drags on the phone); a horizontal node keeps `alwaysBounceHorizontal`, as
+HorizontalScrollView takes a drag whatever its content.
+- Design, not implemented: `ui_scroll_disallow_intercept` arrives on the Android thread after a
+  posted DOWN and UIKit's thread never waits for it, and with `delaysContentTouches` at its default
+  (YES, never set here) a drag past the slop within about 150 ms gives the child no `touchesBegan`
+  at all, so Java never sees the DOWN in time. Instead: an atomic flag on the node tagged with the
+  gesture's down time, written from the Android thread, read in an `ATLScrollView`
+  `gestureRecognizerShouldBegin:` override (a UIView API; the pan's delegate can't be reassigned),
+  with `delaysContentTouches = NO` so Java gets the DOWN at once as on Android. The race between
+  the DOWN and the pan stays.
+- State: open; found 2026-11-20 (overhaul A5b, audit A5-4); needs a run that can drag on the phone
+  (the debug agent has `tap` only and UIKit makes no `UITouch`).
+- Where: `dine-atl/src/backends/ui/uikit/view.m` (`ATLScrollView`, `ui_scroll_disallow_intercept`).
+
+### ATL-145
+
+**gtk limits of M4a and M4b that were never listed.**
+- GtkScrolledWindow can't drag-scroll when the press lands on a clickable child: the capture
+  controller returns `claimed` for a DOWN Java took, so GTK's scrolled window never sees the
+  gesture (`gtk/input.c`, `input_pointer`).
+- gtk ignores `scrollTo` on views that aren't scroll nodes (`gtk/widgets.c`, `ui_view_scroll_to`)
+  while `View.atlScrollTo` moves Java's scroll offset at once; Java's hit test and GTK's picture
+  then disagree (uikit moves `bounds.origin`).
+- `can_target` is off on the GtkButton of a push or toggle control (`gtk/widgets.c`), so GTK's
+  `:hover` styling is lost on controls (M4b's by-hand check).
+- The widgets APK's controls were never checked by hand for their look on gtk (M4b's Status:
+  "Not checked by hand"); a tap reaching Java, the shown checked state and the border dropped under
+  a background (`gtk/widgets.c`, `button_set_has_background`) have no gtk run either (`linux smoke
+  controls` is headless only; `input-gtk` doesn't reach them).
+- State: open; found 2026-11-20 (overhaul A5b, stage rows PreM4-M4a-4, M4b-2, M4b-10), from the code
+  and the old plans.
 
 ## DINE
 

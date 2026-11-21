@@ -7,6 +7,24 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - Our delta: `git diff upstream/master...dine`. Local `master` lags upstream.
 - Upstream isn't merged: read its commits since the last merge and reimplement the wanted ones
   by hand.
+- Touch input follows AOSP's input stack where upstream's toolkit-driven input doesn't. A gesture
+  goes to the window its DOWN went to (records: `ui_window.touched`, an activity's root or a window
+  over it); a window that is removed or hidden (`ui_window_remove_activity`,
+  `ui_window_show_activity` with another root, `ui_window_set_roots`) gets a CANCEL, posted, and the
+  rest of the gesture goes nowhere: `InputDispatcher::setInputWindows` ("touched window was
+  removed") for a window `InputMonitor.accept` leaves out because `cantReceiveTouchInput` holds
+  (`hiddenRequested`). The posted CANCEL is dropped when the root's decor is detached by then.
+  gtk's `input_root_gone` does the same. Pointer ids are
+  the lowest free one, as `InputReader`'s (first finger 0), kept in `src/shared/pointers.c`, which
+  gtk and uikit share; a touch event goes to Java as a copy taken after the tracker updated, so an
+  app that ends the gesture inside its own UP leaves nothing stale. A canceled key press is an UP
+  with `FLAG_CANCELED` (`struct atl_key.canceled`).
+- A scroll node's toolkit pan follows `ScrollView`'s and `HorizontalScrollView`'s interception: a
+  `requestDisallowInterceptTouchEvent(true)` from a view under it reaches the node
+  (`ui_scroll_disallow_intercept`) and keeps the gesture until its end, a vertical node with
+  nothing to scroll takes no drag, a horizontal one does. headless carries all three; gtk's scrolled
+  window never sees a gesture Java took; uikit's `alwaysBounceVertical` is off and the refusal is
+  not carried (ATL-142).
 - The main Looper yields to the platform loop: after each message `nativePollOnce(0)` asks
   `loop_main_yield`, and with posts queued (layout, frames, input; on glib any waiting source)
   `Looper.loop()` returns, the posts run and the dispatch comes again. A dispatch's first poll

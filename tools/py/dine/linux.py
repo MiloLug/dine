@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from . import display, paths
+from . import display, gtkinput, paths
 from .paths import DineError
 
 GTK_BUILD = paths.ATL_GTK_BUILD
@@ -127,8 +127,8 @@ def _loop() -> str | None:
     _need_headless()
     _need_gtk()
     for build in (HEADLESS_BUILD, GTK_BUILD):
-        problem = _script(f"meson test loop ({build.name})", "meson", "test", "-C", build, "--no-rebuild",
-                          "--print-errorlogs", "loop")
+        problem = _script(f"meson test loop pointers ({build.name})", "meson", "test", "-C", build, "--no-rebuild",
+                          "--print-errorlogs", "loop", "pointers")
         if problem:
             return problem
     return None
@@ -205,6 +205,11 @@ def _text() -> str | None:
     return _widgets_apk() or _script("run-text.sh", HEADLESS_TESTS / "run-text.sh", HEADLESS_BUILD, WIDGETS_APK)
 
 
+def _pan() -> str | None:
+    _need_headless()
+    return _widgets_apk() or _script("run-pan.sh", HEADLESS_TESTS / "run-pan.sh", HEADLESS_BUILD, WIDGETS_APK)
+
+
 def _frames() -> str | None:
     _need_headless()
     return _widgets_apk() or _script("run-frames.sh", HEADLESS_TESTS / "run-frames.sh", HEADLESS_BUILD, WIDGETS_APK)
@@ -235,6 +240,14 @@ def _windows_gtk() -> str | None:
             or _script("run-windows.sh", HEADLESS_TESTS / "run-windows.sh", "--gtk", GTK_BUILD, WINDOWS_APK, env=_gtk_env()))
 
 
+def _input_gtk() -> str | None:
+    _need_gtk()
+    return (_dialog_apk(GTK_BUILD)
+            or _script("apk.py", sys.executable, paths.ROOT / "tests/harness/apk.py", HEADLESS_TESTS / "nav", NAV_APK)
+            or _widgets_apk(GTK_BUILD)
+            or gtkinput.run(_gtk_env()))
+
+
 def _draw() -> str | None:
     _need_headless()
     return _widgets_apk() or _script("run-draw.sh", HEADLESS_TESTS / "run-draw.sh", "--headless", HEADLESS_BUILD,
@@ -252,7 +265,7 @@ CHECKS = [
     Check("gd-package", "gtk: the same, installed with --install-internal and run with --package", lambda: _gd("--by-package")),
     Check("demo", "headless: demo_app reaches onResume, view tree matches the golden", _demo),
     Check("demo-480", "headless: the same at density 480, where sp, dp and px differ", _demo_480),
-    Check("loop", "headless and gtk: the loop slot's rules on the poll and glib backends alone (a scheduled dispatch, a wake before a schedule, posts across threads and after a quit, a dispatch that yields to a post)", _loop),
+    Check("loop", "headless and gtk: the loop slot's rules on the poll and glib backends alone (a scheduled dispatch, a wake before a schedule, posts across threads and after a quit, a dispatch that yields to a post), and the pointer tracker gtk and uikit share (ids, action codes, a table that stays right when a gesture ends during a delivery)", _loop),
     Check("looper", "headless: looper.apk goes through the loop paths, its timed and untimed waits last their 50 ms without spinning, a layout pass runs between messages that are all due, and it exits 0", _looper),
     Check("dialog", "headless: dialog.apk's scripted runs log exactly the expected lines (alerts, a list, choice rows, progress, a setView panel, buttons changed in onShow and while drawn, an alert that isn't cancelable); from cli -c, content dialogs and panels match dialog-content.viewtree and dialog-view.viewtree under taps, text, Back and touches outside, and a finishing activity's dialog goes with it", _dialog),
     Check("dialog-gtk", "gtk: dialog.apk's scripted runs through the GTK dialog's widgets, graded on the app's lines and exit status; none of the cli -c steps", _dialog_gtk),
@@ -264,11 +277,13 @@ CHECKS = [
     Check("lists", "headless: widgets.apk's ListView scrolled by 600 px has row 11 first and 12 rows shown, and ATL stays up until the timeout", _lists),
     Check("controls", "headless: widgets.apk's buttons, checkboxes, radios, switch, toggle and image button take taps and keys from cli -c", _controls),
     Check("text", "headless: widgets.apk's text fields take cli -c text lines through filters, watchers, a composition, a held report, focus moves and Back", _text),
+    Check("pan", "headless: widgets.apk's PanActivity: a gesture on a scroll node is taken as the toolkit's pan is, as Android's ScrollView and HorizontalScrollView take it: not when a child asked its parent not to intercept, not by a ScrollView whose content fits, by a HorizontalScrollView whose content fits, and by a node with content to scroll", _pan),
     Check("draw", "headless: widgets.apk's Canvas view redraws on invalidate, not on a same-size layout; display lists (clips, a PNG bitmap, a scrolled background, text, paths, arcs, gradients, a layer, nine-patches) match the golden; the view readback says it draws no views", _draw),
     Check("draw-gtk", "gtk: the same view draws its three times through gsk and the bitmap readbacks and the view's own replay's (clips, a PNG, a filtered drawable, a gradient, text) hold, with no missing native and no GTK critical; the draws' order and the display lists aren't compared", _draw_gtk),
     Check("frames", "headless: widgets.apk's PassesActivity: an OnPreDrawListener that cancels three frames holds a view's draw back to the fourth, one that cancels an invalidate's draw-only pass does the same; a layout asked for from a global layout call is done before the next frame's callbacks; a listener that asks for a layout in every call gets passes at the frame rate, with the main loop still running its posted message", _frames),
     Check("windows", "headless: windows.apk's window state from an activity and a dialog in order with the task's moves, none from a stopped activity; a dialog's insets at 160 and 480 dpi; the order and frames of WindowManager windows, a popup, an AutoCompleteTextView's drop-down, a menu, and toasts with their durations", _windows),
     Check("windows-gtk", "gtk: a popup below its anchor, a native menu and a toast", _windows_gtk),
+    Check("input-gtk", "gtk: pointer events fed through the debug agent: in the dialog APK's OutsideActivity a touch outside its dialog closes it from its own UP, the next gesture reaches the activity behind, and two pointers get ids 0 and 1; in the nav APK an activity that finishes on its DOWN gets a CANCEL and the activity below gets nothing of that gesture; in widgets.apk keys fed through the key controllers move focus and click, and a release with no press goes nowhere", _input_gtk),
     Check("keyboard", "headless: windows.apk's fields under an IME inset: adjustPan moves the window up only as far as the field needs, adjustResize lays it out above the keyboard (keyboard-pan.viewtree, keyboard-resize.viewtree), both also against what their layout alone would give and at 480 dpi; no mode follows the scroll container", _keyboard),
     Check("config", "headless: windows.apk under night changes from cli -c: an activity whose manifest covers uiMode, its view and the Application hear them and resolve night resources; one that doesn't keeps its configuration", _config),
 ]

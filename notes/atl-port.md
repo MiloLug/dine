@@ -491,7 +491,8 @@ Natives that layouts and app setup reach before any input, moved behind the slot
   setPolyToPoly (after Skia) and mapRadius have natives.
 - Paint state in the gfx slot (`gfx_paint_*`); its text natives are shared over `gfx_text_*` (M5c).
   Paint frees its native state in `finalize`.
-- Java: `getLocationInWindow/OnScreen` (OnScreen = InWindow: the window's origin is 0),
+- Java: `getLocationInWindow` (the root's coordinates less the window's pan) and
+  `getLocationOnScreen` (that plus the window's frame origin, M6b2),
   `getGlobalVisibleRect`, `offset*RectInto*` and `getViewTreeObserver`'s window walk the parents.
 - Attach: a Java flag and `dispatchAttached/DetachedFromWindow` (ViewGroup passes them on) from
   ViewGroup add/remove, the activity's decor in the app window (attached before onStart, detached
@@ -527,9 +528,12 @@ Natives that layouts and app setup reach before any input, moved behind the slot
 - Shared Java: one floating ViewTreeObserver per view without a window; the View constructor
   reads `keepScreenOn`.
 - Input for tests: the cli host's `-c` stdin takes touch and key lines next to `back`, `home` and
-  `front`, and M4c's text lines. gtk and iOS have no touch injection path (the debug agent's `tap`
-  is `accessibilityActivate`, and iOS has no public touch synthesis), so their touch steps are
-  checks by hand.
+  `front`, and M4c's text lines. The gtk debug agent feeds pointer and key events through the
+  functions GTK's own events reach (`input_pointer`, `input_key`: `touch`, `key`, `at`;
+  `linux smoke input-gtk`); what stays by hand on gtk is the GdkEvent reading (`on_pointer_event`'s
+  event-type switch, `native_point`). iOS has no public touch synthesis and its agent's `tap` is
+  `accessibilityActivate` into `input_tap`, so uikit's touch steps (UITouch, scroll pans, drags)
+  and a hardware keyboard's presses are checks by hand ([ATL-144](bug-tracker.md#atl-144)).
 - Target: the widgets APK, which exists for checks by eye on iOS (`dbg smoke atl-widgets`), gets
   steps graded on headless: a tap, a long press, a scroll, a key, and a selector background's
   selected child following the pressed state, read from a log line (nothing draws it before M5b).
@@ -567,12 +571,40 @@ Gravity Defied stops at `NinePatchDrawable.nativeCreate` (M5d). As built:
   pickers, WebView, scrollbars) are marked with `input_take_native`: a gesture that starts on one
   stays with GTK. The Button family's GTK widgets take none (M4b). A text widget with GTK's focus
   gets keys first. The scroll node is GtkScrolledWindow; a request its range can't take yet waits
-  for the range to grow. Hover and the wheel stay per widget.
+  for the range to grow. Hover and the wheel stay per widget. The controller reads the GdkEvent and
+  hands `input_pointer` its kind, sequence (NULL: the mouse) and position; the pointers are
+  `src/shared/pointers.c`'s, and each event goes to Java as a copy taken before delivery, so a
+  window that closes from its own UP leaves the tracker right. A root that leaves the window
+  (`input_root_gone`: a dialog, an activity's removal or hiding) ends its gesture with a posted CANCEL and
+  nothing after it. GtkScrolledWindow sees only gestures no view took (Java's dispatch comes first
+  in the capture phase), so `ui_scroll_disallow_intercept` does nothing there.
 - headless: the cli host's `-c` takes `touch down|move|up|cancel <id> <x> <y>` (window px) and
-  `key down|up <code> [<meta> [<unicode>]]`. A drag that starts in a scroll node and passes the
-  touch slop along its axis stands in for the toolkit's pan: Java gets CANCEL, the offset follows.
-- uikit: every node view hands its touches to `input.m` (UITouch → lowest free pointer id, surface
-  points → px); a MOVE waiting for the Android thread takes the newer pointers. ATLScrollView is a
+  `key down|up|cancel <code> [<meta> [<unicode>]]` (cancel: an UP with `FLAG_CANCELED`). A drag
+  that starts in a scroll node and passes the touch slop along its axis stands in for the
+  toolkit's pan: Java gets CANCEL, the offset follows. Android's interception rules decide whether
+  the node takes it: a child's `requestDisallowInterceptTouchEvent(true)` reaches the node
+  (`ui_scroll_disallow_intercept`) and keeps the gesture until its end; a ScrollView with nothing
+  to scroll takes no drag, a HorizontalScrollView takes one whatever its content.
+- A gesture belongs to the window its DOWN went to (records: `ui_window.touched`, an activity's
+  root or a window over it), and no other window gets a part of it. A window that leaves the input
+  windows, removed or hidden, gets a posted CANCEL (the last event it got, with the CANCEL action)
+  and the rest of the gesture is dropped up to its UP: AOSP's `InputDispatcher::setInputWindows`
+  ("touched window was removed") cancels it for a window `InputMonitor`'s
+  `UpdateInputForAllWindowsConsumer.accept` leaves out of the input list, which
+  `WindowState.cantReceiveTouchInput` does when `AppWindowToken.hiddenRequested` is set
+  (`out/handoff/aosp/fw/{WindowState,InputMonitor,AppWindowToken}.aosp10.java`). In Dine that is
+  `ui_window_show_activity` with another root, `ui_window_remove_activity` and `ui_window_set_roots`
+  (gtk: `input_root_gone`). The CANCEL is posted: the window may close from inside its own
+  dispatch; it is dropped when the root's decor is detached by then (an activity that finished),
+  as AOSP's dead ViewRootImpl gets no event. When Android flips `hiddenRequested` against the
+  activity's `onPause` and `onStop` is not read; Dine's CANCEL comes after the new activity's
+  `onResume`.
+- uikit: every node view hands its touches to `input.m` (UITouch → `pointers.c`'s lowest free
+  pointer id, surface points → px); a MOVE waiting for the Android thread takes the newer
+  pointers. Each app has its own gesture, key down times and waiting MOVE (`ATLInput`, in
+  `struct uikit_app`), found through the touch's surface or, once it began, through the touch. A
+  press the system cancels reaches Java as an UP with `FLAG_CANCELED` (`pressesCancelled`).
+  ATLScrollView is a
   UIScrollView (no safe-area insets; `contentSize` along its axis is the child's size plus its
   padding, without margins, as AOSP 10's range; set in the layout batch) whose offsets go back coalesced; while the
   user drives it they're clamped to the range, so the bounce past an end stays UIKit's. Other views
@@ -586,12 +618,17 @@ Gravity Defied stops at `NinePatchDrawable.nativeCreate` (M5d). As built:
   the next-focus ids. EditText gets `editTextStyle`'s `focusable` and `focusableInTouchMode`, each
   overridden by its own attribute (ATL's EditText doesn't take that style).
 - Tests: framework suite `input` (dispatch, focus, keys, scroll, observer; it prints the cost of a
-  MOVE through ten levels), `run-widgets.sh` (`linux smoke widgets`), and Back on a shown list in
-  `run-nav.sh`.
+  MOVE through ten levels), `run-widgets.sh` (`linux smoke widgets`; a canceled Enter clicks
+  nothing), `run-pan.sh` (`linux smoke pan`: the scroll node's interception), Back on a shown
+  list and gestures that outlive their activity in `run-nav.sh`, `tests/loop/pointers_test.c` (in
+  `linux smoke loop`), and `linux smoke input-gtk` (pointers and keys fed through the gtk agent).
 - AOSP provenance: `dine-atl/doc/AOSP.md`.
 - Open: the edge pans against an Android-hosted UIScrollView ([DINE-3](bug-tracker.md#dine-3))
   and an excluded span, by hand; touches on popovers on gtk; a GtkText's Tab moves GTK's focus,
-  not Java's. Lists scroll since M6b1 (rows move without a relayout).
+  not Java's. Lists scroll since M6b1 (rows move without a relayout). A hardware keyboard and real
+  drags on the phone: [ATL-144](general-todo.md#atl-144); gtk's limits (a drag that starts on a
+  clickable child, `scrollTo` on a view that isn't a scroll node): [ATL-145](bug-tracker.md#atl-145);
+  META+TAB clusters: [ATL-146](general-todo.md#atl-146).
 
 ### M4b: controls
 
@@ -609,7 +646,8 @@ Gravity Defied stops at `NinePatchDrawable.nativeCreate` (M5d). As built:
 
 **Status: done (2026-10-24).** `linux smoke controls`, `dialog` and `dialog-gtk`, and the
 framework suite `controls` pass; on the iPhone 13 `dbg smoke atl-controls` and `atl-dialog-keep`
-pass. Not checked by hand: the controls' look on gtk. Next stops on headless: flower_finder at
+pass. Not checked by hand: the controls' look on gtk, and the hover styling `can_target` off loses
+([ATL-145](bug-tracker.md#atl-145)). Next stops on headless: flower_finder at
 `Region.nativeConstructor` (material's FloatingActionButton), accelerometerdemo at
 `SensorManager.register_accelerometer_listener_native` (M7's sensors). As built:
 - Input stays Java's (M4a): a control is a passive toolkit widget showing Java's pressed and
@@ -725,17 +763,17 @@ keyboard, the keyboard after Home and front. As built:
   change too. A field Java gave the keyboard before its root was in a window gets the first
   responder when the root shows; a field that resigns (another activity shows, Dine leaves the
   front) tells Java the keyboard is gone. Return on a single-line field is the editor action; the
-  number and phone pads, which have no return key, get a bar above them with it. The hint is the
+  number and phone pads, which have no return key, get a round glass button above the pad's corner
+  (M6b3c). The hint is the
   accessibility label. A scratch UITextField or UITextView measures, an empty one as a space.
 - Debug agent: `ui type <label> <text>` (`insertText:`; no marked text).
 - Tests: `run-text.sh` (`linux smoke text`, the widgets APK's `TextActivity`), the framework suite
   `text`, smoke `atl-text`.
-- Open: Java's click and touch listeners on a field or a selectable
+- Open: `atl-text` reads no field's own text ([ATL-147](general-todo.md#atl-147)); a keypad Enter
+  in an EditText has no key listener to type it ([ATL-96](bug-tracker.md#atl-96)); Java's click and touch listeners on a field or a selectable
   TextView where the toolkit takes its touches (gtk; on iOS unchecked); a hardware keyboard types
   only into the field with the keyboard (no KeyListener); gtk multi-line; ClipboardManager (M7); `onCreateInputConnection` on EditText,
-  BaseInputConnection (a stub whose own `Editable` class shadows `android.text.Editable`) and
-  `onKeyPreIme`;
-  AutoCompleteTextView's drop-down (PopupWindow, M6b3); on headless a field whose activity another
+  BaseInputConnection (a stub whose own `Editable` class shadows `android.text.Editable`); on headless a field whose activity another
   one covers keeps the keyboard (Java's next Back hides it); typing lag under `-Xint`, unmeasured.
 
 ### M5: Canvas
@@ -905,7 +943,7 @@ pass. As built:
   display link runs on UIKit's main run loop ([ATL-139](general-todo.md#atl-139)); a background's
   offset while UIKit drives a scroll waits for Java's scroll report and redraw
   ([ATL-138](bug-tracker.md#atl-138)); a press on a selector row on the phone and gtk is unchecked
-  by hand.
+  by hand ([ATL-144](general-todo.md#atl-144)).
 
 #### M5c: text
 
@@ -1200,7 +1238,8 @@ As built:
 - gtk frees a view's padding, background and text color CSS providers when it replaces them (no
   check counts them).
 - Open: the callbacks that print an exception and go on stay so (measure, draw, input, click,
-  dialog result; the layout upcall exits): multi-app's per-app handler takes them up. gtk differs:
+  dialog result; the layout upcall exits): multi-app's per-app handler takes them up (MA3,
+  [ATL-148](general-todo.md#atl-148)). gtk differs:
   a view's draw and its signal callbacks exit where the records backends' draw and uikit's input
   print. Region's `setPath` rasterizes every row of the
   path's bounds when no clip limits them.
@@ -1445,7 +1484,8 @@ the Status block.
   shown panel's layout, not UIKit's own fitting.
 - Hand checks: screenshots in dark mode of a content dialog, a `setView` panel, an adapter list and
   a progress bar. Not done: light mode, VoiceOver, Dynamic Type, a long list on the phone.
-- Open: "Dismiss" shows also when the dialog doesn't cancel on an outside touch; an app's own
+- Open: no `accessibilityPerformEscape` on a cancelable dialog's container
+  ([ATL-92](bug-tracker.md#atl-92)); "Dismiss" shows also when the dialog doesn't cancel on an outside touch; an app's own
   `getListView().setItemChecked` after the show doesn't reach the native rows; a panel ignores
   `Window.setLayout`'s width; AppCompat and Material dialogs draw Android's own layouts;
   `Dialog.create`, `onStart` and `onStop` are missing ([ATL-65](general-todo.md#atl-65)); a
@@ -1505,7 +1545,8 @@ and toast steps; the framework `windows` suite passes on headless, gtk and one V
   chevron); Copy picked by hand: UIKit runs the item's action at the tap, 1.2 s before the end
   animation completes, so Java gets the item, then the dismissal (the debug agent can't pick
   UIMenu items); the toast capsule bottom-centre with Dine's status-bar strip unchanged. Not done:
-  light mode, a toast over a plain alert, VoiceOver.
+  light mode, a toast over a plain alert, VoiceOver, and ACTION_OUTSIDE from native controls through
+  UIKit's hit test ([ATL-144](general-todo.md#atl-144)).
 - Open: a `setView` toast draws under a presented plain alert; popups and drop-downs follow their
   anchor in a panned or resized window (M6b3c), unchecked on the phone; on iOS the agent's
   accessibility taps still reach Android views under an open menu (real touches close it); a text
@@ -1584,7 +1625,8 @@ unchanged; both builds build; the hand checks are listed in the Status block.
   animation; a real touch on a panned field; VoiceOver on the round button; a dark/light flip in
   Control Center. One switch reached three running apps (windows, widgets and nav) in the phone's
   log. Not done: the swipe and the keyboard corners on the build with their fixes; the top edge's
-  deferral with the status bar hidden.
+  deferral with the status bar hidden; experiment K2's result
+  ([ATL-144](general-todo.md#atl-144)).
 - Open: theme attributes keep their values after a night change
   ([ATL-73](general-todo.md#atl-73)), and an activity without uiMode keeps its look until
   recreation (multi-app MA5); an app's Resources share one AssetManager, so a configuration

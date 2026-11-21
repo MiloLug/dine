@@ -209,7 +209,8 @@ while each VM still runs one app; MA2b runs several apps in one VM. The record m
 - Not in MA2a: the gtk host keeps its one window and app handle, and gtk's C IME context and
   MediaSession stay per process (one app per gtk process); the screen's density stays VM-wide,
   the window size is per app (M6b3c) and per task with MA6; the headless and uikit input state (touch, scroll, edit
-  target) stays per process (MA2b).
+  target) stays per process (MA2b did headless's; uikit's touch, key-time and pending-MOVE state is per
+  app, `ATLInput` in `struct uikit_app`; the edit target is [ATL-67](../bug-tracker.md#atl-67)).
 - Done when: today's suites pass at baseline on headless and gtk, both iOS builds build, `dine-atl/src`
   keeps none of the primary app's fields. Met 2026-11-02, and `dbg smoke` passes on the phone.
 
@@ -252,7 +253,9 @@ while each VM still runs one app; MA2b runs several apps in one VM. The record m
 
 ## MA3: containment
 
-- `[ ]` Per-app `ThreadGroup.uncaughtException`; `hacky_uncaught_exception_handler` goes.
+- `[ ]` Per-app `ThreadGroup.uncaughtException`; `hacky_uncaught_exception_handler` goes. The
+  upcalls that print an app's exception and go on (measure, draw, input, click, a dialog's result)
+  call it too ([ATL-148](../general-todo.md#atl-148)).
 - `[ ]` `System.exit`, `Runtime.halt` and `Process.killProcess` end the calling app, caught before
   the `shuttingDown` latch.
 - `[ ]` App-reachable ART FATALs become app kills: JNI global table overflow, the suspension

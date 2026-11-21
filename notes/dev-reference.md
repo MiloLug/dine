@@ -42,7 +42,7 @@ touches. Commands and setup live in `tools/dine <group> --help`, `README.md` and
   view tree of the window and its shown dialogs, test hooks only), `tap <text>` (a down and an up
   at the middle of the shown text view with that text, a dialog's first; prints `tap: <text> <x>,<y>`
   or `tap: no <text>`), `answer <label>` (a tap on that button or row of the last shown alert;
-  prints `answer: <label>` or `answer: no <label>`), `touch down|move|up|cancel <id> <x> <y>` (window px), `key down|up <code> [<meta> [<unicode>]]`,
+  prints `answer: <label>` or `answer: no <label>`), `touch down|move|up|cancel <id> <x> <y>` (window px), `key down|up|cancel <code> [<meta> [<unicode>]]` (cancel: an UP with `FLAG_CANCELED`),
   and text lines for the field that has the keyboard: `text commit|compose <text>` (`\n` a
   newline), `text delete <before> <after>`, `text select <start> <end>` (UTF-16 code units),
   `text tap <x> <y>` (the field there takes the keyboard as a toolkit's own tap gives it),
@@ -102,6 +102,14 @@ actions run on the GTK main thread, which is the Android main thread on gtk.
   edit as it does a keyboard's.
 - `back` is `atl_nav_back`; its result is only whether the app ran and ATL's main loop was up
   ([TOOL-5](general-todo.md#tool-5)).
+- `at N "LABEL"` replies the centre of element N in the app window (px). `touch down|move|up|cancel SEQ
+  X Y` feeds one pointer's event at X, Y through `input_pointer`, the function GTK's own pointer
+  events reach after `on_pointer_event` read them; SEQ is a made-up handle for the pointer (0: the
+  mouse's NULL handle; two handles are two fingers). `key down|up KEYVAL KEYCODE [STATE]` feeds a key
+  through the capture and then the bubble phase of the key controllers (`input_key`). Both run before
+  the reply and reply whether Java took the event. `linux smoke input-gtk` drives them
+  (`tools/py/dine/gtkinput.py`); the tools' own `dbg ui` has no verb for them. GTK 4 has no public
+  `GdkEvent` constructor, so the events can't be real ones.
 - The same hook calls `prctl(PR_SET_PTRACER, PR_SET_PTRACER_ANY)`: with Yama's `ptrace_scope` 1,
   lldb in the debug server, which is ATL's sibling, could not attach otherwise.
 

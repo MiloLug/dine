@@ -421,6 +421,118 @@ prints nothing, so a wrapper that is never unreffed fails no check.
 - Where: `dine-atl/src/backends/ui/gtk/view.c`, `tests/headless/run-views.sh`.
 - Found 2026-11-20 (overhaul A5a, audit A5-17's last clause).
 
+### ATL-144
+
+**Hand checks on the phone that no run makes: input, and looks and facts no step reads.** Input:
+no run drags or types on the phone (the debug agent has `tap` only and UIKit makes no `UITouch`; a
+hardware keyboard needs a keyboard). The last bullets (looks and facts) are checks the phone's
+smoke steps would need a new line or agent output for.
+- A hardware keyboard (M4a): Tab, the arrows, Enter, Esc, a typed letter, and the character an arrow
+  key carries (`input.m` takes the first UTF-16 unit of `UIKey.characters` for every key; what
+  UIKit returns for arrows and function keys was never observed); a held key cancelled by the
+  system (Control Center) clicks nothing (`pressesCancelled` sets `FLAG_CANCELED`; headless
+  proves the shared half, `key cancel`).
+- A drag through the real touch path (UITouch ids 0 and 1 for two fingers, `delaysContentTouches`,
+  the scroll pan against a child, [ATL-142](bug-tracker.md#atl-142)).
+- A press on a selector row on the phone and on gtk (M5b); the redraw `View.invalidateDrawable` asks
+  for is graded nowhere (`run-widgets.sh` reads `getCurrent()`; display lists are dumped by
+  `run-draw.sh` only).
+- The three cases of `ATLOutsideWatch` (M6b3b): a tap on a second field closes an open drop-down, a
+  touch-modal window without a dim catches the touches outside it, a NOT_TOUCHABLE one lets them
+  through. The agent's activation never passes through UIKit's hit test.
+- M6b3c's hand checks on the final build: the home indicator's swipe with `hideNavigation` and not
+  `immersive`, the keyboard's corners (`frame.background` on the surface), the top edge's deferral
+  with the status bar hidden (`Navigation.swift`, `prefersHomeIndicatorAutoHidden`).
+- M6b3c's experiment K2: whether UIKit scrolls an `ATLScrollView` to a first-responder field on its
+  own (a scroll report with no touch after `type` into `ResizeActivity`'s field); the stage's
+  Status records neither the result nor an Open line, and `view.m` has no suppression.
+- `Configuration`'s keyboard fields and the keyboard's show and hide (late fix `76313409`): no phone
+  scenario reads them (`atl-config` matches night lines; `atl-text` has no show, hide, Back or Next
+  step), so they stay unverified on iOS; the code is shared with headless, where `KeyboardConfigTest`
+  covers it.
+- Looks and facts no phone step reads (overhaul A5b, round 1): `nav: frame` prints neither the
+  frame's color nor its light flag (M3-4: `atl-demo` could wait for `1a1b20`, `atl-nav` for B's
+  `2196f3` light); a TextView's background color and padding on UILabel (M3-7: the agent's `ui ls`
+  prints neither); the release of the surface when a window closes (M3-12: no line, no count); a
+  field changed in kind while it edits, two changes before a delivery, a field's deferred first
+  responder (M4c-11); the in-flight frame skip, a view that stops drawing clearing its layer and
+  `replace_native`'s hand-over (M5b-5); the capped field's growth and its last lines on the phone
+  (M5c-2: `atl-text` types into `name` only); a Button with a background and padding keeping no
+  UIKit insets (M6b3a-5: no `framed` step in `atl-controls`); VoiceOver staying in the topmost
+  modal window (M6b3a-7: an absence check in `atl-dialog-content` if the agent's walk honours
+  `accessibilityViewIsModal`); one night switch reaching every running app and the uikit panel's
+  room after a window resize (M6b3c-12, M6b3c-13: `atl-config` runs one app).
+- State: open; found 2026-11-20 (overhaul A5b, stage rows PreM4-M4a-1, M5b-4, M6b3b-2, M6b3c-3,
+  M6b3c-15, late-5, from the old plans and the audit; round 1: M3-4, M3-7, M3-12, M4c-11, M5b-5,
+  M5c-2, M6b3a-5, M6b3a-7, M6b3c-12, M6b3c-13).
+
+### ATL-146
+
+**META+TAB cluster navigation isn't wired.** `ATLInput.performFocusNavigation` has no cluster
+branch (`FOCUS_FORWARD` between keyboard navigation clusters); M4a's plan listed it as a default
+taken and it reached neither the stage's section nor an entry.
+- Where: `dine-atl/src/api-impl/android/view/ATLInput.java` (`performFocusNavigation`).
+- Found 2026-11-20 (overhaul A5b, stage row PreM4-M4a-4).
+
+### ATL-147
+
+**`dbg smoke atl-text` reads no field's own text.** Its steps assert Java's log lines only, so a
+uikit that applied no snapshot (`ui_edit_set_state`, M4c) would still pass: after `fill` the report
+with a stale base lands at Java's cursor and logs `text after "filled!"`. The drop rule is graded on
+headless only (`run-text.sh`). Fix: label an iOS text field `hint: text` in the debug agent as the
+gtk agent does, and add `ui=('name: hi',)` and `ui=('name: filled',)` to `atl-text` (the agent's
+text insertion in `native/dev/dbgagent/agent.mm` is frozen for the overhaul: A6's).
+- Where: `tools/py/dine/dbg/smoke.py` (`atl-text`), `native/dev/dbgagent/agent.mm`.
+- Found 2026-11-20 (overhaul A5b, stage row M4c-2).
+
+### ATL-148
+
+**Callbacks that print an app's exception and go on are not yet taken up by multi-app's per-app
+handler.** The measure, draw, input, click and dialog-result upcalls (`atl_upcall_*` in
+`src/shared/upcall.c` and `input.c`, `windows.c`, `android_widget_PopupMenu.c`) print and clear
+the exception; MA3's first item names only `ThreadGroup.uncaughtException`.
+- Owner: MA3 (`notes/multi-app-support/todo.md`, first item).
+- Found 2026-11-20 (overhaul A5b, stage row M6a-3).
+
+### ATL-149
+
+**Gaps a Linux run could close, found in the stage claims of the input and view code.** Each is a
+claim some stage's notes make that no check would fail without; none shows a defect.
+- gtk's view-tree dump (`ATL_DUMP_VIEWTREE`) is read by no gtk run: `run-views.sh` diffs the tree
+  under `--headless` only, so a broken gtk dump or a gtk layout that drifts from the headless shape
+  fails nothing (M0-4). Compare its shape with the headless golden, as `smoke.py`'s
+  `viewtree_problem` does for the phone.
+- `fitsSystemWindows` from the XML attribute and `requestApplyInsets` have no test
+  (`WindowInsetsTest` covers the setter), and AppCompat's subdecor padding was never seen in an
+  apps-suite APK (nav-9, PreM4-M4a-16): a framework case that inflates `android:fitsSystemWindows`,
+  one that calls `requestApplyInsets`, and a flower_finder marker for the padding.
+- `ViewConfiguration`'s scaled values are dp, and every touch test runs at 160 dpi
+  (PreM4-M4a-18): a framework test of `getScaledTouchSlop() == round(8 * density)` run once with
+  `-d 480`.
+- `View.atlDraw` clears the canvas after the draw so a kept Canvas draws nothing (M5a-4): a
+  framework test that keeps the Canvas, draws on it after the pass and after a second draw, under
+  `MALLOC_PERTURB_`.
+- The text-measure cache's hit count (`text measures N cached M`) is read by no check, and a key
+  that loses a field fails nothing (M6b1-7): `run-lists.sh` requires cached above 0 after the
+  scroll; a framework test of two TextViews that differ only in runs or max lines.
+- The release library must hold no test line (M6b3a-14): a release-build step that greps the built
+  library for the known test-line prefixes.
+- gtk's dispatch of ACTION_OUTSIDE to watching windows and the drop-down's registry entry have no
+  gtk run (M6b3b-4): `windows-gtk` dismisses its popup from code; a step that taps outside an
+  outside-touchable popup and opens the drop-down through the agent.
+- adjustPan's offset applying to touch (M6b3c-9: `run-keyboard.sh` sends `insets` and `dump` only:
+  a `touch` at the field's panned y), `getWindowVisibleDisplayFrame` leaving out the bars and the
+  keyboard (M6b3c-10: log the rect after the 20-number `insets`), and `atl_exclusion_update` reading
+  the app's size (M6b3c-12: a `size` while B shows, then B's exclusion line at the new width).
+- Two `-l` groups of one headless run, and the refusal of a package that already runs
+  (`ATLInstaller`, `already runs in this process`) have no script (MA2-3): `-l A a.apk -l B b.apk`
+  waiting for both apps' markers and exit 0 after the last one, and the same APK twice expecting
+  exit 1.
+- gtk's portal path for night (`settings_changed_cb`, `display.c`) is driven by nothing; the gtk
+  framework run sets night through `ATLTestHooks.setNight` (M6b3c-13).
+- State: open; found 2026-11-21 (overhaul A5b round 1, stage rows M0-4, nav-9, PreM4-M4a-16,
+  PreM4-M4a-18, M5a-4, M6b1-7, M6b3a-14, M6b3b-4, M6b3c-9, M6b3c-10, M6b3c-12, M6b3c-13, MA2-3).
+
 ## DINE
 
 ### DINE-6
