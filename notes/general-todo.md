@@ -591,6 +591,24 @@ apps, or that no suite reads; each is a line to turn into a check when a stage n
   (M6b3b-7, [TOOL-8](general-todo.md#tool-8)).
 - Checks that need two running apps (dialog answers, the night switch): the area A9 two-app scenario.
 
+### ATL-166
+
+**uikit: present only the topmost plain alert.** UIKit stacks `UIAlertController`s in the order they
+present, so `dialog.m` puts an alert under another by taking the upper one down and presenting it
+again (`uppers_of`, the lift in `present`, `take_down`), which blinks. On the phone (2026-11-21,
+windows APK `AlertsActivity`): "Show second" shows Second, First flashes on top for a moment, then
+goes under it. "Later" (First rebuilt at 1.5 s and dismissed at 6 s, under Second) blinks Second
+twice. The order is right in each case. Plan, chosen over drawing every alert ourselves (that would
+mean rebuilding UIAlertController's accessibility, Dynamic Type, keys, iPad popover and system look):
+- A plain alert with any window above it in the registry, another plain alert included, waits
+  dismissed, as `covered` does for windows with a view. It presents again when the windows above
+  it go.
+- The stacking code goes. A lower alert's rebuild or close changes only the model, and a tap
+  presents only the new top.
+- Content dialogs and panels are views in the overlay, already in z-order: unchanged. gtk's plain
+  alerts (separate windows, [ATL-162](bug-tracker.md#atl-162)) can take the same rule.
+- Where: `dine-atl/src/backends/ui/uikit/dialog.m`, `view.m` (`records_roots_changed`).
+
 ## DINE
 
 ### DINE-6
