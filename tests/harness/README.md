@@ -1,8 +1,18 @@
 # Test harness
 
-The engine behind `tools/dine test runtime`. It runs AOSP ART run-tests on the local
-`dalvikvm -Xint`. The suite it runs (corpus pin, expectations, our own tests) lives with the code
-it tests, in `dine-art/tests/runtime/` (`RUNTIME` in `common.py`).
+The engines behind `tools/dine test`:
+
+| Command | Engine | Suite |
+|---|---|---|
+| `test runtime` | `cli.py` and the stage modules below | `dine-art/tests/runtime/` (corpus pin, expectations, our own tests) |
+| `test framework` | `framework.py` | `dine-atl/tests/framework/` |
+| `test apps` | `apps.py` | `tests/android-compat/apps/` |
+| `test package` | `package.py` | `dine-atl/tests/package/` |
+
+All four grade through `expect.py` ([Baselines](#baselines)); each of the last three describes its
+checks in its docstring and its suite's README, and keeps each run's outputs in
+`out/tests/<suite>/runs/`. The sections up to Baselines are the runtime suite's, which runs AOSP
+ART run-tests on the local `dalvikvm -Xint`.
 
 ```sh
 python3 -m unittest discover -s tests/harness   # harness unit tests (pure parts)

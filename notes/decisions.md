@@ -7,6 +7,7 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - Our delta: `git diff upstream/master...dine`. Local `master` lags upstream.
 - Upstream isn't merged: read its commits since the last merge and reimplement the wanted ones
   by hand.
+- Last merge: upstream d658957d (2026-10-20); hand ports start there.
 - Touch input follows AOSP's input stack where upstream's toolkit-driven input doesn't. A gesture
   goes to the window its DOWN went to (records: `ui_window.touched`, an activity's root or a window
   over it); a window that is removed or hidden (`ui_window_remove_activity`,
@@ -109,8 +110,8 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - Blend modes are SkBlendMode's numbers everywhere (`enum gfx_blend`; `PorterDuff.Mode.nativeInt` as
   AOSP's), and every draw, layer, ComposeShader and color filter takes them; `src/shared/blend.h`
   holds Skia's formulas for the CPU paths. A view's blend mode reaches only the view's own drawing
-  (on gsk its children's too), a layer by default: gsk isolates each Java-drawn view
-  (`WrapperWidget`), CoreGraphics draws each view in its own layer. Android without a layer reaches
+  (on gsk its children's too), a layer by default: gsk pushes an isolation for each Java-drawn view
+  (`WrapperWidget`; unverified: no run shows its effect, [ATL-127](general-todo.md#atl-127)), CoreGraphics draws each view in its own layer. Android without a layer reaches
   the window (the draw app's CLEAR rect shows black on a device). gsk's PLUS and MODULATE are GSK's
   arithmetic node, which GTK makes only through its node parser (`parse_arithmetic`). Gaps: ATL-52
   (phone views).
@@ -326,8 +327,8 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   `src/backends/ui/gtk/dialog.c`. Port upstream Dialog fixes there. `getButton` returns
   AlertDialog's own Button views (AOSP's AlertController semantics: their click listener is the
   dialog's listener and dismiss), changed in place through `ui_dialog_set_button`;
-  `atlDialogResult` returns whether the dialog is still drawn. `ATLKeyboardDialog.nativeInit` uses
-  `ui_dialog_new`.
+  `atlDialogResult` returns whether the dialog is still drawn. `ATLKeyboardDialog.nativeInit` makes a
+  layer-shell GtkWindow of its own, not a `ui_dialog_new` one.
 - `Activity.onBackPressed` moves the task root to the back when the host allows (gtk doesn't);
   `moveTaskToBack` is public and real; `activity.c` keeps task state and an activity's `stopped`.
 - `DialogInterface.OnCancelListener.onCancel` added (upstream's is empty).
@@ -345,9 +346,9 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   apps only, as on Android 8 and later).
 - `Window` keeps the system bar state (`styleBars`, `updateFrame`, real `addFlags`/`setFlags`);
   `activity_focus` and the `set_frame` native send the shown activity's frame to
-  `ui_window_set_frame` (gtk: header bar CSS). `View.setSystemUiVisibility` calls the gtk-only
-  `nativeSetFullscreen` only when the fullscreen bits change, and tells the decor's Window the
-  light flag. Port upstream Window/system-bar edits there.
+  `ui_window_set_frame` (gtk: header bar CSS). `View.setSystemUiVisibility` hands its flags to the
+  root's Window (`setViewSystemUi`), and the decor's light flag to its own. Port upstream
+  Window/system-bar edits there.
 - Matrix natives are in `src/shared/android_graphics_Matrix.c` (graphene; the wrap
   `subprojects/graphene.wrap` outside the desktop build). Port upstream Matrix fixes there.
 - Paint state natives are shared behind `gfx_paint_*`; gsk's bodies are in
@@ -466,34 +467,40 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - Home and front asked for before an app runs are kept (`atl_app.front_wanted`, under `insets_lock`
   as insets and night are) and `atl_app_create` applies them: the first activity of an app sent Home
   is only created until the front. `atl_nav_home` and `atl_nav_front` return nothing.
+- `Instrumentation.startActivitySync` returns the activity or throws, as AOSP 10's: a failed start
+  with its cause, an intent without a component as unresolved ([ATL-178](bug-tracker.md#atl-178)).
+  Upstream's swallows the exception and returns null.
 - The test hooks' Java class (`android.atl.ATLTestHooks`) is in every `api-impl.jar`, release
   builds' too: the Linux build compiles the one jar that dev and release bundles share. Its natives
   are behind `test_hooks`, so in a release build each throws `UnsatisfiedLinkError`.
-- Last merge: upstream d658957d (2026-10-20); hand ports start there.
 
 ## dine-art
 
+- Our delta: `git diff upstream/d8...dine` (the branch dine-art started from; it also holds the few
+  upstream master commits merged since).
+- Upstream isn't merged: read its commits since the last merge and reimplement the relevant ones
+  by hand. Keeping our diff small or merge-friendly is not a goal: refactor freely.
+- Last merge: upstream 7ead96be (dine-art `2d03190c`); hand ports start there.
 - `OatFileAssistant::GetBestOatFile` returns null, like the dex open path: no oat file, no
-  dex2oat. Keep upstream's dex2oat block there (`79ab0c15`, `d58f96f9`) out on merges.
+  dex2oat. Don't port upstream's dex2oat block there (`79ab0c15`, `d58f96f9`).
 - The "not in a known location" boot class path warning prints only on Android targets
   (android12's gate in `hidden_api.cc`).
 - Cleanup per app: libcore's `java.lang.ref.CleanupDomain` (one cleanup thread per app group,
   `ThreadGroup.cleanupDomain`, a class loader may be its `Owner`) takes the finalizers and
   `sun.misc.Cleaner`s of an app's objects off ART's daemons (`FinalizerReference.add`,
-  `Cleaner`'s queue, `ReferenceQueue.enqueueLocked`); `Daemons.finalizeReference` is shared. Keep
-  them across rebases of those files.
+  `Cleaner`'s queue, `ReferenceQueue.enqueueLocked`); `Daemons.finalizeReference` is shared. Port
+  upstream edits to those files onto them.
 - Native libraries are keyed by (path, class loader) in `java_vm_ext.cc`'s `Libraries`; the
   "already opened by ClassLoader" refusal is gone. `art_register_jni_symbols` lists limit a
   library's `Java_*` lookup (on Apple a library without one resolves none).
 - Thread tags for embedders: libcore's `ThreadGroup.embedderTag` (subgroups inherit it) and
   `Thread.joinThreadGroup`; ART copies the tag into a `Thread` member at start and attach and
   exports `art_embedder.h` (`art_thread_embedder_tag`, `art_join_thread_group`,
-  `art_set_default_attach_group`). Keep them across rebases.
-- Upstream is merged: `git merge upstream/master`.
+  `art_set_default_attach_group`). Port upstream edits to those files onto them.
 - `install-ios` puts ART's junit boot jars in `share/art-junit`, apart from the runtime jars:
   Dine's release builds leave them off the boot class path.
 - Park's platform calls live in `ParkWait`/`ParkWake` (`art/runtime/thread.cc`): futex on Linux,
-  os_sync on Apple. Resolve upstream edits to `Thread::Park/Unpark` there.
+  os_sync on Apple. Port upstream edits to `Thread::Park/Unpark` there.
 - Apple `parkUntil` becomes a timeout at entry: no wall-clock tracking, device sleep delays it
   ([ART-18](bug-tracker.md#art-18)).
 - Apple keeps pthread mutexes, condvars and RW locks; only park uses os_sync.
@@ -501,7 +508,7 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   `SystemClock.uptimeMillis` (`android_os_SystemClock.c`), as on Android, where both are
   `CLOCK_MONOTONIC`. Darwin's `CLOCK_MONOTONIC` counts sleep, which stalled ATL's Choreographer
   (it schedules from nanoTime against uptimeMillis). `art::NanoTime` in libartbase is a different
-  function ([ART-29](bug-tracker.md#art-29)). Keep it across rebases of that file.
+  function ([ART-29](bug-tracker.md#art-29)). Port upstream edits to that file onto it.
 
 ## dine
 
@@ -518,7 +525,7 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   would refuse a jar the cached build doesn't rewrite. A release `ios run` takes no lock.
 - Min iOS 17.4 (os_sync): `env.sh` for scripts and CMake, `apps/Dine/Package.swift` for Swift.
   Never equal to the SDK version (compatibility mode).
-- Linux gate after a merge: `tools/dine linux smoke` (every check in `tools/py/dine/linux.py`) +
+- Linux gate after an upstream port: `tools/dine linux smoke` (every check in `tools/py/dine/linux.py`) +
   `tools/dine test runtime` + `tools/dine test framework` (headless, `--gtk`, `--one-vm`) +
   `tools/dine test apps` (headless, `--gtk`) + `tools/dine test package`; iOS gate:
   `tools/dine dbg smoke`.

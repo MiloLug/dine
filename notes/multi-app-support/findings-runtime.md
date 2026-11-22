@@ -1,7 +1,8 @@
 # Findings: ART and libcore for several apps in one VM
 
 What dine-art (Android 10 ART, libcore 8.1/9) allows and blocks when several apps share one
-runtime, as needed by `design.md`. A snapshot read on 2026-10-31; line numbers drift. Paths are
+runtime, as needed by `design.md`. A snapshot read on 2026-10-31, with what MA2a and MA2b changed
+where it says so; line numbers drift. Paths are
 under `dine-art/` unless they start with `native/` or `dine-atl/`. **C**: read in code. **U**:
 inference, unchecked. **M**: measured by MA0's probe (`tests/probes/multi-app/`, run with
 `run.sh all`) on 2026-11-02: host ART on Linux x86_64 under WSL2 with artbridge's VM flags, not the
@@ -11,8 +12,7 @@ phone. The one-runtime rule and the second-VM options are in
 ## One runtime
 
 - `Runtime::Create` refuses while `Runtime::instance_` is set (`art/runtime/runtime.cc:733`). A
-  failed `Init` resets `instance_` to null and leaks the Runtime (`:738-743`), so the comment
-  "ART keeps the failed runtime" in `native/artbridge/artbridge.cpp:130` is wrong; whether a retry
+  failed `Init` resets `instance_` to null and leaks the Runtime (`:738-743`); whether a retry
   works is U. C
 - `JNI_GetCreatedJavaVMs` reports at most one VM (`art/runtime/jni/java_vm_ext.cc:1239-1248`). No
   isolate or multi-runtime support exists; field-write transactions are AOT-compiler only
@@ -194,7 +194,7 @@ phone. The one-runtime rule and the second-VM options are in
 - String literals and dex locations are interned strongly and never freed (`class_linker.cc:1600,
   1658,2537,8405`), so memory grows with each drop and restart of an app. C; size: within the
   60 KB per cycle above. M
-- A dropped app's pending finalizers still run its code on the shared FinalizerDaemon. U
+- A dropped app's pending finalizers still run its code, on its cleanup thread (`CleanupDomain`). U
 
 ## Memory
 

@@ -124,17 +124,7 @@ uncovered design items as tasks in MA1, MA7 and MA8.
 
 ## Done
 
-- The design work is committed in `d1e7581`.
-- MA0, uncommitted: `tests/probes/multi-app/` (new), `tests/README.md`,
-  `native/artbridge/dev_multiapp.cpp` (new), `native/artbridge/CMakeLists.txt`,
-  `native/artbridge/include/dineart_dev.h`, `apps/Dine/Sources/CArtDev/module.modulemap`,
-  `apps/Dine/Sources/Dine/Dev/ArtView.swift`, `tools/libexec/build-ios-native.sh`, `CLAUDE.md`
-  (`dev*.cpp`), and in this directory `findings-runtime.md`, `todo.md`, `design.md`,
-  `handoff.md`. The phone code builds (`tools/dine ios build-native artbridge`, `xtool dev
-  build`); it ran on the phone 2026-11-02. `notes/bug-tracker.md` (ART-24, ART-26). Other
-  modified files in the checkout are M6a's. The entitlement try's `apps/Dine/Entitlements.plist`
-  and `xtool.yml` line are removed; the build on the phone still carries them until the next
-  `ios run`.
+- The design work is committed in `d1e7581`, MA0's probes in `4cba76d`.
 
 ## Pending
 
@@ -143,21 +133,15 @@ uncovered design items as tasks in MA1, MA7 and MA8.
 ## Traps and facts found
 
 - `Runtime::Create` refuses a second runtime; one VM per process is fixed (`findings-runtime.md`).
-- The default uncaught handler calls `System.exit(10)`: today any uncaught exception ends Dine.
+- The default uncaught handler calls `System.exit(10)`: until MA3 any uncaught exception ends Dine.
 - `Thread.stop` throws; ART's async exception exists but only JVMTI, which isn't built, calls it.
 - A suspension that doesn't complete in 10 s is a FATAL, and so is a finalizer over 10 s (exit 2).
-- On Apple a thread blocked in a socket read can't be woken by closing it
-  ([ART-24](../bug-tracker.md#art-24)).
+- On Apple libcore's own signal for waking a blocked socket read can't work; the kernel wakes the
+  read on `close()` or `shutdown()` (unchecked through libcore: [ART-24](../bug-tracker.md#art-24)).
 - On Apple every native library handle is the main image, so `dlsym` finds every linked `Java_*`.
 - Release ART records each mutex a thread holds (`Thread::GetHeldMutex`), monitors excepted.
 - OOME lands on the allocating thread, whichever app filled the heap; `Runtime.maxMemory` is
   VM-wide; ATL's `getMemoryClass` is a fixed 20.
-- ATL fakes the Google signature by package name (`ATLLoadedApp.play_services`), and its
-  `getLaunchIntentForPackage` sets no `FLAG_ACTIVITY_NEW_TASK`.
-- iOS keeps Dine's ATL data in Caches, which iOS may purge.
-- Linux: one app has three unaligned identities (GApplication id, package, APK-file-named data dir).
-- `artbridge.cpp:130`'s comment "ART keeps the failed runtime" is wrong: `instance_` is reset;
-  `notes/nav-gestures.md` cites `artbridge.cpp:379-452`, the file has 244 lines.
 - The cost numbers in `findings-native-faults.md` are from Linux x86_64 under WSL2, not the phone.
 - The systemd facts in `notes/service-management/proposal.md` come from the man pages of systemd
   262; nothing was run.

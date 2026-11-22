@@ -1,4 +1,4 @@
-- alt-port::everything before M6a - done
+- atl-port::everything before M6a - done
 - parallel:
   - atl-port::M6a - done
   - multi-app::MA0 - done

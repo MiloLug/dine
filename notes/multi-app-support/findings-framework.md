@@ -1,7 +1,7 @@
 # Findings: dine-atl's per-app and process-wide state
 
-What in dine-atl assumes one app per process, as needed by `design.md`. A snapshot read on
-2026-10-31; line numbers drift. Paths are under `dine-atl/src/` unless noted. **C**: read in code.
+What in dine-atl assumed one app per process, as needed by `design.md`. A snapshot read on
+2026-10-31, before MA1 to MA2b: the tables describe that tree, not today's; line numbers drift. Paths are under `dine-atl/src/` unless noted. **C**: read in code.
 **U**: inference, unchecked. How apps are launched and hosted is in `findings-hosting.md`.
 
 Gone with MA2a (2026-11-02): the primary app and every row below that holds it or its window

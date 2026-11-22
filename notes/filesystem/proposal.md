@@ -151,8 +151,10 @@ To be added as the later stage when the fs todo is written (the user's words abo
   `data/` at Android's paths, so they are real for all code and the host is out of reach. A
   symlink from `shared/` to a host dir then resolves only if that dir is bound in too.
   Unprivileged user namespaces may be disabled on some distros (U).
-- Storage permissions: `READ_`/`WRITE_EXTERNAL_STORAGE` granted from the manifest at install, as
-  SDK 21 does, in place of today's grant to every app. Checking them per call needs the calling
+- Storage permissions: `READ_`/`WRITE_EXTERNAL_STORAGE` in place of today's grant to every app. At
+  ATL's level, 29, they are runtime permissions: whether an app gets them from its manifest at install
+  (as below SDK 23) or from a prompt through `requestPermissions` is that stage's decision. Checking
+  them per call needs the calling
   app, which on iOS means the per-thread app record of the multi-app design.
 
 Until then nothing stops code from opening any host path by absolute path.

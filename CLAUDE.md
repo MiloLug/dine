@@ -12,7 +12,7 @@ outside a stage's own work, or work no stage owns, gets a code there (`ART-n`, `
 `TOOL-n`; each file's header has the rules), and other notes link the code.
 
 There's no Mac. Everything is built from Arch Linux in WSL2, and testing happens on a physical
-iPhone (iPhone 13, iOS 27.0.1, free Apple ID).
+iPhone (iPhone 13, iOS 27.2, free Apple ID).
 
 Where the rest is (read the one a task touches):
 - `README.md`: layout, commands (the full list: `tools/dine <group> --help`), device connection,
@@ -79,8 +79,8 @@ SendMessage. Spawn neither from plan mode: it blocks every launch, attach and ta
 ## Tests
 
 Test suites live in the repo that owns the code (`tests/README.md` has the map); the engine is
-`tests/harness/`. The runtime suite (`dine-art/tests/runtime/`, AOSP ART run-tests) and the
-framework suite (`dine-atl/tests/framework/`, JUnit 3 APKs for `android.*`) are graded against
+`tests/harness/`. The runtime suite (`dine-art/tests/runtime/`, AOSP ART run-tests), the framework
+suite (`dine-atl/tests/framework/`, JUnit 3 APKs for `android.*`), apps and package are graded against
 their `expectations/` (exit 1 = a regression, a listed test that didn't run, or a stale entry).
 After a fix makes tests pass, or after adding tests, rerun with `--update-expectations`; it writes
 nothing while a regression stands, and the files change inside the fork that owns the suite
@@ -90,9 +90,9 @@ nothing while a regression stands, and the files change inside the fork that own
 `third_party/apks/` under the names in `docs/first-run.md` §8, and a new one gets a row there.
 
 Smoke tests: iOS `tools/dine dbg smoke` (dev build, after `dbg start-server`; `--network` adds
-**run https**), Linux `tools/dine linux smoke` (after `linux build`; gd runs the gtk build,
-the rest `dine-atl/tests/headless/run-*.sh`; the gtk checks run on a hidden display, README
-"Linux ATL / ART"). `--list` prints every check; the tables are `tools/py/dine/dbg/smoke.py` and
+**run https**), Linux `tools/dine linux smoke` (after `linux build`; the gtk and headless builds on
+test APKs and Gravity Defied, the gtk checks on a hidden display, README "Linux ATL / ART").
+`--list` prints every check; the tables are `tools/py/dine/dbg/smoke.py` and
 `tools/py/dine/linux.py`.
 
 ## Forks and builds
@@ -103,9 +103,10 @@ the rest `dine-atl/tests/headless/run-*.sh`; the gtk checks run on a hidden disp
   SHAs. **Don't commit or push in them without asking.**
 - **Both forks must keep building and passing on Linux** (`tools/dine linux build` +
   `tools/dine test runtime`): Linux is the fast loop and the reference for the iOS port.
-- dine-atl: upstream isn't merged (we're too far apart): read its commits and reimplement the
-  wanted ones by hand. Keeping our diff small or merge-friendly is not a goal. Toolkit, OS and
-  native-code-loader code sits behind backend slots (`src/slots/`, backends in
+- dine-art and dine-atl: upstream isn't merged: read its commits and reimplement the relevant ones
+  by hand (`notes/decisions.md` has where each one's hand ports start). Keeping our diff small or
+  merge-friendly is not a goal: refactor freely.
+- dine-atl: toolkit, OS and native-code-loader code sits behind backend slots (`src/slots/`, backends in
   `src/backends/<slot>/<name>/`, shared code in `src/shared/`); natives not yet behind a slot build
   only with ui=gtk, so a headless build throws `UnsatisfiedLinkError` on them. AOSP code ported
   into the fork is listed in `dine-atl/doc/AOSP.md`.

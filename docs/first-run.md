@@ -1,6 +1,7 @@
 # First run: setting up dine on a new PC
 
-Tested on Arch Linux in WSL2 (Windows 11), iPhone 13 on iOS 27.0.1, Swift 6.4.1, xtool 1.22.2,
+Tested on Arch Linux in WSL2 (Windows 11), iPhone 13 on iOS 27.0.1 (the whole setup) and 27.2
+(builds, installs, smoke runs; not section 6's symbol download), Swift 6.4.1, xtool 1.22.2,
 Xcode 27. About 45 minutes, mostly unattended (SDK extraction, ART build, symbol download).
 
 Rule for this repo: tools come from a package manager (pacman, paru, uv; cargo only for accord,
@@ -270,7 +271,8 @@ Dev builds of Dine bundle these APKs and their redistribution terms are unchecke
 - `dine-art/` and `dine-atl/` are submodules: our forks of
   [art_standalone](https://gitlab.com/android_translation_layer/art_standalone) and
   [ATL](https://gitlab.com/android_translation_layer/android_translation_layer), both on branch
-  `dine`, pinned by the superproject. Our ART/ATL changes live there. To follow upstream:
+  `dine`, pinned by the superproject. Our ART/ATL changes live there. Upstream isn't merged
+  (`../notes/decisions.md`); to read the commits to port:
   `git -C dine-art remote add upstream https://gitlab.com/android_translation_layer/art_standalone.git`,
   `git -C dine-atl remote add upstream https://gitlab.com/android_translation_layer/android_translation_layer.git`.
 - dine-atl dexes with `d8` (dine-art no longer installs `dx`) and only rebuilds

@@ -210,6 +210,29 @@ grew the pool.** The worker keeps that app's thread group and embedder tag, so i
 - Fix: the common pool per app, as AsyncTask's executors are (the calling thread's group picks it).
 - Owner: multi-app MA3.
 
+### ART-32
+
+**Unchecked: `Os.getifaddrs` reads an IP entry's netmask without a null check.**
+`Linux_getifaddrs` passes `*netmaskAddr` on for each AF_INET and AF_INET6 entry, on the libcore
+comment's word that it is never null; whether Darwin (a point-to-point or tunnel interface) ever
+gives none is unknown. A null one would end Dine.
+- State: unchecked; found 2026-11-15 (overhaul A2's review, pre-existing code).
+- Where: `dine-art/libcore/luni/src/main/native/libcore_io_Linux.cpp` `Linux_getifaddrs`.
+
+### ART-33
+
+**Unchecked: exceptions injected into a running thread can end the VM at a GC, "Found invalid root".**
+The MA0 storm probe injects async exceptions while a thread initializes boot classes in a loop. In 1
+of 6 runs on Linux (2026-11-22) mark-sweep aborted with `Found invalid root: ... Type=RootNativeStack`
+for the main and the injected thread ("not contained by any spaces"); another run timed out. The same
+case ended with status 1 on 2026-11-14.
+- State: unchecked: whether ART, libcore or the probe's own `StopClosure` leaves the bad root.
+- Where: `tests/probes/multi-app/native/probe.cc`, `dine-art/art/runtime/thread.cc`
+  (`SetAsyncException`); the saved log: `out/handoff/overhaul/a11/f-probe-storm.err` (gitignored).
+- Repro: `tests/probes/multi-app/run.sh case storm`, several times (`run.sh` exits 0: read the `rc=`
+  line).
+- Owner: multi-app MA4, whose drop injects this way.
+
 ## ATL
 
 ### ATL-1
@@ -493,14 +516,6 @@ inverted mask).
   on ATL's leniency.
 - Where: `dine-atl/src/api-impl/android/graphics/Canvas.java` `Canvas(Bitmap)`.
 
-### ATL-55
-
-**`Bitmap.createBitmap(src, x, y, width, height, matrix, filter)` keeps `width x height` and the
-source's config.** AOSP 10 sizes the result to the matrix's mapped rect, translates by its corner,
-and picks ARGB_8888 (or the source's config) by its own rules.
-- State: open; checked against AOSP 10's `Bitmap.java` (`deviceR`, `newConfig`), 2026-11-05.
-- Where: `dine-atl/src/api-impl/android/graphics/Bitmap.java`.
-
 ### ATL-56
 
 **`BitmapFactory` with `inBitmap` gives the target bitmap new native pixels (`transferFrom`), so a
@@ -588,15 +603,6 @@ keyboard, is a static of `view.m`, not per app: with two apps running, a window 
 its activity (a dialog, a popup) can give the keys back to the other app's field.
 - State: unchecked; found 2026-11-08 (M6b3b's planning, code read only).
 - Where: `dine-atl/src/backends/ui/uikit/view.m` (`keyboard_field`, `root_take_responder`).
-
-### ATL-70
-
-**`Instrumentation.waitForIdleSync` waits for nothing.** Its body is commented out, so a test that
-calls it right after `runOnMainSync` sees none of what that runnable posted (a Handler post, an
-insets dispatch). M6b3c's `SystemUiTest` and `ConfigTest` use a second `runOnMainSync` as the
-barrier instead.
-- State: open; found 2026-11-08 (M6b3c, `SystemUiTest`'s listener case).
-- Where: `dine-atl/src/api-impl/android/app/Instrumentation.java` `waitForIdleSync`.
 
 ### ATL-71
 
@@ -820,8 +826,8 @@ that mixes the two in a dialog is off by the window's origin.
 - "Dismiss" shows also when the dialog doesn't cancel on an outside touch.
 - An app's own `getListView().setItemChecked` after `show` doesn't reach the native rows.
 - It ignores the width in `Window.setLayout`.
-- A cancelable dialog's container takes no `accessibilityPerformEscape` (M6b3a's step; nothing
-  in `dine-atl/src` or `apps` has it).
+- A cancelable dialog's container takes no `accessibilityPerformEscape` (M6b3a's step; only Dine's
+  app container has one, `EscapeView`).
 - State: open; from M6b3a's Open line in `notes/atl-port.md`, not checked in code.
 - Where: `dine-atl/src/backends/ui/uikit/panel.m`, `dialog.m`.
 
@@ -1499,6 +1505,27 @@ driver always sets the extra.
 - State: open; found 2026-11-21 (overhaul A9 review), from the code.
 - Where: `dine-atl/src/api-impl/android/atl/ATLInstallerUi.java` (`install`, `result`).
 
+### ATL-177
+
+**Unchecked: `ATLKeyboardDialog` gives its own GtkWindow to the dialog slot's calls.** Its
+`nativeInit` makes a layer-shell window without the `atl-dialog` state, and Dialog still passes that
+handle to `nativeSetTitle` and `nativeSetCanceledOnTouchOutside`; `ui_dialog_set_cancel_on_touch_outside`
+reads the state (`get_state`) and would dereference null.
+- State: unchecked, from a code read (overhaul A11, stage row M2-8); gtk only, and no check runs the
+  keyboard dialog.
+- Where: `dine-atl/src/api-impl/android/atl/ATLKeyboardDialog.java`,
+  `src/api-impl-jni/app/android_atl_ATLKeyboardDialog.c`, `src/backends/ui/gtk/dialog.c`.
+- Fix: the keyboard dialog answers those two calls itself.
+- Owner: [ATL-7](general-todo.md#atl-7).
+
+### ATL-178
+
+**`Instrumentation.startActivitySync` starts explicit intents only.** An intent without a component
+throws "Unable to resolve activity" although an activity of the app matches it; Android 10 resolves
+it (`Intent.resolveActivityInfo`) and refuses only what nothing resolves or another process owns.
+- State: open; found 2026-11-22 (overhaul A11, beside framework-r3-6's fix).
+- Where: `dine-atl/src/api-impl/android/app/Instrumentation.java` `startActivitySync`.
+
 ## DINE
 
 ### DINE-1
@@ -1597,8 +1624,8 @@ no frame hook.
 - `test apps --by-package`: one failed install ends the run with a traceback and nothing is graded
   (`tests/harness/apps.py` `install`).
 - `test package`: a harness error in a scenario or in the JUnit phase ends the run with a
-  traceback, while a `cli:` check grades the same error as a failed row; six `cli:` assertions
-  carry no message, so their failure prints no problem line (`tests/harness/package.py`).
+  traceback, while a `cli:` check grades the same error as a failed row; eight assertions
+  of the `cli:` checks carry no message, so their failure prints no problem line (`tests/harness/package.py`).
 - `test runtime`: a `check` script runs with symlinks into the build dir, and the check of a failed
   build runs inside it (`tests/harness/run.py` `_workdir`, `_build_fail`); the summary and
   `results.json` name neither the `dalvikvm` that ran nor its source revision.
@@ -1624,6 +1651,15 @@ no frame hook.
 - Where: the saved lines are in `out/handoff/overhaul/a0/phone/art-fail-syslog.txt` (gitignored).
 
 ## Fixed
+
+### ATL-55
+
+**`Bitmap.createBitmap` with a matrix kept the part's size and the source's config.** 2026-11-15,
+overhaul A4, dine-atl e42e0454.
+
+### ATL-70
+
+**`Instrumentation.waitForIdleSync` waited for nothing.** 2026-11-15, overhaul A3, dine-atl 8feb728c.
 
 ### ART-2
 

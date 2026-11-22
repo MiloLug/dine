@@ -111,9 +111,10 @@ marked.
 ## Permissions
 
 - `READ_EXTERNAL_STORAGE` and `WRITE_EXTERNAL_STORAGE` are always granted
-  (`content/pm/PackageManager.java:1872-1878`), with upstream's comment: "we shouldn't just
+  (`content/pm/PackageManager.java` `checkPermission`), with upstream's comment: "we shouldn't just
   automatically grant these once we have bubblewrap set up; for now, the app can access anything it
-  wants". `requestPermissions` logs and does nothing (`Activity.java:705-706`). C
-- At SDK 21 both are install-time permissions: no runtime prompt exists on Android 5 (Android
+  wants". `requestPermissions` answers through `onRequestPermissionsResult` from
+  `checkSelfPermission`, with no prompt (`Activity.requestPermissions`, M6b1). C
+- At ATL's level, 29, both are runtime permissions: Android asks the user (Android
   knowledge). Isolation between apps and from the host is
   [ATL-32](../general-todo.md#atl-32), later. C for the note.

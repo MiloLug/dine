@@ -73,7 +73,14 @@ file either ([ART-23](bug-tracker.md#art-23)).
   stub's 32-bit frame size: arm64 or log-only, with no output a test compares;
 - `dine_atl_run`'s refusals (while the first run starts; after the art screen made the VM) and the
   `exited` it sends when `JNI_CreateJavaVM` fails: no smoke step reaches them;
-- `tests/probes/multi-app/` (`run.sh`: storm, juclock): no `tools/dine` command runs it.
+- `tests/probes/multi-app/` (`run.sh`: storm, juclock): no `tools/dine` command runs it;
+- `parkNanos` and `parkUntil` with MAX_VALUE on Apple: `dine-0004` guards the clamp, and no build
+  without it was ever run;
+- whether a second class loader works for a JNI library linked into the app (A2-11): untried;
+- `dine-0009-no-dex2oat` passes on two absences: no run shows its fake dex2oat's marker appears on a
+  runtime that does exec it;
+- `dine-0006` gives the idle thread 1 s over its 10 s timer, so a loaded machine can fail it, and
+  `dine-0003-https` rests on badssl.com's hosts staying as they are.
 
 ## ATL
 
@@ -346,7 +353,7 @@ row would visit only the edges a row crosses.
 
 ### ATL-127
 
-**Graphics behaviour no test would see break** (overhaul A1, 2026-11-14; A4 added the last two):
+**Graphics behaviour no test would see break** (overhaul A1, 2026-11-14; A4 and A11 added to it):
 - a nine-patch with an empty patch, a transparent patch or an axis without a stretch section
   (`ninepatch_slices`; the golden's one nine-patch reaches none);
 - `RGBA_F16` conversions (`bitmap_pack`, `bitmap_unpack`);
@@ -358,7 +365,15 @@ row would visit only the edges a row crosses.
   `src/libandroid/bitmap.c` (`--gtk` runs it);
 - gsk's bitmap-shader transform branches (A4's second round): a shader matrix with rotation, skew
   or a mirror, and REPEAT or MIRROR under a scale (`transform_affine_unscaled`, `append_bitmap_shader`);
-  only a scale with CLAMP is read.
+  only a scale with CLAMP is read;
+- gsk's isolation of each Java-drawn view (`WrapperWidget`): a CLEAR rect of a child over a coloured
+  parent read from the window would show it; its cost in frames is unmeasured, as is cairo's group per
+  fill-and-stroke (M6b1-10, M6b2-6, A3's review);
+- `GLUtils.texImage2D`'s packing of bitmap words (M6b1-14): gtk's GL only, with M9's GL work;
+- an ImageButton's themed background in a display list (M5d-11): `run-controls.sh` dumps none; a
+  `round_rect` line in the button's block would show it;
+- gsk's guard for an empty or non-finite bitmap rect on a view (code-path proof only), and stroked
+  text on the phone's view path (A4).
 
 ### ATL-129
 
@@ -373,7 +388,11 @@ row would visit only the edges a row crosses.
 - the results of activities that `FLAG_ACTIVITY_CLEAR_TOP` closes (`RESULT_CANCELED` at their
   callers), and `recreate()` handing its caller over;
 - the embedded host keeping a night mode set before the app's start (`embedded.c`): iOS only, and
-  no run sets one in that window.
+  no run sets one in that window;
+- code-path proof only (A3): the local refs the gtk host drops for the activities it starts, and the
+  class ref of a popup answer; the cost of glib's `g_main_context_pending` per message is unmeasured;
+- a view whose `onDraw` threw drawing again at a later `invalidate()` (M5a-3: the crash APK shows
+  only that the app goes on).
 
 ### ATL-133
 
@@ -459,8 +478,8 @@ smoke steps would need a new line or agent output for.
 - M6b3c's experiment K2: whether UIKit scrolls an `ATLScrollView` to a first-responder field on its
   own (a scroll report with no touch after `type` into `ResizeActivity`'s field); the stage's
   Status records neither the result nor an Open line, and `view.m` has no suppression.
-- `Configuration`'s keyboard fields and the keyboard's show and hide (late fix `76313409`): no phone
-  scenario reads them (`atl-config` matches night lines; `atl-text` has no show, hide, Back or Next
+- `Configuration`'s keyboard fields (late fix `76313409`): no phone
+  scenario reads them (`atl-config` matches night lines; `atl-text` has no Back or Next
   step), so they stay unverified on iOS; the code is shared with headless, where `KeyboardConfigTest`
   covers it.
 - Looks and facts no phone step reads (overhaul A5b, round 1): `nav: frame` prints neither the
@@ -474,6 +493,11 @@ smoke steps would need a new line or agent output for.
   UIKit insets (M6b3a-5: no `framed` step in `atl-controls`); VoiceOver staying in the topmost
   modal window (M6b3a-7: an absence check in `atl-dialog-content` if the agent's walk honours
   `accessibilityViewIsModal`); the uikit panel's room after a window resize (M6b3c-13).
+- Code-path proof only on uikit (overhaul A4 to A8): the edit refusal (`editable`; the agent's
+  `insertText:` skips the delegate), a refused toolkit focus under FOCUS_BLOCK_DESCENDANTS, touches
+  of a disabled or transparent container's children, ATLScrollView's pan under its `hitTest:`
+  (a hand scroll of `lists` or `scrolled`), the touch state per app with fingers on two apps, the
+  draw layer of a view that `scrollTo`s itself.
 - State: open; found 2026-11-20 (overhaul A5b, stage rows PreM4-M4a-1, M5b-4, M6b3b-2, M6b3c-3,
   M6b3c-15, late-5, from the old plans and the audit; round 1: M3-4, M3-7, M3-12, M4c-11, M5b-5,
   M5c-2, M6b3a-5, M6b3a-7, M6b3c-12, M6b3c-13).
@@ -495,15 +519,15 @@ it.
   backend fails nothing (M3-8): a `textstyle:` line in `records/dump.c` and a bold TextView in
   `run-controls.sh`. Likewise the alignment (`ui_text_set_alignment`, M4b-6): a dump word and the
   `centered` TextView.
-- `HorizontalScrollView` has no test (PreM4-M4a-7): a ScrollTest case (clamp, echo) and a drag step.
+- `HorizontalScrollView` has no test of its scroll (PreM4-M4a-7; `linux smoke pan` drags one whose content fits):
+  a ScrollTest case (clamp, echo).
 - Inflated controls and fields (M4b-7, M4c-4, M5c-6, M5c-11): no test APK inflates a ToggleButton
   with `textOn`, a CheckBox with `checked`, an EditText with `inputType`, `maxLength`, `digits`,
   `imeOptions` or `singleLine`, a TextView with `maxLines`, `minLines` or `lines`; `android:height`
   isn't read; `setMinHeight` and `setHeight` have no `LineLimitTest` case.
-- Keyboard follow (M4c-8, M4c-9, late-1 to late-4): `text dismiss` is sent by no script (then Back
-  must reach the app on the first press); no test moves focus off every EditText and reads the
-  keyboard; a toolkit tap's request following Java's focus (`text tap`, then `text action`);
-  `atlToolkitFocus(false, false)` after a show.
+- Keyboard follow (M4c-8, M4c-9, late-1 to late-4): no test moves focus off every EditText and reads
+  the keyboard; a toolkit tap's request following Java's focus to a next field (`text tap`, then a
+  `text action` Next); `atlToolkitFocus(false, false)` after a show.
 - `setText` makes a different Editable and the old one stops reporting (M4c-10): `assertNotSame`
   across two `setText` calls and a watcher the old Editable's edits don't reach.
 - gtk: a non-ASCII run before a styled run, to prove `atl_utf8_offset` in `text.c` against Paint's
@@ -516,6 +540,9 @@ it.
 - Phone: ATL-13's uikit EditText and ATL-37's installer tile were never run (bugs-ab-8). On
   headless and uikit a compound drawable takes no space, so `getLineCount` counts for a narrower
   width than the label has ([ATL-86](bug-tracker.md#atl-86), bugs-ab-2).
+- Code-path proof only (overhaul A6, A8): gtk's ellipsis, alignment, `editable` and
+  `focus_on_click` on a GtkText, its report flush in `input_tap`; a theme without a text color on
+  gtk and the phone; the text color after uikit's selectable swap; ellipsize in the measure key.
 - State: open; found 2026-11-21 (overhaul A6, stage rows M3-8, PreM4-M4a-7, M4b-6, M4b-7, M4c-4,
   M4c-8 to M4c-10, M5c-6, M5c-11, M5c-12, M6a-7, M6b1-11, bugs-ab-2, -3, -6, -7, -8, late-1 to
   late-4).
@@ -553,21 +580,27 @@ claim some stage's notes make that no check would fail without; none shows a def
   that loses a field fails nothing (M6b1-7): `run-lists.sh` requires cached above 0 after the
   scroll; a framework test of two TextViews that differ only in runs or max lines.
 - The release library must hold no test line (M6b3a-14): a release-build step that greps the built
-  library for the known test-line prefixes.
+  library for the known test-line prefixes (`DEV_MARKERS` reads three names of the test hooks only).
 - The drop-down's registry entry has no gtk run (M6b3b-4): a step that opens the drop-down through
   the agent.
 - adjustPan's offset applying to touch (M6b3c-9: `run-keyboard.sh` sends `insets` and `dump` only:
-  a `touch` at the field's panned y), `getWindowVisibleDisplayFrame` leaving out the bars and the
-  keyboard (M6b3c-10: log the rect after the 20-number `insets`), and `atl_exclusion_update` reading
-  the app's size (M6b3c-12: a `size` while B shows, then B's exclusion line at the new width).
+  a `touch` at the field's panned y), and `getWindowVisibleDisplayFrame` leaving out the bars
+  (M6b3c-10: log the rect after the 20-number `insets`; `run-keyboard.sh` reads the keyboard half).
 - Two `-l` groups of one headless run, and the refusal of a package that already runs
   (`ATLInstaller`, `already runs in this process`) have no script (MA2-3): `-l A a.apk -l B b.apk`
   waiting for both apps' markers and exit 0 after the last one, and the same APK twice expecting
   exit 1.
 - gtk's portal path for night (`settings_changed_cb`, `display.c`) is driven by nothing; the gtk
   framework run sets night through `ATLTestHooks.setNight` (M6b3c-13).
+- A translated frame on gtk is read by nothing (A5a), and GTK's own placement of a popup neither
+  (smoke-c-r2-8).
+- gtk's hover exit after a delivery (A5b: code-path proof only, no feed makes GTK's pointer motion)
+  and GtkScrolledWindow's own pan against a child's refusal (never read or run).
+- gtk's keypad Enter reaching Java as 160 (M6a-9): `input-gtk` can feed `GDK_KEY_KP_Enter`.
+- A `touch` line before headless's first shown layout is dropped (A5b): the scripts sync with a
+  `dump` first.
 - State: open; found 2026-11-21 (overhaul A5b round 1, stage rows M0-4, nav-9, PreM4-M4a-16,
-  PreM4-M4a-18, M5a-4, M6b1-7, M6b3a-14, M6b3b-4, M6b3c-9, M6b3c-10, M6b3c-12, M6b3c-13, MA2-3);
+  PreM4-M4a-18, M5a-4, M6b1-7, M6b3a-14, M6b3b-4, M6b3c-9, M6b3c-10, M6b3c-13, MA2-3);
   2026-11-21 (A8): gtk's ACTION_OUTSIDE runs in `input-gtk`; the gtk dump's gaps.
 
 ### ATL-164
@@ -583,10 +616,10 @@ apps, or that no suite reads; each is a line to turn into a check when a stage n
   (M6b3c-8); pre-iOS-26 panel look (M6b3a-12).
 - gtk: a click outside a plain alert and the alert's close request (M2-6, ATL-162), the host refusing the
   move to the back (M2-3), custom-content dialogs driven through the agent (M6b2-3).
-- Checks to add: `setCancelable(false)` against RESULT_CANCEL and Back (M2-1), a targetSdk 19 fixture's
+- Checks to add: a targetSdk 19 fixture's
   `window: frame none` and the light status bar flag (M3-6), layout XML attributes of the View
   constructor (PreM4-M4a-6), `check` and `switch` control sizes in `run-controls.sh` (M4b-8), flower_finder's
-  list (M6b1-2, TOOL-8), a Fragment's permission result (M6b1-16), a LENGTH_LONG toast's duration (M6b3b-8),
+  list (M6b1-2, TOOL-8), a Fragment's permission result (M6b1-16),
   a focusable popup closed by an outside tap and a `ListPopupWindow` case (M6b3b-11), the drop-down not
   taking keys (M6b3b-12), `SystemUiTest` cases for `setDecorFitsSystemWindows(false)`,
   `FLAG_LAYOUT_NO_LIMITS`, cutout mode ALWAYS and show after hide (M6b3c-11, nav-8), the AOSP rows of
@@ -596,6 +629,10 @@ apps, or that no suite reads; each is a line to turn into a check when a stage n
   (M6b3a-2); `setIcon`, `setIconAttribute` and ProgressDialog's secondary progress and number formats
   are ignored (M6b3a-9); the agent's accessibility taps still reach Android views under an open menu
   (M6b3b-7, [TOOL-8](general-todo.md#tool-8)).
+- Code-path proof only (overhaul A7, A8): a toast's frame on uikit and gtk, uikit's autorelease pools,
+  `ATLDialog`'s actions after a free, gtk's panel colours, gtk's one placement per allocation.
+- No test of Gravity FILL_HORIZONTAL on a dialog (M6b2-7); `atl-dialog-progress` doesn't compare the
+  chrome and nothing reads a panel row's check mark (M6b3a-6).
 
 ### ATL-166
 
@@ -644,11 +681,27 @@ with them, build only for the desktop build.
 - State: open; found 2026-11-14 (overhaul stage claims M0-2). DINE-12 covers iOS substitutes for an
   APK's own `.so` files only.
 
+### ATL-176
+
+**Measure typing lag under `-Xint`.** M4c left it unmeasured: each edit of a field runs Java's
+filters, watchers and a snapshot back to the toolkit. Wanted: the time on the phone from an inserted
+character to the `text after` line and to the field showing Java's text, in a plain and in a
+filtered field of the widgets APK's TextActivity.
+
+### ATL-179
+
+**api-impl's signatures differ from AOSP 10's where only compiling against it shows it** (overhaul A6
+and A7): `View.onDraw` is public (AOSP: protected), so a test activity compiled against `hax.jar`
+must override it as public; `InputMethodManager` has none of the `SHOW_*` and `HIDE_*` flag
+constants. An app built with the SDK runs unaffected (it inlines constants), one that reads them by
+reflection doesn't. Wanted: a compare of api-impl's public and protected API against
+`current-10.txt` for the classes we touched.
+
 ## DINE
 
 ### DINE-6
 
-**Try JIT through StikDebug on the dev phone (iPhone 13, iOS 27.0.1).** Sideloaded, dev-signed
+**Try JIT through StikDebug on the dev phone (iPhone 13, iOS 27.2).** Sideloaded, dev-signed
 apps can get JIT through StikDebug from iOS 17.4; iOS 26.4 broke it for some users
 (`notes/meta.md` "iOS constraints").
 
@@ -781,8 +834,8 @@ optionally its GTK render node as text: a diffable golden of what gsk draws, lik
 display-list golden. Its timing is exact, and it needs no compositor screenshot (`grim` on the
 hidden sway does that part today), but GTK still needs a display. `gtk4-rendernode-tool render`
 (installed with gtk4) turns a saved render node into a PNG. ATL already renders GTK
-drawings to images (`dine-atl/src/api-impl-jni/graphics/android_graphics_Bitmap.c`) and saves PNGs
-(`gdk_texture_save_to_png` in `android_app_WallpaperManager.c`); the gtk test hooks have a
+drawings to images (the view readback test hook `gfx_test_render_view`) and encodes PNGs
+(`dine-atl/src/backends/gfx/gsk/bitmap.c`); the gtk test hooks have a
 window-ready point (`src/main-executable/main.c`, `src/backends/ui/gtk/dump.c`).
 
 ### TOOL-7
@@ -867,6 +920,8 @@ broken (found 2026-11-14 to 2026-11-21: the instruments audit, the A9 review, th
 - The framework suites pin targetSdkVersion 27: api-impl's branches for 28 and up never run.
 - The draw golden: `drawLines` runs with offset 0 and the whole array only, and nothing calls `drawOval`
   (`DrawActivity`).
+- Code-path proof only (overhaul A9): the session's sync, the two-process races of an uninstall's
+  put-back against an install, a second `Session.commit`.
 - Where: `tests/harness/package.py`, `tests/harness/test_package.py`, `dine-atl/tests/package/`,
   `dine-atl/tests/framework/*/AndroidManifest.xml`, `dine-atl/tests/headless/` (DrawActivity).
 
@@ -891,6 +946,42 @@ broken (found 2026-11-14 to 2026-11-21: the instruments audit, the A9 review, th
 - Test mode with several apps: no run has two apps answered from `ATL_DIALOG_ANSWERS` (each main
   thread reads the whole list with its own cursor), and test-runner's
   `SingleLaunchActivityTestCase` keeps VM-wide statics in a jar every app shares (MA2-10).
+- Code-path proof only (overhaul A10): Home before an app's start on uikit, `LldbHost.kill` against
+  a real lldb, `stop-server --kill-app` on the phone, gtk `shutdown`'s failed kill; removing the
+  dismissal's IME zero alone fails nothing (the keyboard's hide notification sends it too).
+
+### TOOL-18
+
+**Test gaps of the instruments themselves (overhaul A0's audit, left open by A0 to A10).** None shows
+a product defect; the audit's id is in brackets.
+- Runtime suite: the log filter drops every line below FATAL, so a new runtime error line fails
+  nothing (`corpus.toml` `log_tags`; its reason predates the runtime without boot image)
+  (grading-r2-2).
+- Apps suite: nothing pins the third-party APKs' content, only their file names (framework-r2-6).
+- `linux smoke`: `_script` and `_gd`'s verdicts and the scripts' judges have no failing control in
+  `test unit` (smoke-a-r2-7); a hidden display that dies is reused by the checks after it and its
+  log deleted (smoke-a-r3-7); the gtk checks inherit the desktop's session bus, portal night and GTK
+  settings (critic 3); it and `dbg smoke` stop at the first failure, with no option to go on
+  (critic 10); the looper APK never runs on glib, whose worker-thread poll only `loop_test`'s stubs
+  stand in for (smoke-a-r2-6).
+- `dbg smoke`: a step's `ok` lines pass in any order (critic 4); `atl-demo` and `art` don't check
+  that the app still runs afterwards (phone-r2-5); Java's `nav: I size` is compared with nothing,
+  only the surface with Dine's size (phone-r3-5); value lines beside the markers are unread
+  (`run hello`'s `map size 2`, `views createFromPath missing`, the art probe's) (phone-r2-1); a run
+  leaves no scenario, pattern or verdict in the session log (phone-r3-7).
+- gtk's debug target: the unit tests stub ATL and the agent, so `dbg ui` against a real ATL (`type`,
+  `back`) runs in no check; `linux smoke input-gtk` and `text-gtk` drive the agent directly
+  (phone-r2-3, app-tools-4).
+- CLI: no test runs `cli.main` for `test` or `linux`, and it turns a handler's non-int result into
+  exit 0 (dispatch-r1-4); `test_server.py` takes 0.5 s for "the server is busy" (phone-r1-14).
+- No Linux build compiles the side without `test_hooks`; only the iOS release build does
+  (critic 5).
+- `DispatchCostTest#testMoveCost` asserts nothing (critic 7).
+- Headless scripts: `run-windows.sh` skips a stray "menu item" or "popup row" line (smoke-c-r1-4); no
+  run shows a light panel alert's show line (smoke-b-r2-4); the dialog chrome's dp at another density
+  has no check (smoke-b-r3-2).
+- A0's fixes that no run proved: children ended on a signal, test APKs renamed into place, markers
+  at the deadline, the abbreviated-flag refusal, the gd check without output (ledger A0).
 
 ## Done
 

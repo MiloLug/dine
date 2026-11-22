@@ -1,7 +1,8 @@
 # ART: findings and runnability
 
-What we know about dine-art's ART as of 2026-10-16: how it runs on Linux, what the runtime test
-suite says about it, and what stands between it and the iPhone. Sources:
+What we know about dine-art's ART: how it runs on Linux, what the runtime test suite says about
+it, and what stood between it and the iPhone (the analysis of 2026-10-16, with what was built).
+Sources:
 - runtime suite runs (`tools/dine test runtime`) and small experiments on Linux;
 - dine-art's sources (paths below are relative to `dine-art/art/`);
 - XNU's `bsd/kern/mach_loader.c` (apple-oss-distributions/xnu `main`, fetched 2026-10-16).
@@ -14,8 +15,8 @@ Open runtime items are the `ART-` codes in `notes/bug-tracker.md` and `notes/gen
 - **Versions:** ART is Android 10 (`android-security-10.0.0_r75`, oat v170). libcore is older
   (8.1/9), so ART 10 features whose Java side lives in libcore are partly missing (see the
   failures below).
-- **Build:** art_standalone's own make build (AOSP `build/core`, adapted). It is **gcc-only, Linux
-  host only**; the Makefile says the clang path was never cleaned up. Output goes in-tree
+- **Build:** art_standalone's own make build (AOSP `build/core`, adapted): **gcc for the Linux host, clang for iOS** (cross mode, "Build" below; the Makefile
+  says the host's clang path was never cleaned up). Output goes in-tree
   (`dine-art/out`, ~2 GB). Installed: `lib/art` 363 MB (`libart.so` is 248 MB, of which 8.2 MB is
   text; the rest is debug info), `lib/java` 38 MB.
 - **Boot classpath:** 10 dex jars: `core-oj`, `core-libart`, `okhttp`, `bouncycastle`,
@@ -31,9 +32,9 @@ Open runtime items are the `ART-` codes in `notes/bug-tracker.md` and `notes/gen
 
 ## Linux status: runtime suite
 
-842 tests (AOSP run-tests at the same tag, plus our own): **578 pass**, 20 expected failures,
-244 skipped (130 need JVMTI, 100 need upstream's native test lib `libarttest`, 14 have custom run
-scripts). Warm run ~78 s on 16 cores with the C++ interpreter ("Runs on the phone"); cold ~5.5
+AOSP run-tests at the same tag plus our own; `dine-art/tests/runtime/README.md` "Current result"
+has the counts (20 expected failures; the skips need JVMTI, upstream's native test lib
+`libarttest`, a custom run script or the network). Warm run ~78 s on 16 cores with the C++ interpreter ("Runs on the phone"); cold ~5.5
 min (measured with mterp).
 
 The 20 expected failures, each with its reason, are in
@@ -48,7 +49,7 @@ A plain `dalvikvm -Xint` run of stock art_standalone does more than interpret:
 
 - **Boot image:** on first start the runtime fork+execs `dex2oat` to build a boot image of the 10
   boot jars. It writes the image into `$XDG_CACHE_HOME/art/<isa>/`, falling back to
-  `~/.cache/art/` (an art_standalone patch, `libartbase/base/file_utils.cc:242`; `ANDROID_DATA`
+  `~/.cache/art/` (an art_standalone patch, `libartbase/base/file_utils.cc`; `ANDROID_DATA`
   doesn't move it). The image is mapped at a fixed low address (`0x60070000`, from
   `ART_BASE_ADDRESS`).
 - **App dex:** every jar or APK on the classpath gets its own fork+exec'd `dex2oat
@@ -63,9 +64,11 @@ Consequences:
   dir (2,496 files, 106 MB by 2026-10-16), and runs shared the boot image there, so they weren't
   hermetic.
 
-Neither holds any more: each test gets its own `XDG_CACHE_HOME`, and dine-art loads no boot image
-or oat files and never runs dex2oat ("Runs on the phone"), so the suite passes no image or
-compiler flag (`dine-art/tests/runtime/corpus.toml`).
+Neither holds any more: each test gets its own `XDG_CACHE_HOME`, and dine-art loads no boot image,
+takes no dex or code from oat files and never runs dex2oat ("Runs on the phone"), so the suite passes
+no image or compiler flag (`dine-art/tests/runtime/corpus.toml`). Files an older runtime left in
+`~/.cache/art` are used by neither; `DexFile`'s status queries (`isDexOptNeeded`) still open an oat
+file they find there (`runtime/oat_file_assistant.cc` `OatFileInfo::GetFile`).
 
 **Experiment: the same thing with no boot image and no dex2oat.** Flags `-Xnoimage-dex2oat
 -Xcompiler:/nonexistent/dex2oat`, with an empty `XDG_CACHE_HOME`, on a runtime that still had
@@ -91,12 +94,13 @@ works today on Linux, at a modest startup cost. Notes:
 
 ### 1. The heap must sit below 4 GB, and iOS forbids that (blocker, solved: heap-base references)
 
-- **ART side:** 64-bit ART stores every object reference as a 32-bit raw address.
-  `PtrCompression::Compress` (`runtime/mirror/object_reference.h:36-47`) is a truncating cast
+- **ART side (stock ART; dine-art's answer is "Runs on the phone"):** 64-bit ART stores every
+  object reference as a 32-bit raw address.
+  `PtrCompression::Compress` (`runtime/mirror/object_reference.h`) is a truncating cast
   (reference poisoning is off). `HeapReference`, `StackReference`, `CompressedReference` and
   `GcRoot` all go through it, and shadow-frame vregs hold the same 32-bit values. The heap spaces
-  are mapped `low_4gb` (`runtime/gc/heap.cc:464`, `:732`), and the card table covers the whole low
-  4 GB (`heap.cc:587`). Without `MAP_32BIT` (aarch64, Apple), `USE_ART_LOW_4G_ALLOCATOR`
+  are mapped `low_4gb` (`runtime/gc/heap.cc` `Heap::Heap`), and the card table covers the whole low
+  4 GB (there too). Without `MAP_32BIT` (aarch64, Apple), `USE_ART_LOW_4G_ALLOCATOR`
   (`libartbase/base/mem_map.h:33`) scans for free space below 4 GB. ART on macOS hosts got that
   space by linking with a small `__PAGEZERO`.
 - **iOS side:** XNU's `load_machfile` rejects any 64-bit arm64 binary whose hard page zero doesn't
@@ -110,7 +114,7 @@ works today on Linux, at a modest startup cost. Notes:
   - The central point is `PtrCompression`. Beyond it:
     - about 25 `reinterpret_cast32` call sites and 27 explicit pointer-to-`uint32_t` casts in
       `runtime` + `libartbase` (for example `PointerToLowMemUInt32`);
-    - the lock word's forwarding address (`runtime/lock_word.h:149`: address >> 3 in 30 bits);
+    - the lock word's forwarding address (`runtime/lock_word.h` `FromForwardingAddress`: address >> 3 in 30 bits);
     - the card table range;
     - the low-4G allocator, which can be retargeted to scan the reserved region instead;
     - boot image loading, if we ever use one.
@@ -160,7 +164,7 @@ packed layout all of them pass, and the Linux suite is unchanged.
 ### 5. Signals
 
 - Stock ART turns on implicit null and stack-overflow checks on arm64. dine-art keeps them off
-  (`runtime/runtime.cc:1448`): the interpreter checks both explicitly, so ART installs no SIGSEGV
+  (`runtime/runtime.cc`: `implicit_null_checks_` and `implicit_so_checks_` stay false): the interpreter checks both explicitly, so ART installs no SIGSEGV
   handlers and never protects, touches or madvises a thread's stack.
 - Under lldb, `EXC_BAD_ACCESS` stops in the debugger before the signal reaches ART. Whether an
   app can catch SIGSEGV at all needs a probe without a debugger attached, the route for
@@ -175,8 +179,8 @@ packed layout all of them pass, and the Linux suite is unchanged.
   pthread fallback exists.
 - **TLS:** `Thread::Current` uses `pthread_getspecific` off Android
   (`runtime/thread-current-inl.h:39`).
-- **macOS host remnants:** 22 files under `runtime`/`libartbase` have `__APPLE__` branches,
-  including thread stack bounds in `thread.cc:1223`. AOSP built ART on Mac hosts in this era.
+- **macOS host remnants** (read before the port, which added branches of its own): 22 files under
+  `runtime`/`libartbase` had `__APPLE__` branches, including thread stack bounds in `thread.cc`. AOSP built ART on Mac hosts in this era.
 - **Still Linux-only:** `/proc/self` readers and `memfd_create`, `prctl`, `gettid`:
   [ART-13](bug-tracker.md#art-13).
 
@@ -202,8 +206,9 @@ From the installed Linux libraries' `NEEDED` entries:
 
 - dine-art's own make build cross-compiles: `make ____TARGET=ios` (`HOST_OS=darwin`,
   `HOST_ARCH=arm64`, combo `build/core/combo/HOST_darwin-arm64.mk`), shared-library modules
-  archived instead of linked. `tools/dine ios build-art` → `out/ios/lib/*.a` (17 ART/libcore
-  archives plus ICU 78.3, lz4, liblzma built from `third_party/` clones).
+  archived instead of linked. `tools/dine ios build-art` → `out/ios/lib/*.a` (21 ART, libcore, androidfw and
+  wolfSSL JNI archives plus ICU 78.3, lz4, liblzma and wolfSSL built from `third_party/` clones).
+  `dbg smoke art` runs seven of the suite's authored tests on the phone.
 - Verified by two scratch links of a `main` calling `JNI_CreateJavaVM` and the libcore
   `JNI_OnLoad_*`s: `-all_load` over every archive and `-dead_strip`, 0 undefined, 0 duplicate,
   with `-lz -lexpat -framework CoreFoundation`. ELF output of the edited arm64 `.S` files is
@@ -256,7 +261,7 @@ Dine's `art` screen (`native/artbridge`, `dine_art_probe`):
 Dine's `art` screen → **run hello** runs `dine-0001-hello` through `JNI_CreateJavaVM` in Dine's
 process: `Hello from dine runtime tests` / `map size 2` in syslog, ~0.28 s from tap to return
 (VM creation included); a second tap reruns `main` on an attached thread. Linux suite unchanged
-(578 pass, 20 expected failures, ~78 s instead of ~52 s: C++ interpreter).
+by the port (20 expected failures, ~78 s instead of ~52 s: C++ interpreter).
 
 What it took in dine-art (one config, Linux and iOS):
 - C++ switch interpreter; no boot image, oat files or dex2oat; implicit checks off.
@@ -295,7 +300,7 @@ Fixed since, except where a code is named:
   [ART-1](bug-tracker.md#art-1).
 - **Implicit null/stack-overflow checks are hardwired on for arm64** in stock ART;
   `-Xno-sig-chain` aborts in `Runtime::Start`. Interpreter-only needs neither: dine-art turns them
-  off (`runtime.cc:1448`).
+  off (`runtime.cc`, the comment in `Runtime::Init`).
 - **Static JNI loading:** ART calls `JNI_OnLoad_<lib>` from the main image ("Runs on the phone").
 - **Startup paths:** `ANDROID_ROOT` (the dladdr fallback is compiled out on Apple) and
   `ANDROID_DATA` must be set; boot classpath via `-Xbootclasspath:`; ICU's data is linked in

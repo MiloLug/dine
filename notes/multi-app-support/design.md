@@ -225,7 +225,8 @@ in `findings-native-faults.md`.
   its GC roots skipped, so the app's memory goes; its stack and native resources leak. Mach
   `thread_terminate` isn't an option: it fails on iOS pthreads (MA0).
 - The descriptor ledger and [ART-24](../bug-tracker.md#art-24) are on drop's critical path: idle
-  apps wait in blocking socket reads (OkHttp), which closing the socket does not wake on Apple.
+  apps wait in blocking socket reads (OkHttp). Whether closing the socket wakes one on Apple is
+  unchecked through libcore; the kernel wakes the read (MA0's phone probe, below).
 - MA0 (`findings-runtime.md`): on host ART the drop stops threads in wait, park, sleep, a busy
   loop and a shut-down socket read, and frees the app's loader and heap; on the phone a blocked
   read wakes on `close()` or `shutdown()`.

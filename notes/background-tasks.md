@@ -7,7 +7,7 @@ can map between the two. Why Dine has one process and what limits that brings is
 
 Marks used below:
 - **Checked**: read in this repo.
-- **iOS knowledge**: from general knowledge of iOS, not tested on the iPhone 13 (iOS 27.0.1) or
+- **iOS knowledge**: from general knowledge of iOS, not tested on the iPhone 13 (iOS 27.2) or
   against Apple's docs. Treat as a claim to test.
 
 ## Status in the repo (checked)

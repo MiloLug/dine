@@ -178,7 +178,7 @@ suite is `dine-atl/tests/package/` (`tools/dine test package`).
   context and installs (`dbg smoke atl-installer`).
 - `[x]` `DelegateLastClassLoader(String, String, ClassLoader)` and a child-first `PathClassLoader`
   (Mihon's compat order) both load an installed extension's class from its `sourceDir`. Mihon's SDK
-  threshold for the platform class: unchecked.
+  threshold for the platform class: unchecked (MA9).
 - Done when: the package suite grades install, query and removal on headless, including an APK
   without a launcher activity and a `reqFeatures` query. Met 2026-11-02.
 
@@ -198,7 +198,7 @@ while each VM still runs one app; MA2b runs several apps in one VM. The record m
   name), job scheduler, shown dialogs, the keyboard and input state, location listeners, the MPRIS
   id; an AsyncTask's handler is on the main Looper of the app that made it; C: the window,
   activity stack, insets and exclusion, APK class path, data dir, listener.
-- `[x]` No primary app: the fields `design.md` lists are deleted; code reaches its app through its
+- `[x]` No primary app: the fields `findings-framework.md` lists under "Gone with MA2a" are deleted; code reaches its app through its
   Context, its object or a handle; Android's static APIs read the calling thread's record.
   `getApplicationContext()` of a package whose app isn't running is null, as Android (the user's
   answer); `createPackageContext` of an unknown package throws.
@@ -289,7 +289,13 @@ while each VM still runs one app; MA2b runs several apps in one VM. The record m
   lands only in a frame of the app's own code, or in shared code only as the throw of a blocking
   call (wait, park, sleep), never inside a class initializer. Done when MA0's probes
   (`tests/probes/multi-app/run.sh`: storm, juclock, the `System.getProperties()` hang) show no
-  erroneous shared class and no held shared lock with it.
+  erroneous shared class and no held shared lock with it. Today the storm case also ends the VM in
+  some runs ([ART-33](../bug-tracker.md#art-33)); `run.sh` exits 0 either way, so read its `rc=`
+  lines. Known gap to settle here: an app's own
+  `synchronized` block on a shared object is the app's code, so the exception may land inside it
+  (`design.md` "Freeze and drop").
+- `[ ]` An ended app's window goes with it: its `ui_window` (one per app, never freed since M3),
+  the records left under it and their UIViews.
 - `[ ]` A thread still running after a deadline (a `catch (Throwable)` loop) is suspended for good
   and its GC roots skipped (shared with B1's parked threads).
 - `[ ]` [ART-26](../bug-tracker.md#art-26): release pages with `MADV_FREE_REUSABLE` on Apple, so a
@@ -389,7 +395,8 @@ while each VM still runs one app; MA2b runs several apps in one VM. The record m
 ## MA9: scenario apps
 
 - `[ ]` F-Droid: install an app and open it in a new window.
-- `[ ]` Mihon or TachiyomiSY: install extensions from a repo and load them in-process.
+- `[ ]` Mihon or TachiyomiSY: install extensions from a repo and load them in-process. Check which
+  loader Mihon picks at our SDK level (MA1 tests both orders).
 - `[ ]` microG started by hand, then an app that needs it: both work (bind, calls, caller checks).
   Starting apps at login or with Dine is [ATL-30](../general-todo.md#atl-30), not a multi-app
   stage.

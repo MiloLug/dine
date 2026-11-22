@@ -1,7 +1,9 @@
-# Findings: how apps are hosted today
+# Findings: how apps were hosted before MA1
 
-How an app is started, lives and ends on Linux and in Dine, where its files go, and which notes
-assume one app per process. A snapshot read on 2026-10-31; line numbers drift. **C**: read in code.
+How an app was started, lived and ended on Linux and in Dine, where its files went, and which notes
+assumed one app per process. A snapshot read on 2026-10-31, before MA1 to MA2b: the registry, the
+prefix and the app records replace much of it (`todo.md` MA1 to MA2b, `design.md`); line numbers
+drift. **C**: read in code.
 **U**: inference, unchecked. dine-atl's per-app state is in `findings-framework.md`.
 
 ## Linux
@@ -105,7 +107,7 @@ drop doesn't reset.
 | `atl-port.md` | M8a | app dir from the APK file name; metadata read without the VM because there is one VM; no launcher activity ends Dine through `System.exit(1)`; import rejects an APK without a launcher activity; one app per launch |
 | `atl-port.md` | M8b, M8c | `atl_nav_home` and `atl_nav_front` for "the app"; one insets set |
 | `atl-port.md` | M8e, Tests | the globals; one VM per process, Dine restarts every N tests |
-| `nav-gestures.md` | Behaviour, host API, events, `RunningApps`, Insets | one run per process, no close action; `atl_nav_*` and events without an app id; one `Navigator.sendInsets`. Its line cite of `artbridge.cpp:379-452` is stale (the file has 244 lines) |
+| `nav-gestures.md` | Behaviour, host API, events, `RunningApps`, Insets | one run per process, no close action; `atl_nav_*` and events without an app id; one `Navigator.sendInsets`. |
 | `os-features.md` | items 7, 10, 17, 18, 19, 21 | another app's service is `none` on iOS; keystore keys live per process (U); UnifiedPush and MPRIS own one bus name per process; a tap goes to "the running app"; alarms and jobs go through the one main Looper |
 | `decisions.md` | window config, dialogs, `moveTaskToBack`, base JNI frame | one window per VM, one task, one Android thread |
 | `bug-tracker.md` | DINE-1 | `Navigator.home()` handles one container |

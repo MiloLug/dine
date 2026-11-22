@@ -38,6 +38,7 @@ touches. Commands and setup live in `tools/dine <group> --help`, `README.md` and
   what it checks, and `common.sh` beside them holds what they share. `tools/dine linux smoke` runs
   them.
 - The cli host's `-b` sends Home before the apps start: each starts with its task in the back.
+- The cli host's `-d DPI` sets the screen's density (default 160, where a dp is a px).
 - The cli host's `-c` reads commands on stdin: `back`, `home`, `front`, `insets` (12 or 20 dp
   values), `size <width> <height>` (dp), `night 0|1`, `dump` (the
   view tree of the window and its shown dialogs, test hooks only), `tap <text>` (a down and an up

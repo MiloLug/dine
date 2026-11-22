@@ -55,8 +55,8 @@ its row here changes when that block does.
 - The main-thread loop sits behind the loop slot; only its `glib` backend uses glib.
 - The Linux GTK build keeps building and passing at every step (`tools/dine linux build`, the
   Gravity Defied smoke test, `tools/dine test runtime`).
-- No pristine copy of ATL in the tree. dine-atl's `master` branch tracks upstream unchanged;
-  `git diff master...dine` shows our delta.
+- No pristine copy of ATL in the tree. `git diff upstream/master...dine` shows our delta (the local
+  `master` branch lags upstream).
 - The first visible results come step by step: headless boot, then a dialog, then a real APK on
   screen.
 
@@ -64,9 +64,11 @@ its row here changes when that block does.
 to merge. Upstream isn't merged any more: its commits are read and the wanted ones reimplemented
 by hand.
 
-## ATL as it is
+## ATL before the port
 
-Measured on dine-atl's C sources (99 files, 17.9k lines), by the worst dependency in each file:
+The tree the port started from (2026-10), upstream's. [Backend slots](#backend-slots) and each
+stage's Status say what replaced it. Its C sources (99 files, 17.9k lines), by the worst dependency
+in each file:
 
 | Kind | Files | Lines |
 |---|---|---|
@@ -76,8 +78,8 @@ Measured on dine-atl's C sources (99 files, 17.9k lines), by the worst dependenc
 | Linux desktop: Wayland, D-Bus portals, ALSA, udev, libsecret, webkitgtk, EGL | 21 | 4,372 |
 | bionic linker and the app's own `.so` files | 4 | 1,779 |
 
-- **Backend layer:** none. `util.h` includes `gtk/gtk.h`, and 60 C files include
-  `util.h`. `native_window.h` pulls in EGL, X11 and GTK.
+- **Backend layer:** none. `util.h` included `gtk/gtk.h`, and 60 C files included
+  `util.h`. `native_window.h` pulled in EGL, X11 and GTK.
 - **Views:** every View has a GTK widget pair. GTK drives measure and allocation and calls into
   Java for `measure` and layout; leaf widgets (TextView is a GtkLabel, Button a GtkButton,
   EditText a GtkText, ScrollView a GtkScrolledWindow; 16 widget files) are measured by
@@ -278,8 +280,8 @@ list the checks known so far.
   and dumps a view tree of a LinearLayout with two TextViews.
 
 **Status: done** (committed with M1). `dine-atl/tests/headless/run-demo.sh` passes: the headless
-build reaches `onResume` through the same 50 natives as GTK and dumps decor FrameLayout →
-LinearLayout → two TextViews. As built:
+build reaches `onResume` and dumps decor FrameLayout → LinearLayout → two TextViews (measured at
+M0: through the same 50 natives as GTK; the script doesn't compare natives). As built:
 - Tree: `src/slots/{loop,ui,gfx}.h`; `src/shared/` (startup phases, activity lifecycle, upcalls,
   JNI glue for partly extracted classes); `src/backends/<slot>/<name>/`. Natives not behind a
   slot stay in `src/api-impl-jni/` and build only with ui=gtk; whole-file portable sources stay
@@ -304,7 +306,7 @@ LinearLayout → two TextViews. As built:
 
 Prerequisites in dine-art:
 - Native calls with stack arguments use Apple's packed layout (`notes/art-findings.md` §4),
-  guarded by the `dine-0002-jni-args` runtime test on Linux and on the phone. 7 ATL natives
+  guarded by the `dine-0002-jni-args` runtime test on Linux and on the phone. Many ATL natives
   exceed 8 integer-class arguments; `View.native_setLayoutParams` (10, counting `JNIEnv*` and
   `this`) is on `demo_app.apk`'s path.
 - `System.loadLibrary` resolves libraries linked into the app, which `translation_layer_main`
@@ -408,18 +410,18 @@ dialog closes; the same APK passes on gtk and headless.
 and `dialog-gtk` pass the same APK with `ATL_DIALOG_ANSWERS='Yes;Green'`. As built:
 - `ui.h`: `struct ui_alert` (title, message, items, three button labels, cancelable),
   `ui_dialog_new/show/close/set_cancel_on_touch_outside`, `UI_DIALOG_CANCEL`;
-  `atl_upcall_dialog_result`. A Dialog's handle is a `struct ui_window *`, because Dialog hands it
-  to its `Window`'s natives. `ui_window_get_size` serves `View.getWindowVisibleDisplayFrame`.
-- Java owns the state: `showing`, `cancelable`, a canceled flag, a static set holding shown
-  dialogs (the backend's ref is weak) in show order, closed and shown again with the task
-  (`notes/nav-gestures.md`). `atlDialogResult` (package-private) ignores results unless drawn
+  `atl_upcall_dialog_result`. An AlertDialog's handle is its alert's `struct ui_window *` (the
+  dialog's window is a registry entry: [M6b2](#m6b2-windows)). `ui_window_get_size` serves `View.getWindowVisibleDisplayFrame`.
+- Java owns the state: `showing`, `cancelable`, a canceled flag; the app's window registry (M6b2)
+  holds the shown dialogs and shows them with the task (`notes/nav-gestures.md`). `atlDialogResult` (package-private) ignores results unless drawn
   (showing, not hidden, task in front); AlertDialog runs the listener, then `dismiss()`, for items
   too. The NewPipe 10 ms delayed close is kept. `getButton`'s Button views: M4b.
   `OnCancelListener.onCancel` exists; `setCancelable` and the cancel and dismiss listeners
   are stored (Builder too).
-- gtk: `src/backends/ui/gtk/dialog.c`, a GtkWindow per dialog; alerts get a label, a GtkListBox
-  and GtkButtons; close-request and a tap outside are cancel results, close only hides.
-  `ATLKeyboardDialog` builds on `ui_dialog_new`.
+- gtk: `src/backends/ui/gtk/dialog.c`, a GtkWindow per plain alert (content dialogs and panels draw
+  in the app window, M6b2); alerts get a label, a GtkListBox and GtkButtons; close-request and a tap
+  outside are cancel results, close only hides. `ATLKeyboardDialog` has a layer-shell GtkWindow of
+  its own, which no check runs ([ATL-177](bug-tracker.md#atl-177)).
 - headless: `dialog:` lines; uikit: `UIAlertController` on the topmost presented controller
   (after a running transition), items as an action sheet with Cancel when cancelable, a tap hops
   back through `loop_main_post`, close dismisses only its own controller. Both share the view
@@ -486,7 +488,7 @@ the Linux golden: `1170x2391` roots, TextViews `315x51` and `375x51` at y 0 and 
   `ui_window_close` releases the uikit surface. `Drawable.native_unref` drops its ref on the
   finalizing thread (gsk hops to the main loop). Top-level posts run in the Android thread's base
   JNI frame, which never pops: their local refs must be deleted. An app's `ui_window` struct stays
-  allocated (one per app).
+  allocated (one per app) until multi-app MA4's drop frees it (`notes/multi-app-support/todo.md`).
 
 ### Pre-M4 batch (2026-10-21)
 
@@ -540,16 +542,14 @@ Natives that layouts and app setup reach before any input, moved behind the slot
   `linux smoke input-gtk`); what stays by hand on gtk is the GdkEvent reading (`on_pointer_event`'s
   event-type switch, `native_point`). iOS has no public touch synthesis and its agent's `tap` is
   `accessibilityActivate` into `input_tap`, so uikit's touch steps (UITouch, scroll pans, drags)
-  and a hardware keyboard's presses are checks by hand ([ATL-144](bug-tracker.md#atl-144)).
+  and a hardware keyboard's presses are checks by hand ([ATL-144](general-todo.md#atl-144)).
 - Target: the widgets APK, which exists for checks by eye on iOS (`dbg smoke atl-widgets`), gets
   steps graded on headless: a tap, a long press, a scroll, a key, and a selector background's
   selected child following the pressed state, read from a log line (nothing draws it before M5b).
-  Paths with no test yet: `setSystemUiVisibility`'s fullscreen, attach on Dialog, PopupWindow and
-  WindowManager, and the detached-child path.
 
 **Status: done.** `linux smoke widgets` and the framework suite `input` pass on headless, `dbg
 smoke` passes on the iPhone 13. Checked by hand: gtk (WSLg), and taps, hold, scroll and the Back
-swipe on the phone; a hardware keyboard on the phone is unchecked. Headless
+swipe on the phone; a hardware keyboard on the phone is unchecked ([ATL-144](general-todo.md#atl-144)). Headless
 Gravity Defied stops at `NinePatchDrawable.nativeCreate` (M5d). As built:
 - Dispatch is AOSP's, in Java, on every build: a backend hands window-pixel pointers for the root
   view of the window that got them to `atl_upcall_touch` (`src/shared/input.c`), which builds the
@@ -633,8 +633,8 @@ Gravity Defied stops at `NinePatchDrawable.nativeCreate` (M5d). As built:
   `linux smoke loop`), and `linux smoke input-gtk` (pointers and keys fed through the gtk agent).
 - AOSP provenance: `dine-atl/doc/AOSP.md`.
 - Open: the edge pans against an Android-hosted UIScrollView ([DINE-3](bug-tracker.md#dine-3))
-  and an excluded span, by hand ([DINE-7](general-todo.md#dine-7)); touches on popovers on gtk; a GtkText's Tab moves GTK's focus,
-  not Java's. Lists scroll since M6b1 (rows move without a relayout). A hardware keyboard and real
+  and an excluded span, by hand ([DINE-7](general-todo.md#dine-7)); touches on popovers on gtk, and a GtkText's Tab
+  moves GTK's focus, not Java's ([ATL-97](bug-tracker.md#atl-97)). Lists scroll since M6b1 (rows move without a relayout). A hardware keyboard and real
   drags on the phone: [ATL-144](general-todo.md#atl-144); gtk's limits (a drag that starts on a
   clickable child, `scrollTo` on a view that isn't a scroll node): [ATL-145](bug-tracker.md#atl-145);
   META+TAB clusters: [ATL-146](general-todo.md#atl-146).
@@ -696,10 +696,11 @@ pass. Not checked by hand: the controls' look on gtk, and the hover styling `can
 - Tests: `run-controls.sh` (`linux smoke controls`, the widgets APK's `ControlsActivity`),
   `run-dialog.sh`'s `KeepActivity` runs, the framework suite `controls`, smoke `atl-controls` and
   `atl-dialog-keep` (`Step.declined`: a tap the agent must be refused).
-- Open: a Switch's thumb can't be dragged on iOS (a tap toggles it); a view with INHERIT keeps its
-  native alignment when its parent's changes later; Button text gravity, and with it
+- Open: a Switch's thumb can't be dragged on iOS (a tap toggles it; [ATL-87](bug-tracker.md#atl-87));
+  a view with INHERIT keeps its native alignment when its parent's changes later
+  ([ATL-88](bug-tracker.md#atl-88)); Button text gravity ([ATL-79](bug-tracker.md#atl-79)), and with it
   `setTextAlignment` on iOS buttons (a push button's text stays centered: the slot's start can't
-  tell an explicit start from none); button drawables and tints are not drawn on any build, and
+  tell an explicit start from none, ATL-88); button drawables and tints are not drawn on any build, and
   `android:button`, `android:buttonTint` and `setButtonTintList` do nothing ([ATL-86](bug-tracker.md#atl-86)).
 
 ### M4c: text input
@@ -719,7 +720,7 @@ on the iPhone 13 `dbg smoke atl-text` passes, and `dbg ui type` into a Button is
 checked by hand: on gtk typing, Enter, the selection and Copy/Paste; on the phone the software
 keyboard's own typing, a CJK keyboard's marked text, the selection handles and edit menu, a
 selectable TextView's Copy, the return keys and the pads' Done bar, password dots, the number
-keyboard, the keyboard after Home and front. As built:
+keyboard, the keyboard after Home and front ([ATL-144](general-todo.md#atl-144)). As built:
 - Truth: Java's Editable. EditText keeps one from `Editable.Factory`; `setText` makes a new one as
   AOSP does (filters against an empty Spanned, the listeners get `(0, old, new)`, the ChangeWatcher
   span moves to it), and the old one stops reporting. The toolkit's field is the IME's side: it
@@ -803,7 +804,8 @@ keyboard, the keyboard after Home and front. As built:
   TextView where the toolkit takes its touches (gtk; on iOS unchecked); a hardware keyboard types
   only into the field with the keyboard (no KeyListener); gtk multi-line; ClipboardManager (M7); `onCreateInputConnection` on EditText,
   BaseInputConnection (a stub whose own `Editable` class shadows `android.text.Editable`); on headless a field whose activity another
-  one covers keeps the keyboard (Java's next Back hides it); typing lag under `-Xint`, unmeasured.
+  one covers keeps the keyboard (Java's next Back hides it; all ATL-96 but ClipboardManager); typing lag
+  under `-Xint`, unmeasured ([ATL-176](general-todo.md#atl-176)).
 
 ### M5: Canvas
 
@@ -880,7 +882,8 @@ graphics suite's Matrix and Paint tests pass on headless and on gtk (`tools/dine
   and after showing again from INVISIBLE; the graphics suite's pivot, `mapRect`, `rectStaysRect`
   and Paint copy tests. `tools/dine test framework --gtk` runs every suite on the gtk build, one at
   a time, against `expectations/linux-x86_64-gtk.json`.
-- Open: a missing native's stack trace prints on every redraw of the view that calls it.
+- Open: a missing native's stack trace prints on every redraw of the view that calls it
+  ([ATL-97](bug-tracker.md#atl-97)).
 
 #### M5b: drawing on the phone
 
@@ -967,7 +970,7 @@ pass. As built:
   the label replay in `drawRect:`, a scaled bitmap's sampling, blend modes, layers, nine-patches
   and stroked or shaded text on the view path on the phone (`BlendModeTest` reads blends and layers on gtk only).
 - RenderNode is [M9](#m9-heavy)'s.
-- Open: a clip under a perspective matrix on coregraphics; Choreographer stays timer-based (10 ms
+- Open: a clip under a perspective matrix on coregraphics (ATL-98); Choreographer stays timer-based (10 ms
   frames, [ATL-98](bug-tracker.md#atl-98)); views redraw whole, without dirty rects, and the
   display link runs on UIKit's main run loop ([ATL-139](general-todo.md#atl-139)); a background's
   offset while UIKit drives a scroll waits for Java's scroll report and redraw
@@ -1003,8 +1006,8 @@ cursor's line.
 
 **Status: done (2026-10-25).** On headless `linux smoke draw` matches `draw.displaylist` with the
 text and Layout ops, `linux smoke text` drops the letter typed into the number field and keeps the
-capped field at two lines, and Compose passes `Layout.native_constructor` (its next stop is in
-M6a); the framework suite's `TextTest`, `KeyListenerTest` and `LineLimitTest` pass on headless and
+capped field at two lines, and Compose passes `Layout.native_constructor` (its stops after that
+are [M9](#m9-heavy)'s); the framework suite's `TextTest`, `KeyListenerTest` and `LineLimitTest` pass on headless and
 gtk, `InkBoundsTest` on gtk; `linux smoke` and the runtime suite pass. On the iPhone 13 `dbg smoke`
 passes, `dbg ui screenshot` shows the draw screen's bold, serif italic, centered monospace and
 stroked text and a two-line Layout, and the capped field grows to two lines (51 to 101 px) and
@@ -1168,7 +1171,8 @@ suites and the runtime suite pass. As built:
   lines, text and bitmaps, its buttons have nine-patch backgrounds, it keeps scores in SQLite; no
   Path, shader, `saveLayer` or SurfaceView, and its one `new Canvas(Bitmap)` is in `loadSprites`,
   which nothing calls. The dev payload bundles it (`build-ios-dev.sh`, dev builds only; the
-  atl_test_apks README says its APKs allow redistribution, the upstream license is unchecked),
+  atl_test_apks README says its APKs allow redistribution, the upstream license is unchecked:
+  [DINE-14](general-todo.md#dine-14)),
   AtlView has a "gravity" tile, `dbg smoke atl-gd` waits for `onResume` and an `atl frames` line.
   Headless (unpaced) frame counts and times vary run to run and say nothing about the phone.
 - Frame stats (`test_hooks`): records' draw passes that drew a view print `atl frames <n> in <ms>
@@ -1190,7 +1194,7 @@ suites and the runtime suite pass. As built:
   headless and iOS builds have no-op Vibrator natives (`src/shared/android_os_Vibrator.c`) until
   M7's Vibrator item.
 - Open: resource density ([ATL-24](bug-tracker.md#atl-24)); the black bar across the top of
-  Gravity Defied's screen on the phone, not looked into.
+  Gravity Defied's screen on the phone, not looked into ([ATL-99](bug-tracker.md#atl-99)).
 
 ### M6a: triage and fixes
 
@@ -1249,8 +1253,8 @@ As built:
 - Keys: `KeyEvent.isConfirmKey` takes SPACE and NUMPAD_ENTER (Android 10); a NUMPAD_ENTER no view
   takes goes again as ENTER with `FLAG_FALLBACK` (Android 10's `Generic.kcm`), beside ATL's ESCAPE
   as BACK; gtk sends keypad Enter as NUMPAD_ENTER, as uikit does. Android 10's TextView reads only
-  ENTER, so an EditText gets keypad Enter through its key listener and the keymap; unchecked, and
-  not on the phone (no hardware keyboard).
+  ENTER, and an EditText here consumes the keypad's as a confirm key before that fallback
+  ([ATL-96](bug-tracker.md#atl-96)); not tried on the phone ([ATL-144](general-todo.md#atl-144)).
 - Drawables: DrawableWrapper's constant state (InsetDrawable, ClipDrawable and ScaleDrawable,
   whose `mutate` takes a state of its own); AnimatedVectorDrawable, ColorStateListDrawable and
   PictureDrawable copy through a state that makes a new one, and the first two draw nothing
@@ -1271,7 +1275,7 @@ As built:
   [ATL-148](general-todo.md#atl-148)). gtk differs:
   a view's draw and its signal callbacks exit where the records backends' draw and uikit's input
   print. Region's `setPath` rasterizes every row of the
-  path's bounds when no clip limits them.
+  path's bounds when no clip limits them ([ATL-126](general-todo.md#atl-126)).
 
 ### M6b: breadth
 
@@ -1385,7 +1389,8 @@ As built:
   `draw.displaylist` has the masked icon and a greyscale bitmap; `atl-draw` reads a bitmap pixel and
   redraws an ImageView's bitmap 50 times.
 - AOSP provenance: `dine-atl/doc/AOSP.md`.
-- Open: flower_finder's list scrolled by hand on the phone (the debug agent has no drag).
+- Open: flower_finder's list scrolled by hand on the phone (the debug agent has no drag):
+  [ATL-164](general-todo.md#atl-164), [TOOL-8](general-todo.md#tool-8).
 
 #### M6b2: windows
 
@@ -1523,14 +1528,15 @@ the Status block.
 - The chrome check (`dialog: chrome measured … ok`) catches drift between records' measure and the
   shown panel's layout, not UIKit's own fitting.
 - Hand checks: screenshots in dark mode of a content dialog, a `setView` panel, an adapter list and
-  a progress bar. Not done: light mode, VoiceOver, Dynamic Type, a long list on the phone.
+  a progress bar. Not done: light mode, VoiceOver, Dynamic Type, a long list on the phone
+  ([ATL-164](general-todo.md#atl-164)).
 - Open: no `accessibilityPerformEscape` on a cancelable dialog's container
   ([ATL-92](bug-tracker.md#atl-92)); "Dismiss" shows also when the dialog doesn't cancel on an outside touch; an app's own
   `getListView().setItemChecked` after the show doesn't reach the native rows; a panel ignores
-  `Window.setLayout`'s width; AppCompat and Material dialogs draw Android's own layouts;
-  `Dialog.create` is missing ([ATL-65](general-todo.md#atl-65)); a
+  `Window.setLayout`'s width (these three ATL-92); AppCompat and Material dialogs draw Android's own layouts
+  ([ATL-164](general-todo.md#atl-164)); `Dialog.create` is missing ([ATL-65](general-todo.md#atl-65)); a
   panel's field pans above the keyboard by the dialog theme's adjustPan (M6b3c), unchecked on
-  the phone.
+  the phone ([ATL-164](general-todo.md#atl-164)).
 
 ##### M6b3b: window state and popups
 
@@ -1585,11 +1591,12 @@ and toast steps; the framework `windows` suite passes on headless, gtk and one V
   chevron); Copy picked by hand: UIKit runs the item's action at the tap, 1.2 s before the end
   animation completes, so Java gets the item, then the dismissal (the debug agent can't pick
   UIMenu items); the toast capsule bottom-centre with Dine's status-bar strip unchanged. Not done:
-  light mode, a toast over a plain alert, VoiceOver, and ACTION_OUTSIDE from native controls through
-  UIKit's hit test ([ATL-144](general-todo.md#atl-144)).
+  light mode, a toast over a plain alert and VoiceOver ([ATL-164](general-todo.md#atl-164)), and
+  ACTION_OUTSIDE from native controls through UIKit's hit test ([ATL-144](general-todo.md#atl-144)).
 - Open: a `setView` toast draws under a presented plain alert; popups and drop-downs follow their
-  anchor in a panned or resized window (M6b3c), unchecked on the phone; on iOS the agent's
-  accessibility taps still reach Android views under an open menu (real touches close it); a text
+  anchor in a panned or resized window (M6b3c), unchecked on the phone, and on iOS the agent's
+  accessibility taps still reach Android views under an open menu (real touches close it; both
+  ATL-164); the toast and popup cases here are [ATL-93](bug-tracker.md#atl-93); a text
   toast whose app comes back to the front mid-toast stays hidden; on gtk the toast's label goes
   above an application overlay (AOSP keeps toasts under them); a popup that goes with its removed
   dialog keeps its tree observers on the app window; [ATL-67](bug-tracker.md#atl-67).
@@ -1670,11 +1677,12 @@ unchanged; both builds build; the hand checks are listed in the Status block.
 - Open: theme attributes keep their values after a night change
   ([ATL-73](general-todo.md#atl-73)), and an activity without uiMode keeps its look until
   recreation (multi-app MA5); an app's Resources share one AssetManager, so a configuration
-  context that overrides night resolves at the app's;
-  non-sticky immersive never clears (iOS reports no revealed indicator); a text cursor's
-  `requestRectangleOnScreen` doesn't pan; no cutout shape ([ATL-69](general-todo.md#atl-69));
-  a popup's own soft input mode is unchecked; the IME inset includes a pad's return button;
-  `waitForIdleSync` waits for nothing ([ATL-70](bug-tracker.md#atl-70)); [ATL-71](bug-tracker.md#atl-71),
+  context that overrides night resolves at the app's ([ATL-94](bug-tracker.md#atl-94));
+  non-sticky immersive never clears (iOS reports no revealed indicator;
+  [ATL-164](general-todo.md#atl-164)); a text cursor's `requestRectangleOnScreen` doesn't pan
+  ([ATL-95](bug-tracker.md#atl-95)); no cutout shape ([ATL-69](general-todo.md#atl-69));
+  a popup's own soft input mode is unchecked (ATL-164); the IME inset includes a pad's return button
+  (ATL-95); [ATL-71](bug-tracker.md#atl-71),
   [ATL-72](bug-tracker.md#atl-72).
 
 ### M6c: search ahead of M7
@@ -1731,8 +1739,8 @@ row, its APK in `apps/<pkg>/`), and the launcher reads the registry's rows (`not
   (`notes/multi-app-support/design.md` "Further points"). Such a reader would be shared C in
   dine-atl over androidfw's C API (already linked into Dine), so the package suite grades on
   headless the code Dine runs; the API has no `AssetManager_delete` or `ApkAssets_delete`: each
-  parse leaks until they exist. Adaptive icons resolve to XML, so they fall back to a PNG until
-  M5d draws paths.
+  parse leaks until they exist. Adaptive icons resolve to XML: that reader can't draw one and falls
+  back to a PNG, the VM draws them (AdaptiveIconDrawable, M6b1).
 - An APK without a launcher activity installs (an extension) and gets no tile; import warns about
   native libraries (`lib/*/*.so`), which iOS won't load.
 - At start `dine_atl_run` passes no activity and Java picks the launcher one

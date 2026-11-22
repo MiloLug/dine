@@ -10,9 +10,10 @@ settings. ATL shared code owns the Android semantics (Back, task to back and fro
 exclusion) and reports state changes to the host. Linux tests drive the same shared entry points
 through the cli host.
 
-## Status (2026-10-20)
+## Status (2026-11-22)
 
-Back and Home are implemented with M2 (`notes/atl-port.md`); the running apps list is an orange
+Back and Home are implemented with M2, insets, exclusion and immersive mode by M6b3c
+(`notes/atl-port.md`); the running apps list is an orange
 "under construction" sheet with a "back to app" button. Linux `linux smoke nav` and iOS
 `dbg smoke atl-nav` pass.
 
@@ -59,8 +60,8 @@ settings steps. Open elsewhere: [DINE-1](bug-tracker.md#dine-1) (Dialogs and Hom
   executable can't provide them.
 - An activity's `stopped` flag (Java field set by `activity.c`) gives `onRestart` to every activity
   focused after `onStop`, also one uncovered by a finish, as on Android.
-- The listener struct has `task_moved` and `exited` only; `exclusion_changed` comes with the
-  exclusion work. `atl_embedded.h` includes `nav.h`, installed next to it.
+- The listener's callbacks are `struct atl_embedded_listener`'s (`src/shared/nav.h`; [Interfaces](#interfaces)).
+  `atl_embedded.h` includes `nav.h`, installed next to it.
 - Verified on the phone: the agent's walk reaches the presented container, and the custom action
   on the launcher's hosting view works.
 - Recognition: the pan's own start threshold (about 10 pt of total movement) is the decision
@@ -196,7 +197,7 @@ then sends the new size (`atl_nav_set_window_size`) and the status-bar inset.
 - `WindowInsets` stores insets per type (the Builder's `setInsets`); the system window insets are
   the status, navigation and caption bars', as AOSP 11 maps them (`replaceSystemWindowInsets`).
   It has the API 29 gesture getters, `getInsetsIgnoringVisibility` and the consume calls; stable
-  insets are the system window's (the bars never hide).
+  insets are the bars' maximum, which a hidden bar keeps.
 - View and ViewGroup: `dispatchApplyWindowInsets` with the dispatch before API 30 (ATL's level):
   the children get the insets until one consumes all. `onApplyWindowInsets` pads through
   `fitSystemWindows` only with `fitsSystemWindows` (default false, the XML attribute, the setter).
@@ -212,7 +213,8 @@ then sends the new size (`atl_nav_set_window_size`) and the status-bar inset.
 - The Window tracks its attached views that have rects and recomputes their window-space rects
   (`getLocationInWindow`, a parent walk) at the end of the root's `View.layoutInternal`, at a scroll
   and when a view's rects change. It sends a changed list to shared C as px (`set_exclusion_rects`), and every
-  show sends it with the frame; only the shown activity's window counts.
+  show sends it with the frame. The shown activity's window and the drawn windows over it count
+  (`windows_exclusion_rects`).
 - Shared C keeps the last rects and rebuilds the spans when they change and after every
   `atl_nav_set_insets`. Per side edge, the strip is the window rect from the edge to its side
   system gesture inset, between the top and bottom system gesture insets. Shared C intersects the

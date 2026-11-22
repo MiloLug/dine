@@ -59,7 +59,7 @@ symbols, ATL build, and a verification checklist.
 | `tools/dine linux smoke [check…] [--list]` | checks of ATL's gtk build (on a hidden display) and its headless build on test APKs (after `linux build`); `--list` has every check |
 | `tools/dine test runtime [fetch\|build\|run\|all] [-f REGEX] [--update-expectations]` | ART run-tests on the local `dalvikvm -Xint` (suite `dine-art/tests/runtime`, engine `tests/harness`); `tools/dine test runtime -- --help` lists every option |
 | `tools/dine test framework [-f REGEX] [--gtk \| --one-vm] [--update-expectations]` | `android.*` JUnit suites in-VM on the headless ATL build, the gtk one with `--gtk`, or side by side as apps of one headless VM with `--one-vm` (suite `dine-atl/tests/framework`, after `linux build`) |
-| `tools/dine test apps [-f REGEX] [--gtk] [--update-expectations]` | real APKs (`tests/android-compat/apps/apps.toml`: Gravity Defied, AdaptiveIconDemo) to their log markers on the headless ATL build, or the gtk one with `--gtk` (after `linux build`) |
+| `tools/dine test apps [-f REGEX] [--gtk] [--update-expectations]` | real APKs (`tests/android-compat/apps/apps.toml` lists them) to their log markers on the headless ATL build, or the gtk one with `--gtk` (after `linux build`) |
 | `tools/dine test package [-f REGEX] [--update-expectations]` | package install, query and removal on the headless ATL build: CLI installs graded on the registry's rows, a JUnit suite of `PackageManager` queries, and an installer app's sessions and intents with scripted dialog answers (suite `dine-atl/tests/package`, after `linux build`) |
 | `tools/dine test unit` | unit tests of `tests/harness` and `tools/py`, and the edge classifier's (`tests/launcher`, built with swiftc) |
 
@@ -277,13 +277,9 @@ Windows desktop shows, closed when they finish. ART here builds with gcc for x86
 
 ## Tests
 
-`tests/README.md` describes the test worlds. Working: ART run-tests on the local
-`dalvikvm -Xint`, `tools/dine test runtime` (exit 1 = regression against
-`dine-art/tests/runtime/expectations/`), and the `android.*` JUnit suites on the headless ATL build,
-`tools/dine test framework` (graded the same way against `dine-atl/tests/framework/expectations/`;
-`--gtk`: on the gtk build, on the hidden display).
-Details: `dine-art/tests/runtime/README.md`, `dine-atl/tests/framework/README.md` (suites) and
-`tests/harness/README.md` (engine).
+`tests/README.md` describes the test worlds and every suite. The four graded suites (`test runtime`,
+`test framework`, `test apps`, `test package`) exit 1 on a regression against the `expectations/`
+beside each suite; their rules: `tests/harness/README.md` "Baselines".
 
 ## Gotchas
 
