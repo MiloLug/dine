@@ -6,6 +6,16 @@ prefix and the app records replace much of it (`todo.md` MA1 to MA2b, `design.md
 drift. **C**: read in code.
 **U**: inference, unchecked. dine-atl's per-app state is in `findings-framework.md`.
 
+Gone with MA1, MA2a and MA2b: the data base and an app's dir
+`<base>/<APK file name>_/` (`ANDROID_APP_DATA_DIR`, `_installed_apks_`) are the prefix
+(`$DINE_PREFIX`, default `~/.dine`) with `registry.sqlite`, `apps/<pkg>/` and `data/<pkg>/`, on iOS
+`Application Support/dine`; an app's identities line up (data dirs are keyed by package, and a run
+by `--package` gives gtk the package as its application id); `dine_atl_run` refuses a second call
+only while the first run starts or when the art screen made the VM, and a later call starts its app
+on a new 8 MiB thread in the same VM; the cli host runs several apps in one VM; the "Notes that
+assume one app per process" table names places those stages changed (`todo.md` has each stage).
+The rows below stay as the snapshot.
+
 ## Linux
 
 - Both builds are named `android-translation-layer` (`dine-atl/meson.build:358,382`). The gtk one

@@ -213,8 +213,8 @@ then sends the new size (`atl_nav_set_window_size`) and the status-bar inset.
 - The Window tracks its attached views that have rects and recomputes their window-space rects
   (`getLocationInWindow`, a parent walk) at the end of the root's `View.layoutInternal`, at a scroll
   and when a view's rects change. It sends a changed list to shared C as px (`set_exclusion_rects`), and every
-  show sends it with the frame. The shown activity's window and the drawn windows over it count
-  (`windows_exclusion_rects`).
+  show sends it with the frame. The shown activity's rects count, and so do those of the visible Dialog and
+  WindowManager windows, moved by their frame's origin (`windows_exclusion_rects`).
 - Shared C keeps the last rects and rebuilds the spans when they change and after every
   `atl_nav_set_insets`. Per side edge, the strip is the window rect from the edge to its side
   system gesture inset, between the top and bottom system gesture insets. Shared C intersects the
@@ -308,14 +308,15 @@ struct atl_gesture_exclusion {
 `loop_main_post` returns `bool`: false for an app whose loop doesn't exist yet (a NULL loop, before
 its start) in every backend, and false after `loop_main_quit` in poll and cfrunloop. glib has no
 `loop_main_run`/`loop_main_quit`: the gtk host runs GApplication and the process exits with it.
-`loop_main_post` is the one running-state check; artbridge keeps no guard of its own.
+The nav calls check `app->running` (set by `atl_app_create`, cleared at the app's end) and then
+`loop_main_post`; artbridge keeps no guard of its own.
 
 ### Host slot: `src/slots/host.h`
 
 The first host slot functions. Called on the app's Android main thread, each with the app's
 handle as its first argument; every host implements them.
 
-| Function | gtk (`src/main-executable/`) | cli | embedded |
+| Function | gtk (`src/backends/host/gtk/`) | cli | embedded |
 |---|---|---|---|
 | `bool host_task_to_back(app)` | false | true | true |
 | `void host_task_moved(app, bool front, bool by_host)` | no-op | prints `host: task back app` (or `front`, `host`) | listener `task_moved` |
@@ -465,8 +466,9 @@ iOS has no public touch synthesis, so the swipes themselves are checked by hand:
 
 1. **dine-atl on Linux:** `loop_main_post` returning bool, task state, `nav.h`, `host.h` in the
    three hosts, the Java back, insets and exclusion work, cli `-c`, the nav APK and
-   `linux smoke nav`. Merge upstream first: the Java edits land in upstream files (`View.java`,
-   `ViewGroup.java`, `WindowInsets.java`, `Activity.java`).
+   `linux smoke nav`. Read upstream's edits to those files first and port the wanted ones by hand:
+   the Java edits land in upstream files (`View.java`, `ViewGroup.java`, `WindowInsets.java`,
+   `Activity.java`).
    Done when `tools/dine linux build`, `tools/dine linux smoke` (gd, demo, looper, nav),
    `tools/dine test runtime` and `tools/dine ios build-atl` pass.
 2. **iOS:** the embedded listener, artbridge, the container, settings, recognizers, the running apps

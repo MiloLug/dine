@@ -689,7 +689,10 @@ with them, build only for the desktop build.
 **Measure typing lag under `-Xint`.** M4c left it unmeasured: each edit of a field runs Java's
 filters, watchers and a snapshot back to the toolkit. Wanted: the time on the phone from an inserted
 character to the `text after` line and to the field showing Java's text, in a plain and in a
-filtered field of the widgets APK's TextActivity.
+filtered field of the widgets APK's TextActivity, for one character and for a held key.
+- State: open; found 2026-11-22 (overhaul stage row M4c-12). Owner: none.
+- Where: `dine-atl/src/backends/ui/uikit/view.m` (the field's edit path),
+  `src/api-impl/android/widget/EditText.java`.
 
 ### ATL-179
 
@@ -965,10 +968,9 @@ a product defect; the audit's id is in brackets.
   custom-run-script tests never run (grading-r3-1).
 - Apps suite: nothing pins the third-party APKs' content, only their file names (framework-r2-6).
 - `linux smoke`: `_script` and `_gd`'s verdicts and the scripts' judges have no failing control in
-  `test unit` (smoke-a-r2-7); a hidden display that dies is reused by the checks after it and its
-  log deleted (smoke-a-r3-7); the gtk checks inherit the desktop's session bus, portal night and GTK
-  settings (critic 3); it and `dbg smoke` stop at the first failure, with no option to go on
-  (critic 10); the looper APK never runs on glib, whose worker-thread poll only `loop_test`'s stubs
+  `test unit` (smoke-a-r2-7); the gtk checks inherit the desktop's session bus (all but
+  `windows-gtk`'s keyboard-dialog launch), portal night and GTK settings (critic 3); it and `dbg
+  smoke` stop at the first failure, with no option to go on (critic 10); the looper APK never runs on glib, whose worker-thread poll only `loop_test`'s stubs
   stand in for (smoke-a-r2-6).
 - `dbg smoke`: a step's `ok` lines pass in any order (critic 4); `atl-demo` and `art` don't check
   that the app still runs afterwards (phone-r2-5); Java's `nav: I size` is compared with nothing,

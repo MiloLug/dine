@@ -327,8 +327,9 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   `src/backends/ui/gtk/dialog.c`. Port upstream Dialog fixes there. `getButton` returns
   AlertDialog's own Button views (AOSP's AlertController semantics: their click listener is the
   dialog's listener and dismiss), changed in place through `ui_dialog_set_button`;
-  `atlDialogResult` returns whether the dialog is still drawn. `ATLKeyboardDialog.nativeInit` makes a
-  layer-shell GtkWindow of its own, not a `ui_dialog_new` one.
+  `atlDialogResult` returns whether the dialog is still drawn. `ATLKeyboardDialog` is its own
+  layer-shell GtkWindow, with no `ui_dialog_new` state: it overrides `Dialog`'s toolkit hooks
+  (`showNative`, `closeNative`, `destroyNative`, `setCanceledOnTouchOutsideNative`).
 - `Activity.onBackPressed` moves the task root to the back when the host allows (gtk doesn't);
   `moveTaskToBack` is public and real; `activity.c` keeps task state and an activity's `stopped`.
 - `DialogInterface.OnCancelListener.onCancel` added (upstream's is empty).
@@ -346,8 +347,10 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   apps only, as on Android 8 and later).
 - `Window` keeps the system bar state (`styleBars`, `updateFrame`, real `addFlags`/`setFlags`);
   `activity_focus` and the `set_frame` native send the shown activity's frame to
-  `ui_window_set_frame` (gtk: header bar CSS). `View.setSystemUiVisibility` hands its flags to the
-  root's Window (`setViewSystemUi`), and the decor's light flag to its own. Port upstream
+  `ui_window_set_frame` (gtk: header bar CSS). `View.setSystemUiVisibility` tells a decor view's
+  Window the light flag, and the Window of the view's root the flags (`setViewSystemUi`; the last
+  view to set them wins). A changed set moves the frame and posts `onSystemUiVisibilityChange` to
+  the root's views. Port upstream
   Window/system-bar edits there.
 - Matrix natives are in `src/shared/android_graphics_Matrix.c` (graphene; the wrap
   `subprojects/graphene.wrap` outside the desktop build). Port upstream Matrix fixes there.
@@ -467,9 +470,12 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - Home and front asked for before an app runs are kept (`atl_app.front_wanted`, under `insets_lock`
   as insets and night are) and `atl_app_create` applies them: the first activity of an app sent Home
   is only created until the front. `atl_nav_home` and `atl_nav_front` return nothing.
-- `Instrumentation.startActivitySync` returns the activity or throws, as AOSP 10's: a failed start
-  with its cause, an intent without a component as unresolved ([ATL-178](bug-tracker.md#atl-178)).
-  Upstream's swallows the exception and returns null.
+- `Instrumentation.startActivitySync` throws as AOSP 10's does and never returns null: an intent that
+  resolves to nothing, a component of a package that is neither the test APK's nor its instrumentation
+  target's ("resolved to different process", a package standing for the process), and a creation that
+  fails (with the cause). An implicit intent resolves through the package manager. Its resolution is
+  looser than AOSP's ([ATL-181](bug-tracker.md#atl-181)). Upstream's swallows the exception and
+  returns null.
 - The test hooks' Java class (`android.atl.ATLTestHooks`) is in every `api-impl.jar`, release
   builds' too: the Linux build compiles the one jar that dev and release bundles share. Its natives
   are behind `test_hooks`, so in a release build each throws `UnsatisfiedLinkError`.
@@ -480,7 +486,8 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   upstream master commits merged since).
 - Upstream isn't merged: read its commits since the last merge and reimplement the relevant ones
   by hand. Keeping our diff small or merge-friendly is not a goal: refactor freely.
-- Last merge: upstream 7ead96be (dine-art `2d03190c`); hand ports start there.
+- Last merge: `upstream/master` `7ead96be` (merge `2d03190c`, 2026-11-09) and `upstream/d8`
+  `6cca99b3` (merge `8d50ac90`, 2026-10-16); hand ports start there.
 - `OatFileAssistant::GetBestOatFile` returns null, like the dex open path: no oat file, no
   dex2oat. Don't port upstream's dex2oat block there (`79ab0c15`, `d58f96f9`).
 - The "not in a known location" boot class path warning prints only on Android targets

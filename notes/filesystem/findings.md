@@ -4,6 +4,19 @@ Where Dine and dine-atl put an app's files, how apps reach them, and which code 
 Android paths would have to cover. A snapshot read on 2026-11-02; line numbers drift. **C**: read
 in code. **U**: unchecked (iOS knowledge or inference). The proposal built on it is `proposal.md`.
 
+Gone with MA1 and the overhaul (each checked in the code): `ANDROID_APP_DATA_DIR`, `data_dir_base`,
+`atl_set_app`'s `<base>/<APK file name>_/`, `get_app_data_dir`, `Environment.native_get_app_data_dir`
+and `ATLPaths`'s `app_data_dir_base` and `_installed_apks_` no longer exist; nothing but the notes
+names `ANDROID_APP_DATA_DIR`. An app's dir is the registry's: the prefix (`$DINE_PREFIX`, default
+`~/.dine`) holds `registry.sqlite`, `apps/<pkg>/` and `data/<pkg>/`, `ATLRegistry.dataDir` names the
+last, `ApplicationInfo.dataDir` carries it, and `Environment.getExternalStorageDirectory()` and
+`Context`'s `files/`, `databases/` and `Android/obb/<pkg>` are built on it (external storage and the
+private dir are still one dir). `openFileOutput` goes through `getFileStreamPath`, not
+`getExternalStorageDirectory()`. On iOS artbridge passes `DINE_PREFIX` and sets `ANDROID_ROOT`,
+`ANDROID_DATA`, `XDG_CACHE_HOME` and the temp dir to the Caches dir; the prefix is the
+directory `Application Support/dine` (`Dev/AtlView.swift`), beside `dine.sqlite`. The tests and
+tools set `DINE_PREFIX`, not `ANDROID_APP_DATA_DIR`. The rows below stay as the snapshot.
+
 ## Where the paths come from
 
 - No slot owns paths. The data base is computed in `dine-atl/src/shared/startup.c:91-114`

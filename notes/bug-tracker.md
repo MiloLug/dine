@@ -219,20 +219,6 @@ gives none is unknown. A null one would end Dine.
 - State: unchecked; found 2026-11-15 (overhaul A2's review, pre-existing code).
 - Where: `dine-art/libcore/luni/src/main/native/libcore_io_Linux.cpp` `Linux_getifaddrs`.
 
-### ART-33
-
-**Unchecked: exceptions injected into a running thread can end the VM at a GC, "Found invalid root".**
-The MA0 storm probe injects async exceptions while a thread initializes boot classes in a loop. In 1
-of 6 runs on Linux (2026-11-22) mark-sweep aborted with `Found invalid root: ... Type=RootNativeStack`
-for the main and the injected thread ("not contained by any spaces"); another run timed out. The same
-case ended with status 1 on 2026-11-14.
-- State: unchecked: whether ART, libcore or the probe's own `StopClosure` leaves the bad root.
-- Where: `tests/probes/multi-app/native/probe.cc`, `dine-art/art/runtime/thread.cc`
-  (`SetAsyncException`); the saved log: `out/handoff/overhaul/a11/f-probe-storm.err` (gitignored).
-- Repro: `tests/probes/multi-app/run.sh case storm`, several times (`run.sh` exits 0: read the `rc=`
-  line).
-- Owner: multi-app MA4, whose drop injects this way.
-
 ## ATL
 
 ### ATL-1
@@ -1509,27 +1495,6 @@ driver always sets the extra.
 - State: open; found 2026-11-21 (overhaul A9 review), from the code.
 - Where: `dine-atl/src/api-impl/android/atl/ATLInstallerUi.java` (`install`, `result`).
 
-### ATL-177
-
-**Unchecked: `ATLKeyboardDialog` gives its own GtkWindow to the dialog slot's calls.** Its
-`nativeInit` makes a layer-shell window without the `atl-dialog` state, and Dialog still passes that
-handle to `nativeSetTitle` and `nativeSetCanceledOnTouchOutside`; `ui_dialog_set_cancel_on_touch_outside`
-reads the state (`get_state`) and would dereference null.
-- State: unchecked, from a code read (overhaul A11, stage row M2-8); gtk only, and no check runs the
-  keyboard dialog.
-- Where: `dine-atl/src/api-impl/android/atl/ATLKeyboardDialog.java`,
-  `src/api-impl-jni/app/android_atl_ATLKeyboardDialog.c`, `src/backends/ui/gtk/dialog.c`.
-- Fix: the keyboard dialog answers those two calls itself.
-- Owner: [ATL-7](general-todo.md#atl-7).
-
-### ATL-178
-
-**`Instrumentation.startActivitySync` starts explicit intents only.** An intent without a component
-throws "Unable to resolve activity" although an activity of the app matches it; Android 10 resolves
-it (`Intent.resolveActivityInfo`) and refuses only what nothing resolves or another process owns.
-- State: open; found 2026-11-22 (overhaul A11, beside framework-r3-6's fix).
-- Where: `dine-atl/src/api-impl/android/app/Instrumentation.java` `startActivitySync`.
-
 ### ATL-180
 
 **A package name of dots becomes an install path: `..`, `.` or `.staging` land outside the package's
@@ -1542,6 +1507,25 @@ the installed APKs with it.
 - Where: `dine-atl/src/api-impl/android/content/pm/PackageParser.java` `validateName`,
   `src/api-impl/android/atl/ATLInstaller.java`, `ATLRegistry.java`.
 - Fix: the install refuses a name that isn't one path component of its own (a leading dot, `..`).
+
+### ATL-181
+
+**`Instrumentation.startActivitySync` resolves less strictly than AOSP 10's.** It resolves with
+`Intent.resolveActivity`, where AOSP's `resolveActivityInfo` consults the manifest.
+- An explicit component isn't checked against the package's manifest activities, so neither the
+  manifest's activities nor its `activity-alias` entries are consulted: a class that is in no dex
+  fails at its creation ("Unable to start activity", with the ClassNotFoundException), where AOSP
+  throws "Unable to resolve activity for: ". `StartSyncTest#testAClassThatIsMissingThrowsWithItsCause`
+  pins today's message.
+- An ambiguous implicit intent takes the best match of the package manager's sorter. AOSP's
+  resolver answers it with a chooser in another process, which its process check refuses
+  (unverified for ATL's resolver).
+- Not a divergence: `MATCH_DEFAULT_ONLY`. AOSP's `Intent.resolveActivityInfo` adds it for an
+  implicit intent only (an explicit component goes through `getActivityInfo`), as
+  `Intent.resolveActivity` here does (`out/handoff/aosp/a11-sources/Intent.java`).
+- State: open; found 2026-11-22 (overhaul A11, instrument finding framework-r3-6).
+- Where: `dine-atl/src/api-impl/android/app/Instrumentation.java` (`startActivitySync`),
+  `src/api-impl/android/content/Intent.java` (`resolveActivity`).
 
 ## DINE
 
@@ -1669,7 +1653,34 @@ no frame hook.
   on the phone were not read.
 - Where: the saved lines are in `out/handoff/overhaul/a0/phone/art-fail-syslog.txt` (gitignored).
 
+### TOOL-19
+
+**A signal during a `linux smoke` check may leave ATL and its work dir behind (smoke-a-r1-14).**
+- State: unchecked: suspected, never tested. `linux.py` turns SIGTERM and SIGHUP into an exit, so
+  its finally blocks close the display, and `subprocess.run` kills the check's script with SIGKILL,
+  so the script's own cleanup does not run; whether ATL's `timeout` and the work dir stay is
+  unknown. Found by the overhaul's A0 audit.
+- Where: `tools/py/dine/linux.py` (`smoke`, `_script`), `dine-atl/tests/headless/run-*.sh`.
+- Fix: if it shows, run each check's children in a session that the handler ends, as the test
+  harness's `spawn` does (`tests/harness/common.py`).
+
 ## Fixed
+
+### ART-33
+
+**Not a defect: the storm probe's "Found invalid root" aborts came from a stale `libprobe.so`
+(built 2026-11-02 against an older libart); `run.sh` builds the probes first now.** 2026-11-22,
+overhaul A11, dine 9c44c64.
+
+### ATL-177
+
+**`ATLKeyboardDialog.setCanceledOnTouchOutside` segfaulted on gtk: the dialog slot read the
+`atl-dialog` state its layer-shell window lacks.** 2026-11-22, overhaul A11, dine-atl 11e04f36.
+
+### ATL-178
+
+**`Instrumentation.startActivitySync` started explicit intents only.** 2026-11-22, overhaul A11,
+dine-atl 11e04f36.
 
 ### ATL-55
 

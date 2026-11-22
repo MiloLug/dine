@@ -66,9 +66,10 @@ Consequences:
 
 Neither holds any more: each test gets its own `XDG_CACHE_HOME`, and dine-art loads no boot image,
 takes no dex or code from oat files and never runs dex2oat ("Runs on the phone"), so the suite passes
-no image or compiler flag (`dine-art/tests/runtime/corpus.toml`). Files an older runtime left in
-`~/.cache/art` are used by neither; `DexFile`'s status queries (`isDexOptNeeded`) still open an oat
-file they find there (`runtime/oat_file_assistant.cc` `OatFileInfo::GetFile`).
+no image or compiler flag (`dine-art/tests/runtime/corpus.toml`). Dex loading doesn't read
+`~/.cache/art`, where an older runtime may have left files; the status natives of `dalvik.system.DexFile`
+(`getDexFileStatus`, `isDexOptNeeded`, `getDexOptNeeded`) still reach `OatFileInfo::GetFile`
+(`runtime/oat_file_assistant.cc`), which can open an oat file there.
 
 **Experiment: the same thing with no boot image and no dex2oat.** Flags `-Xnoimage-dex2oat
 -Xcompiler:/nonexistent/dex2oat`, with an empty `XDG_CACHE_HOME`, on a runtime that still had
@@ -164,8 +165,10 @@ packed layout all of them pass, and the Linux suite is unchanged.
 ### 5. Signals
 
 - Stock ART turns on implicit null and stack-overflow checks on arm64. dine-art keeps them off
-  (`runtime/runtime.cc`: `implicit_null_checks_` and `implicit_so_checks_` stay false): the interpreter checks both explicitly, so ART installs no SIGSEGV
-  handlers and never protects, touches or madvises a thread's stack.
+  (`runtime/runtime.cc`: `implicit_null_checks_`, `implicit_so_checks_` and
+  `implicit_suspend_checks_` stay false): the interpreter checks nulls, stack overflow and suspend
+  requests explicitly, so ART installs no SIGSEGV handlers and never protects, touches or madvises
+  a thread's stack.
 - Under lldb, `EXC_BAD_ACCESS` stops in the debugger before the signal reaches ART. Whether an
   app can catch SIGSEGV at all needs a probe without a debugger attached, the route for
   [ART-10](bug-tracker.md#art-10).

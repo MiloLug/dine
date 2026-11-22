@@ -100,7 +100,7 @@ in each file:
 - **Startup:** the GTK executable creates the VM with `api-impl.jar` and `framework-res.apk` on
   the classpath, loads `libtranslation_layer_main` by name (it has no `JNI_OnLoad`), builds a
   window holding a stack of activities, then runs the Application and Activity lifecycle.
-- **What `demo_app.apk` needs:** a Linux run with `-verbose:jni` reaches `onResume` through 50
+- **What `demo_app.apk` needed:** a Linux run with `-verbose:jni` reached `onResume` through 50
   ATL natives: 26 for resources (AssetManager, XmlBlock), 3 for the loop and clock, 2 for log and
   data dir, 1 for display config, and 18 for UI (View 7, ViewGroup 1, Window 3, TextView 4,
   Drawable 1, Paint 2).
@@ -280,8 +280,9 @@ list the checks known so far.
   and dumps a view tree of a LinearLayout with two TextViews.
 
 **Status: done** (committed with M1). `dine-atl/tests/headless/run-demo.sh` passes: the headless
-build reaches `onResume` and dumps decor FrameLayout → LinearLayout → two TextViews (measured at
-M0: through the same 50 natives as GTK; the script doesn't compare natives). As built:
+build reaches `onResume` and dumps decor FrameLayout → LinearLayout → two TextViews (the count of 50 ATL
+natives under "ATL before the port" was measured once, on the gtk build, when M0 began; no check
+repeats it or compares the headless build's natives with gtk's: unverified). As built:
 - Tree: `src/slots/{loop,ui,gfx}.h`; `src/shared/` (startup phases, activity lifecycle, upcalls,
   JNI glue for partly extracted classes); `src/backends/<slot>/<name>/`. Natives not behind a
   slot stay in `src/api-impl-jni/` and build only with ui=gtk; whole-file portable sources stay
@@ -307,7 +308,8 @@ M0: through the same 50 natives as GTK; the script doesn't compare natives). As 
 Prerequisites in dine-art:
 - Native calls with stack arguments use Apple's packed layout (`notes/art-findings.md` §4),
   guarded by the `dine-0002-jni-args` runtime test on Linux and on the phone. Many ATL natives
-  exceed 8 integer-class arguments; `View.native_setLayoutParams` (10, counting `JNIEnv*` and
+  exceed 8 integer-class arguments (`AssetManager.setConfiguration` takes 19, counting `JNIEnv*` and
+  `this`); `View.native_setLayoutParams` (10, counting `JNIEnv*` and
   `this`) is on `demo_app.apk`'s path.
 - `System.loadLibrary` resolves libraries linked into the app, which `translation_layer_main`
   needs.
@@ -415,13 +417,16 @@ and `dialog-gtk` pass the same APK with `ATL_DIALOG_ANSWERS='Yes;Green'`. As bui
 - Java owns the state: `showing`, `cancelable`, a canceled flag; the app's window registry (M6b2)
   holds the shown dialogs and shows them with the task (`notes/nav-gestures.md`). `atlDialogResult` (package-private) ignores results unless drawn
   (showing, not hidden, task in front); AlertDialog runs the listener, then `dismiss()`, for items
-  too. The NewPipe 10 ms delayed close is kept. `getButton`'s Button views: M4b.
+  too. `dismiss()` removes the window at once and delays only the detach and `onDismiss`, by 10 ms
+  (NewPipe's race). `getButton`'s Button views: M4b.
   `OnCancelListener.onCancel` exists; `setCancelable` and the cancel and dismiss listeners
   are stored (Builder too).
 - gtk: `src/backends/ui/gtk/dialog.c`, a GtkWindow per plain alert (content dialogs and panels draw
   in the app window, M6b2); alerts get a label, a GtkListBox and GtkButtons; close-request and a tap
-  outside are cancel results, close only hides. `ATLKeyboardDialog` has a layer-shell GtkWindow of
-  its own, which no check runs ([ATL-177](bug-tracker.md#atl-177)).
+  outside are cancel results, close only hides. `ATLKeyboardDialog` doesn't use it:
+  it is its own layer-shell GtkWindow (its `nativeInit`) with no dialog state, so `Dialog`'s toolkit
+  hooks (`showNative`, `closeNative`, `destroyNative`, `setCanceledOnTouchOutsideNative`) are
+  overridden there; `linux smoke windows-gtk` gives it a title and cancel-on-touch-outside.
 - headless: `dialog:` lines; uikit: `UIAlertController` on the topmost presented controller
   (after a running transition), items as an action sheet with Cancel when cancelable, a tap hops
   back through `loop_main_post`, close dismisses only its own controller. Both share the view
@@ -488,7 +493,9 @@ the Linux golden: `1170x2391` roots, TextViews `315x51` and `375x51` at y 0 and 
   `ui_window_close` releases the uikit surface. `Drawable.native_unref` drops its ref on the
   finalizing thread (gsk hops to the main loop). Top-level posts run in the Android thread's base
   JNI frame, which never pops: their local refs must be deleted. An app's `ui_window` struct stays
-  allocated (one per app) until multi-app MA4's drop frees it (`notes/multi-app-support/todo.md`).
+  allocated (one per app), and so does every record still alive when its app's loop quits, UIViews
+  included: the finalizers' frees are posts, which drop then. Multi-app MA4's drop frees them
+  (`notes/multi-app-support/todo.md`).
 
 ### Pre-M4 batch (2026-10-21)
 
@@ -546,6 +553,10 @@ Natives that layouts and app setup reach before any input, moved behind the slot
 - Target: the widgets APK, which exists for checks by eye on iOS (`dbg smoke atl-widgets`), gets
   steps graded on headless: a tap, a long press, a scroll, a key, and a selector background's
   selected child following the pressed state, read from a log line (nothing draws it before M5b).
+  Direct assertions of the attach paths: `SystemUiTest` (`setSystemUiVisibility`'s fullscreen
+  reaches the frame), `AlertContentTest` (a Dialog's content is attached), `WindowManagerTest`
+  (attach and detach), `PopupWindowTest#testBackgroundAroundTheContent` (a popup's content attaches
+  and detaches) and `AttachTest#testDetachedChildLeavesTheWindow`.
 
 **Status: done.** `linux smoke widgets` and the framework suite `input` pass on headless, `dbg
 smoke` passes on the iPhone 13. Checked by hand: gtk (WSLg), and taps, hold, scroll and the Back
@@ -696,7 +707,7 @@ pass. Not checked by hand: the controls' look on gtk, and the hover styling `can
 - Tests: `run-controls.sh` (`linux smoke controls`, the widgets APK's `ControlsActivity`),
   `run-dialog.sh`'s `KeepActivity` runs, the framework suite `controls`, smoke `atl-controls` and
   `atl-dialog-keep` (`Step.declined`: a tap the agent must be refused).
-- Open: a Switch's thumb can't be dragged on iOS (a tap toggles it; [ATL-87](bug-tracker.md#atl-87));
+- Open: a Switch's thumb can't be dragged on iOS (a tap toggles it; it won't be done: [ATL-87](bug-tracker.md#atl-87));
   a view with INHERIT keeps its native alignment when its parent's changes later
   ([ATL-88](bug-tracker.md#atl-88)); Button text gravity ([ATL-79](bug-tracker.md#atl-79)), and with it
   `setTextAlignment` on iOS buttons (a push button's text stays centered: the slot's start can't
@@ -1425,7 +1436,7 @@ places and sizes a dialog's window itself), the apps and package suites, `linux 
 `windows` and the dialog content run), `test unit`; on the iPhone 13 `dbg smoke` (16, with
 `atl-windows`) and the dev and release builds. Open: in a dialog's content `getRawX`/`getRawY`
 are window-local while `getLocationOnScreen` adds the window's origin (`struct atl_pointer` has no
-raw coordinates).
+raw coordinates: [ATL-91](bug-tracker.md#atl-91)).
 
 After the M6b review, dialogs are windows in each app's registry (`notes/decisions.md`): AOSP's
 token rule (BadTokenException, WindowLeaked at the activity's destroy), shown with their activity
@@ -1829,7 +1840,7 @@ stop is that gap.
   Rasterizers get their own golden images with a tolerance (anti-aliasing differs between GSK,
   CoreGraphics and Skia).
 - **Test-APK tool:** builds authored APKs from a manifest, resources and Java with `aapt2`,
-  `javac` and `d8`, in the harness. M2's dialog APK is its first user.
+  `javac` and `d8`, in the harness. Its first users are `looper.apk` (M1) and M2's dialog APK.
 - **Ground truth:** an Android 10 x86_64 emulator on `/dev/kvm` (present in WSL; the emulator is
   not installed) for screenshots and view bounds of the same APKs.
 - **Phone runner** ([TOOL-14](general-todo.md#tool-14)), shaped by one VM per process, an ART FATAL killing Dine, and no fork:

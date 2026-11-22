@@ -145,6 +145,15 @@ phone. The one-runtime rule and the second-VM options are in
   run hung with the injected thread at 100% CPU (cause unknown, log lost). Finalizers of shared
   objects the injection left half built fail on the shared FinalizerDaemon (`Inflater.finalize`
   NullPointerException, 7 of 37 runs; logged, not fatal). M
+- Unverified: whether the 2026-11-02 runs above used a probe library that matched their libart. The
+  library bakes in libart's address of `gHeapReferenceBase` (`LIBART_HEAP_REFERENCE_BASE`) and
+  inlines libart's layouts, so one older than libart reads another word as the heap base and injects
+  garbage pointers. Found 2026-11-22: the probe's own check segfaulted (`check rc=139`) and storm
+  runs aborted at a GC with "Found invalid root"; `run.sh` builds the probes in every mode now, and
+  `check` and `all` stop when their check fails. On a fresh build, 2026-11-22: 20 storm runs over
+  5303 boot classes, 231 to 384 injections and 59 to 83 classes poisoned each, all ended with
+  status 0 (`out/handoff/overhaul/a11-port/storm/`). The counts in the bullets above are those of
+  2026-11-02. M
 - The exception lands at invokes, gotos, monitor enter and exit and throws
   (`interpreter_switch_impl-inl.h:758-951`, `interpreter_common.h:146`), also on the cleanup call
   of a `finally`, which then doesn't run: a read stopped by shutdown skips `SocketInputStream`'s

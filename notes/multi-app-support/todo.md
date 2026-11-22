@@ -291,9 +291,8 @@ while each VM still runs one app; MA2b runs several apps in one VM. The record m
   lands only in a frame of the app's own code, or in shared code only as the throw of a blocking
   call (wait, park, sleep), never inside a class initializer. Done when MA0's probes
   (`tests/probes/multi-app/run.sh`: storm, juclock, the `System.getProperties()` hang) show no
-  erroneous shared class and no held shared lock with it. Today the storm case also ends the VM in
-  some runs ([ART-33](../bug-tracker.md#art-33)); `run.sh` exits 0 either way, so read its `rc=`
-  lines. Known gap to settle here: an app's own
+  erroneous shared class and no held shared lock with it. `run.sh` exits 0 whatever its cases do, so
+  read their `rc=` lines. Known gap to settle here: an app's own
   `synchronized` block on a shared object is the app's code, so the exception may land inside it
   (`design.md` "Freeze and drop").
 - `[ ]` An ended app's window goes with it: its `ui_window` (one per app, never freed since M3),
