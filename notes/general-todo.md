@@ -729,7 +729,8 @@ they allow redistribution, and no upstream licence was read (Gravity Defied's fi
 **A launcher test.** Nothing taps Add App, adds an app or reads a launcher tile: `dbg smoke` waits
 for `loaded N apps`, which an empty table passes. Wanted, once M8a's launcher lists the registry's
 rows: a row added, shown again after a relaunch (`tests/launcher/`, which has the edge classifier's
-test only).
+test only), and a 40-character name in the launcher's four columns (truncation was seen only on
+the atl screen's five, with names up to 15 characters).
 
 ## TOOL
 

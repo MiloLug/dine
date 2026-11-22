@@ -30,7 +30,7 @@ def _ios(sub):
     t = s.add_parser("build-native", help="native/<lib> → out/ios (DINE_IOS_BUILD_TYPE, default RelWithDebInfo); "
                                           "native/dev/* unless DINE_RELEASE=1")
     t.add_argument("libs", nargs="*")
-    t.set_defaults(func=lambda a: ios.run_libexec("build-ios-native.sh", *a.libs))
+    t.set_defaults(func=lambda a: ios.build_native(*a.libs))
 
     t = s.add_parser("build-art", help="dine-art runtime + libcore natives (and ICU, lz4, liblzma) → "
                                        "static archives in out/ios/lib")
@@ -484,15 +484,24 @@ def _start_server(a) -> int:
     return code
 
 
+def _exited(pid: int | None) -> bool:
+    """A zombie counts. An empty cmdline doesn't: it comes before the kernel drops the process's flock."""
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_bytes()
+    except OSError:
+        return True
+    return stat.rpartition(b")")[2].split()[0] in (b"Z", b"X")
+
+
 def _stop_server(a) -> int:
     pid = session.server_pid()
     resp = client.call("shutdown", {"kill_app": a.kill_app}, timeout=a.timeout, max_lines=a.max_lines)
     print(resp["text"])
     deadline = time.monotonic() + 15
-    # its lock outlasts its pid file until the process is gone, and the next start-server needs it
-    while session.locked() and time.monotonic() < deadline:
+    # the process outlasts its pid file and holds the lock; the lock alone may be another start's
+    while not _exited(pid) and time.monotonic() < deadline:
         time.sleep(0.1)
-    if session.locked():
+    if not _exited(pid):
         print(f"server pid {pid} still alive after 15s; kill it: kill {pid}")
         return 1
     return resp["code"]

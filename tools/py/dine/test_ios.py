@@ -1,4 +1,6 @@
 import asyncio
+import contextlib
+import io
 import json
 import os
 import shutil
@@ -8,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from dine import ios
+from dine import ios, linux
 from dine.paths import DineError
 
 
@@ -128,6 +130,66 @@ class DeviceDeadlineTest(unittest.TestCase):
                 ios._with_rsd(times_out, timeout=5)
 
 
+class BuildNativeTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        lib = self.tmp / "native/dev/probe"
+        (lib / "include").mkdir(parents=True)
+        (lib / "CMakeLists.txt").write_text("project(probe CXX)\nadd_library(dineprobe STATIC probe.cpp)\n")
+        (lib / "include/dineprobe.h").write_text("")
+        for name in ("lib/libdineprobe.a", "lib/libart.a", "include/dineprobe.h", "include/jni.h"):
+            (self.tmp / "out/ios" / name).parent.mkdir(parents=True, exist_ok=True)
+            (self.tmp / "out/ios" / name).write_text("")
+        for name, value in (("ROOT", self.tmp), ("OUT", self.tmp / "out")):
+            patch = mock.patch.object(ios.paths, name, value)
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def build(self, release: str) -> set[str]:
+        with mock.patch.dict(os.environ, {"DINE_RELEASE": release}), \
+                mock.patch.object(ios, "run_libexec", return_value=0) as run:
+            self.assertEqual(ios.build_native("artbridge"), 0)
+        run.assert_called_once_with("build-ios-native.sh", "artbridge")
+        return {p.name for p in (self.tmp / "out/ios").rglob("*") if p.is_file()}
+
+    def test_release_removes_what_a_dev_build_installed(self):
+        self.assertEqual(self.build("1"), {"libart.a", "jni.h"})
+
+    def test_dev_removes_nothing(self):
+        self.assertEqual(self.build(""), {"libdineprobe.a", "libart.a", "dineprobe.h", "jni.h"})
+
+
+class InstallTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        for patch in (mock.patch.object(ios, "require_tunnel"),
+                      mock.patch.object(ios, "build_native", return_value=0),
+                      mock.patch.object(ios, "_install_stamp", return_value=self.tmp / "stamp")):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def test_release_takes_no_lock_on_the_linux_builds(self):
+        busy = DineError("the Linux builds are being built")
+        with mock.patch.dict(os.environ, {"DINE_RELEASE": "1"}), mock.patch.object(linux, "builds", side_effect=busy), \
+                mock.patch.object(ios, "run_libexec", side_effect=lambda script, *a: int("assets" in script)):
+            self.assertEqual(ios.cmd_install("Dine"), 1)
+
+    def test_a_dev_bundle_without_a_marker_fails(self):
+        with mock.patch.dict(os.environ, {"DINE_RELEASE": ""}), \
+                mock.patch.object(linux, "builds", return_value=contextlib.nullcontext()), \
+                mock.patch.object(ios, "run_libexec", return_value=0), \
+                mock.patch.object(ios.subprocess, "Popen") as popen, mock.patch.object(ios.os, "read", return_value=b""), \
+                mock.patch.object(ios, "install_fingerprint", return_value="fingerprint"), \
+                mock.patch.object(ios, "dev_marker_problems", return_value=["Dine lacks 'probe done '"]), \
+                contextlib.redirect_stderr(io.StringIO()) as said:
+            popen.return_value.wait.return_value = 0
+            self.assertEqual(ios.cmd_install("Dine"), 1)
+        self.assertIn("lacks 'probe done '", said.getvalue())
+        self.assertFalse((self.tmp / "stamp").exists())
+
+
 class LaunchTest(unittest.TestCase):
     def test_a_refused_launch_names_the_phones_state(self):
         from pymobiledevice3.dtx.exceptions import DTXNsError
@@ -177,6 +239,20 @@ class ReleaseBundleTest(unittest.TestCase):
                 (self.lib / name).write_bytes(b"!<arch>")
                 self.assertIn(name, "\n".join(self.problems()))
                 (self.lib / name).unlink()
+
+    def test_a_marker_gone_from_a_dev_bundle_is_named(self):
+        for file, markers in ios.DEV_MARKERS.items():
+            path = self.bundle / file.format(app="App")
+            path.write_bytes("\0".join(markers).encode())
+        self.assertEqual(ios.dev_marker_problems(self.bundle, "App"), [])
+        for file, markers in ios.DEV_MARKERS.items():
+            path = self.bundle / file.format(app="App")
+            whole = path.read_bytes()
+            for marker in markers:
+                with self.subTest(marker):
+                    path.write_bytes(whole.replace(marker.encode(), b"renamed"))
+                    self.assertIn(marker, "\n".join(ios.dev_marker_problems(self.bundle, "App")))
+            path.write_bytes(whole)
 
     def test_every_dev_lib_is_known(self):
         self.assertEqual(sorted(ios.dev_archives()), ["libdbgagent.a", "libdinehello.a", "libruntimetests.a"])

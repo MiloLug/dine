@@ -1,6 +1,7 @@
 """`dine ios …`: device tunnel, build/install/launch, processes, logs, symbols, interactive lldb."""
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import os
@@ -356,15 +357,27 @@ def dev_archives() -> list[str]:
     return found
 
 
+def _markers(bundle: Path, app: str) -> list[tuple[str, str, bool]]:
+    """Each of DEV_MARKERS: its file, the marker, whether the bundle holds it."""
+    found = []
+    for file, markers in DEV_MARKERS.items():
+        path = bundle / file.format(app=app)
+        data = path.read_bytes() if path.is_file() else b""
+        found += [(path.name, marker, marker.encode() in data) for marker in markers]
+    return found
+
+
+def dev_marker_problems(bundle: Path, app: str) -> list[str]:
+    """Markers a dev bundle lacks: the release check would no longer see those parts."""
+    return [f"{name} lacks {marker!r}" for name, marker, held in _markers(bundle, app) if not held]
+
+
 def release_problems(bundle: Path, app: str, lib: Path) -> list[str]:
     """Dev and test parts in a release bundle, and dev archives within reach of its link."""
     if not (bundle / app).is_file():
         return [f"no app binary in {bundle}"]
     problems = [f"the bundle holds {p.relative_to(bundle)}" for p in sorted((bundle / "dev").rglob("*")) if p.is_file()]
-    for file, markers in DEV_MARKERS.items():
-        path = bundle / file.format(app=app)
-        data = path.read_bytes() if path.is_file() else b""
-        problems += [f"{path.name} holds {marker!r}" for marker in markers if marker.encode() in data]
+    problems += [f"{name} holds {marker!r}" for name, marker, held in _markers(bundle, app) if held]
     problems += [f"{lib / name} is left for the link" for name in dev_archives() if (lib / name).exists()]
     return problems
 
@@ -374,16 +387,27 @@ def run_libexec(script: str, *args: str) -> int:
     return subprocess.run([str(paths.LIBEXEC / script), *args]).returncode
 
 
+def build_native(*libs: str) -> int:
+    """build-ios-native.sh, after a release build removed what a dev build installed of native/dev."""
+    if release():
+        for name in dev_archives():
+            (paths.OUT / "ios/lib" / name).unlink(missing_ok=True)
+        for header in (paths.ROOT / "native/dev").glob("*/include/*"):
+            if header.is_file():
+                (paths.OUT / "ios/include" / header.name).unlink(missing_ok=True)
+    return run_libexec("build-ios-native.sh", *libs)
+
+
 def cmd_install(app: str) -> int:
     """build-native, build-dev, build-assets + `xtool dev run` (build, sign, install); the caller
     runs check_atl_build first and launches after."""
     rel = release()
     require_tunnel()
     from . import linux   # not at the top, as in check_atl_build
-    rc = run_libexec("build-ios-native.sh")
+    rc = build_native()
     if not rc:
-        # the payload's APKs compile against the Linux builds' jars
-        with linux.builds(exclusive=False):
+        # the payload's APKs compile against the Linux builds' jars; a release build has none
+        with contextlib.nullcontext() if rel else linux.builds(exclusive=False):
             rc = run_libexec("build-ios-dev.sh")
     rc = rc or run_libexec("build-ios-assets.sh", app)
     if rc:
@@ -401,10 +425,16 @@ def cmd_install(app: str) -> int:
     # Installs fine, then its pre-iOS-17 debugserver launch step fails; tolerate only that error.
     if proc.wait() and b"DebugserverClient" not in out:
         return proc.returncode
-    if rel and (problems := release_problems(paths.app_binary(app).parent, app, paths.OUT / "ios/lib")):
+    bundle = paths.app_binary(app).parent
+    if rel:
+        problems = release_problems(bundle, app, paths.OUT / "ios/lib")
+        head = f"NOT A RELEASE BUILD: the {app} just installed holds dev or test parts"
+    else:
+        problems = dev_marker_problems(bundle, app)
+        head = f"STALE RELEASE CHECK: this dev {app} lacks markers it greps for (DEV_MARKERS, tools/py/dine/ios.py)"
+    if problems:
         _install_stamp(app).unlink(missing_ok=True)
-        print(f"NOT A RELEASE BUILD: the {app} just installed holds dev or test parts:\n  " + "\n  ".join(problems),
-              file=sys.stderr)
+        print(f"{head}:\n  " + "\n  ".join(problems), file=sys.stderr)
         return 1
     _install_stamp(app).write_text(install_fingerprint(app))
     return 0

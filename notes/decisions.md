@@ -509,9 +509,13 @@ Short entries that steer porting upstream changes into our forks. Newest first w
   dismissal (`Navigator.dismissToRoot`). UIKit drops an earlier change, and the path desyncs.
 - An app's surface owns its one width and height constraint pair (`AppSurfaceView.setWindowSize`):
   containers come and go, constant size constraints stay with the view.
-- A release build (`DINE_RELEASE=1`) removes `native/dev`'s archives before its link and checks the
-  bundle it built (`release_problems` in `tools/py/dine/ios.py`): a new dev-only part gets a marker
-  there.
+- A release build (`DINE_RELEASE=1`) removes `native/dev`'s archives before its link (`build_native`)
+  and checks the bundle it built (`release_problems` in `tools/py/dine/ios.py`): a new dev-only part
+  gets a marker there. A dev `ios run` fails when one of the markers is gone from its bundle.
+- A dev `ios run` builds its payload every time (about 18 s of it): six test APKs, the runtime
+  suite's cached jar build (its tools, and a network clone the first time) and every package
+  fixture, under the Linux builds' shared lock. Refusing a stale payload by file times instead
+  would refuse a jar the cached build doesn't rewrite. A release `ios run` takes no lock.
 - Min iOS 17.4 (os_sync): `env.sh` for scripts and CMake, `apps/Dine/Package.swift` for Swift.
   Never equal to the SDK version (compatibility mode).
 - Linux gate after a merge: `tools/dine linux smoke` (every check in `tools/py/dine/linux.py`) +

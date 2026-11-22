@@ -328,7 +328,7 @@ final class Navigator: ObservableObject {
         if apps[index].surface.size != size {
             apps[index].surface.size = size
             atl_nav_set_window_size(apps[index].handle, Float(size.width), Float(size.height))
-            log.notice("nav: window size \(Int(size.width))x\(Int(size.height))")
+            log.notice("nav: window size \(Int(size.width.rounded()))x\(Int(size.height.rounded()))")
         }
         apps[index].statusTop = Float(statusTop)
         sendInsets(index)
@@ -388,7 +388,7 @@ final class AppSurfaceView: UIView, ATLSurface {
         guard bounds.size != laidOut else { return }
         laidOut = bounds.size
         let sizes = constraints.filter { $0.isActive && $0.firstItem === self && $0.secondItem == nil }.count
-        log.notice("nav: surface \(Int(self.laidOut.width))x\(Int(self.laidOut.height)) size constraints \(sizes)")
+        log.notice("nav: surface \(Int(self.laidOut.width.rounded()))x\(Int(self.laidOut.height.rounded())) size constraints \(sizes)")
     }
     #endif
 

@@ -35,14 +35,6 @@ def lock() -> int | None:
     return fd
 
 
-def locked() -> bool:
-    fd = lock()
-    if fd is None:
-        return True
-    os.close(fd)
-    return False
-
-
 def server_pid() -> int | None:
     """The live server's pid; a pidfile left by a killed server whose pid got reused doesn't count."""
     try:

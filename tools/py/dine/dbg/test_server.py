@@ -1,5 +1,9 @@
 """End to end over the socket with the fake target: tools/dine dbg … as subprocesses."""
 
+import argparse
+import contextlib
+import io
+import itertools
 import os
 import shutil
 import subprocess
@@ -7,6 +11,9 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
+
+from dine import cli
 
 DINE = Path(__file__).resolve().parents[4] / "tools/dine"
 
@@ -152,6 +159,28 @@ class OneServerTest(unittest.TestCase):
             self.assertEqual(self.dbg("start-server", "--target", "fake").returncode, 0)
             self.assertEqual(self.dbg("stop-server").returncode, 0)
             self.assertEqual(servers(self.dir), [])
+
+
+class StopWaitTest(unittest.TestCase):
+    def stop(self, pid: int) -> tuple[int, str]:
+        out = io.StringIO()
+        with mock.patch.object(cli.session, "server_pid", return_value=pid), \
+                mock.patch.object(cli.client, "call", return_value={"code": 0, "text": "server stopped"}), \
+                mock.patch.object(cli.time, "monotonic", side_effect=itertools.count()), \
+                mock.patch.object(cli.time, "sleep"), contextlib.redirect_stdout(out):
+            rc = cli._stop_server(argparse.Namespace(kill_app=False, timeout=5, max_lines=60))
+        return rc, out.getvalue()
+
+    def test_the_wait_ends_with_the_process_whoever_holds_the_lock(self):
+        gone = subprocess.Popen(["true"])
+        gone.wait()
+        self.assertEqual(self.stop(gone.pid), (0, "server stopped\n"))
+
+    def test_an_exited_server_nobody_reaped_is_gone(self):
+        child = subprocess.Popen(["true"])
+        self.addCleanup(child.wait)
+        os.waitid(os.P_PID, child.pid, os.WEXITED | os.WNOWAIT)
+        self.assertEqual(self.stop(child.pid), (0, "server stopped\n"))
 
 
 class NoServerTest(unittest.TestCase):

@@ -94,7 +94,19 @@ class RequestTest(unittest.TestCase):
             return "late reply"
         self.server.target.do_late = late
         resp = self.handle("late", 1)
-        self.assertEqual((resp["code"], resp["text"]), (0, "late reply"))
+        self.assertEqual((resp["code"], resp["text"]),
+                         (0, "late reply\n(`late` timed out after 1s; interrupted: that may be cut short)"))
+
+    def test_any_error_within_the_grace_join_names_the_timeout(self):
+        for error, says in ((DineError("no device tunnel"), "no device tunnel"), (RuntimeError("lost"), "RuntimeError: lost")):
+            with self.subTest(says):
+                def late():
+                    time.sleep(1.2)
+                    raise error
+                self.server.target.do_late = late
+                resp = self.handle("late", 1)
+                self.assertEqual(resp["code"], 1)
+                self.assertRegex(resp["text"], f"timed out after 1s; interrupted: {says}")
 
     def test_an_error_within_the_grace_join_reaches_the_client(self):
         def late():

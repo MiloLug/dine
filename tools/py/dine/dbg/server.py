@@ -135,8 +135,13 @@ class Server:
             late = f"`{cmd}` timed out after {timeout:g}s"
             if t.is_alive():
                 raise CmdError(f"{late}; lldb is still busy with it (tools/dine dbg status)")
-            if isinstance(result.get("error"), CmdError):
-                raise CmdError(f"{late}; interrupted: {result['error']}")
+            if error := result.get("error"):
+                said = str(error)
+                if not isinstance(error, (CmdError, DineError)):
+                    traceback.print_exception(error)
+                    said = f"{type(error).__name__}: {said}"
+                raise CmdError(f"{late}; interrupted: {said}") from error
+            return f"{result['value']}\n({late}; interrupted: that may be cut short)"
         if "error" in result:
             raise result["error"]
         return result["value"]

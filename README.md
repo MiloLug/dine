@@ -174,6 +174,7 @@ ATL's stdout and stderr are the log (`wait --log`, `log`), and the UI goes throu
 in ATL's test hooks (`dine-atl/src/backends/ui/gtk/agent.c`, the iOS agent's protocol).
 
 ```sh
+# the test APKs come from tools/dine linux smoke (here: linux smoke widgets) or ios run
 tools/dine dbg start-server --target gtk --app out/tests/apks/widgets.apk
 tools/dine dbg fresh --activity dev/dine/widgets/TextActivity   # default: the APK's launcher activity
 tools/dine dbg ui type name hi                    # an EditText's label is its hint, then "hint: text"
