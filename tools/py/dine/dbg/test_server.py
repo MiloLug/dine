@@ -111,6 +111,49 @@ class ShutdownTest(unittest.TestCase):
             shutil.rmtree(d, ignore_errors=True)
 
 
+def servers(dbg_dir: str) -> list[int]:
+    found = []
+    for proc in Path("/proc").glob("[0-9]*"):
+        try:
+            if b"dine.dbg.server" in (proc / "cmdline").read_bytes() and \
+                    f"DINE_DBG_DIR={dbg_dir}".encode() in (proc / "environ").read_bytes().split(b"\0"):
+                found.append(int(proc.name))
+        except OSError:
+            pass
+    return found
+
+
+class OneServerTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="dinet-", dir="/tmp")
+        self.env = {**os.environ, "DINE_DBG_DIR": self.dir}
+        self.addCleanup(shutil.rmtree, self.dir, True)
+        self.addCleanup(self.end_servers)
+
+    def end_servers(self):
+        self.dbg("stop-server")
+        for pid in servers(self.dir):
+            os.kill(pid, 15)
+
+    def dbg(self, *args):
+        return subprocess.run([str(DINE), "dbg", *args], env=self.env, capture_output=True, text=True, timeout=60)
+
+    def test_two_starts_at_once_leave_one_server(self):
+        starts = [subprocess.Popen([str(DINE), "dbg", "start-server", "--target", "fake", "--timeout", "20"], env=self.env,
+                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True) for _ in range(2)]
+        outs = [p.communicate(timeout=60)[0] for p in starts]
+        self.assertEqual(sorted(p.returncode for p in starts), [0, 1], outs)
+        self.assertIn("already running", "".join(outs))
+        self.assertEqual(len(servers(self.dir)), 1)
+        self.assertEqual(self.dbg("status").returncode, 0)
+
+    def test_stop_then_start_at_once(self):
+        for _ in range(2):
+            self.assertEqual(self.dbg("start-server", "--target", "fake").returncode, 0)
+            self.assertEqual(self.dbg("stop-server").returncode, 0)
+            self.assertEqual(servers(self.dir), [])
+
+
 class NoServerTest(unittest.TestCase):
     def test_exit_4(self):
         with tempfile.TemporaryDirectory(dir="/tmp") as d:

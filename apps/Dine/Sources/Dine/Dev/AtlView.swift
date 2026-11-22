@@ -11,11 +11,12 @@ private let log = Logger(subsystem: "dev.dine.Dine", category: "art")
 struct AtlView: View {
     @EnvironmentObject private var navigator: Navigator
 
-    private let columns = Array(repeating: GridItem(.flexible()), count: 4)
+    // dense: the debug agent reaches only the tiles on the screen (TOOL-15)
+    private let columns = Array(repeating: GridItem(.flexible()), count: 5)
 
     var body: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: 24) {
+            LazyVGrid(columns: columns, spacing: 8) {
                 // the tiles the smoke scenarios tap come first (TOOL-15)
                 tile("demo_app", activity: "com/example/demo_application/MainActivity")
                 tile("looper", activity: "dev/dine/looper/MainActivity")
@@ -44,6 +45,9 @@ struct AtlView: View {
                 tile("windows", activity: "dev/dine/windows/ResizeActivity", title: "keyboard resize")
                 tile("windows", activity: "dev/dine/windows/DialogBottomActivity", title: "keyboard dialog")
                 tile("windows", activity: "dev/dine/windows/ConfigActivity", title: "config")
+                // the package suite's installer app: installs ext through a session, confirmed from the Application context
+                tile("driver", in: "dev/package", activity: "dev/dine/pkg/driver/Main", title: "installer",
+                     scenario: "session-app-context:ext")
                 tile("org.happysanta.gd_29", activity: "org/happysanta/gd/GDActivity", title: "gravity")
                 tile("widgets", activity: "dev/dine/widgets/ScrolledActivity", title: "scrolled")
                 tile("windows", activity: "dev/dine/windows/MainActivity")
@@ -52,9 +56,6 @@ struct AtlView: View {
                 tile("views_widgets_samples_flower_finder", activity: "com/example/recyclersample/flowerList/FlowersListActivity", title: "flowers")
                 tile("com.leocardz.multitouch.test_19", activity: "com/leocardz/multitouch/test/MultitouchTest", title: "multitouch")
                 tile("com.ashwin.example.accelerometerdemo", activity: "com/ashwin/example/accelerometerdemo/MainActivity", title: "accelerometer")
-                // the package suite's installer app: installs ext through a session, confirmed from the Application context
-                tile("driver", in: "dev/package", activity: "dev/dine/pkg/driver/Main", title: "installer",
-                     scenario: "session-app-context:ext")
             }
             .padding()
         }

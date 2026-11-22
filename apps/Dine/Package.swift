@@ -12,6 +12,12 @@ let nativeLibDir = Context.packageDirectory + "/../../out/ios/lib"
 let iosMin = "17.4"
 let iosSDK = "27.0"
 
+// Not .when(configuration:): the executable xtool links takes these flags in every configuration,
+// and a release build has no dev archive.
+let devLinkFlags = Context.environment["DINE_RELEASE"] == "1" ? [] : [
+    "-Xlinker", "-force_load", "-Xlinker", nativeLibDir + "/libruntimetests.a",
+]
+
 let package = Package(
     name: "Dine",
     platforms: [
@@ -43,9 +49,7 @@ let package = Package(
                 "-Xlinker", "-force_load", "-Xlinker", nativeLibDir + "/libopenjdk.a",
                 "-Xlinker", "-force_load", "-Xlinker", nativeLibDir + "/libwolfssljni.a",
                 "-Xlinker", "-force_load", "-Xlinker", nativeLibDir + "/libtranslation_layer_main.a",
-            ]), .unsafeFlags([
-                "-Xlinker", "-force_load", "-Xlinker", nativeLibDir + "/libruntimetests.a",
-            ], .when(configuration: .debug))]
+            ] + devLinkFlags)]
         ),
     ]
 )

@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from dine import cli, linux
 from dine.dbg import agent
 from dine.dbg.logstore import LogStore
 from dine.dbg.targets import gtk, lldbcmds
@@ -123,3 +124,16 @@ class GtkTargetTest(unittest.TestCase):
             json.dumps([{"name": "test_hooks", "value": False}]))
         with self.assertRaisesRegex(DineError, "test_hooks off"):
             gtk.GtkTarget.preflight(str(self.tmp / "app.apk"))
+        (self.build / "meson-info/intro-buildoptions.json").write_text(
+            json.dumps([{"name": "test_hooks", "value": True}]))
+        with mock.patch.object(linux, "require_fresh", side_effect=DineError("is behind its sources")):
+            with self.assertRaisesRegex(DineError, "behind its sources"):
+                gtk.GtkTarget.preflight(str(self.tmp / "app.apk"))
+
+    def test_fresh_refuses_a_build_behind_its_sources(self):
+        st = {"app": "app.apk", "target": "gtk", "state": {}}
+        with mock.patch.object(linux, "require_fresh", side_effect=DineError("is behind its sources")), \
+                mock.patch.object(cli.client, "call", return_value={"code": 1, "text": "reached the server"}) as call:
+            with self.assertRaisesRegex(DineError, "behind its sources"):
+                cli._relaunch(st)
+        call.assert_not_called()

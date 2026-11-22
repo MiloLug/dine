@@ -50,7 +50,7 @@ Native paths below are under `dine-atl/src/api-impl-jni/`.
   runs each feature's section in order, logs `os-features: <feature> <step> <result>` and ends with
   `os-features done`.
 - Runners: `run-os-features.sh` (graded on headless, run by hand on gtk), `linux smoke
-  os-features`, the APK in `out/tests/apks` from `build-ios-atl.sh`, an AtlView tile,
+  os-features`, the APK in `out/tests/apks` from `build-ios-dev.sh` (its list), an AtlView tile,
   `dbg smoke atl-os-features`.
 - The slot: the meson option from the slot table (one backend per feature: `desktop-linux`, `ios`
   or `none`), `src/slots/os.h`, `src/backends/os/{desktop-linux,none,ios}/`, and the

@@ -1,6 +1,7 @@
 """Where the one debug server lives: socket, pid file, and per-session log dirs."""
 
 import datetime
+import fcntl
 import hashlib
 import os
 import shutil
@@ -15,9 +16,31 @@ STALE = "warning: the server runs older dbg code"   # starts a reply of a server
 BASE = Path(os.environ.get("DINE_DBG_DIR", "/tmp/dine-dbg"))
 SOCKET = BASE / "server.sock"
 PIDFILE = BASE / "server.pid"
+LOCK = BASE / "server.lock"
 SESSIONS = BASE / "sessions"
 CURRENT = BASE / "current"
 KEEP = 10
+
+
+def lock() -> int | None:
+    """The lock of the one server, as an fd, or None while another holds it. start-server takes it
+    before it touches the session and hands it to the server, which keeps it until it exits."""
+    BASE.mkdir(parents=True, exist_ok=True)
+    fd = os.open(LOCK, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(fd)
+        return None
+    return fd
+
+
+def locked() -> bool:
+    fd = lock()
+    if fd is None:
+        return True
+    os.close(fd)
+    return False
 
 
 def server_pid() -> int | None:
@@ -56,7 +79,7 @@ def code_fingerprint() -> str:
     return h.hexdigest()[:12]
 
 
-def clear_stale() -> None:
-    if server_pid() is None:
-        SOCKET.unlink(missing_ok=True)
-        PIDFILE.unlink(missing_ok=True)
+def clear() -> None:
+    """Only under the lock: the socket and pid file are then one's own or a dead server's."""
+    SOCKET.unlink(missing_ok=True)
+    PIDFILE.unlink(missing_ok=True)

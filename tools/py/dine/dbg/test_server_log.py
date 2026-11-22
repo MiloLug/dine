@@ -2,12 +2,15 @@
 
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from dine.dbg import session
 from dine.dbg.server import Server
+from dine.dbg.targets.base import CmdError
+from dine.paths import DineError
 
 
 class ServerLogTest(unittest.TestCase):
@@ -63,6 +66,66 @@ class ServerLogTest(unittest.TestCase):
         self.assertTrue(self.call("status", code="older").startswith("warning: the server runs older dbg code"))
         self.assertFalse(self.call("status", code=self.server.code).startswith("warning"))
         self.assertFalse(self.call("status").startswith("warning"))
+
+
+class RequestTest(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.server = Server("fake", "Dine", Path(tmp.name))
+        self.addCleanup(self.server.store.close)
+        self.interrupts = []
+        self.server.target.interrupt_command = self.interrupts.append
+
+    def handle(self, cmd, timeout, max_lines=60, **args):
+        return self.server.handle({"cmd": cmd, "args": args, "timeout": timeout, "max_lines": max_lines})
+
+    def test_a_commands_own_wait_ends_inside_the_requests(self):
+        def step(timeout=30):
+            time.sleep(timeout + 0.1)
+            return "still running"
+        self.server.target.do_step = step
+        resp = self.handle("step", 1)
+        self.assertEqual((resp["code"], resp["text"], self.interrupts), (0, "still running", []))
+
+    def test_a_reply_within_the_grace_join_reaches_the_client(self):
+        def late():
+            time.sleep(1.2)
+            return "late reply"
+        self.server.target.do_late = late
+        resp = self.handle("late", 1)
+        self.assertEqual((resp["code"], resp["text"]), (0, "late reply"))
+
+    def test_an_error_within_the_grace_join_reaches_the_client(self):
+        def late():
+            time.sleep(1.2)
+            raise CmdError("lldb is stuck in it")
+        self.server.target.do_late = late
+        resp = self.handle("late", 1)
+        self.assertEqual(resp["code"], 1)
+        self.assertRegex(resp["text"], "timed out after 1s; interrupted: lldb is stuck in it")
+
+    def test_zero_timeout_is_no_default(self):
+        self.handle("syslog_start", 5)
+        start = time.monotonic()
+        # the thread bounds the test: with the default it waits 30 s
+        out = {}
+        t = threading.Thread(target=lambda: out.update(self.handle("wait", 0, log=["never"], since="now")), daemon=True)
+        t.start()
+        t.join(3)
+        self.assertEqual(out.get("code"), 2)
+        self.assertLess(time.monotonic() - start, 1)
+
+    def test_zero_max_lines_is_no_default(self):
+        self.assertTrue(self.handle("status", 5, max_lines=0)["text"].startswith("\u2026 5 more lines"))
+
+    def test_a_failed_shutdown_still_stops_the_server(self):
+        def shutdown(kill_app):
+            raise DineError("no device tunnel")
+        self.server.target.shutdown = shutdown
+        resp = self.handle("shutdown", 5, kill_app=True)
+        self.assertEqual((resp["code"], self.server.shut_down), (1, True))
+        self.assertIn("no device tunnel", resp["text"])
 
 
 class FingerprintTest(unittest.TestCase):

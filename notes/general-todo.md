@@ -453,8 +453,9 @@ smoke steps would need a new line or agent output for.
   touch-modal window without a dim catches the touches outside it, a NOT_TOUCHABLE one lets them
   through. The agent's activation never passes through UIKit's hit test.
 - M6b3c's hand checks on the final build: the home indicator's swipe with `hideNavigation` and not
-  `immersive`, the keyboard's corners (`frame.background` on the surface), the top edge's deferral
-  with the status bar hidden (`Navigation.swift`, `prefersHomeIndicatorAutoHidden`).
+  `immersive`, the top edge's deferral with the status bar hidden (`Navigation.swift`,
+  `prefersHomeIndicatorAutoHidden`; [DINE-7](general-todo.md#dine-7)). The keyboard's corners show
+  the window's background (`frame.background` on the surface; screenshot 2026-11-22).
 - M6b3c's experiment K2: whether UIKit scrolls an `ATLScrollView` to a first-responder field on its
   own (a scroll report with no touch after `type` into `ResizeActivity`'s field); the stage's
   Status records neither the result nor an Open line, and `view.m` has no suppression.
@@ -464,7 +465,7 @@ smoke steps would need a new line or agent output for.
   covers it.
 - Looks and facts no phone step reads (overhaul A5b, round 1): `nav: frame` prints neither the
   frame's color nor its light flag (M3-4: `atl-demo` could wait for `1a1b20`, `atl-nav` for B's
-  `2196f3` light); a TextView's background color and padding on UILabel (M3-7: the agent's `ui ls`
+  `2196f3` light; both seen in screenshots 2026-11-22); a TextView's background color and padding on UILabel (M3-7: the agent's `ui ls`
   prints neither); the release of the surface when a window closes (M3-12: no line, no count); a
   field changed in kind while it edits, two changes before a delivery, a field's deferred first
   responder (M4c-11); the in-flight frame skip, a view that stops drawing clearing its layer and
@@ -472,8 +473,7 @@ smoke steps would need a new line or agent output for.
   (M5c-2: `atl-text` types into `name` only); a Button with a background and padding keeping no
   UIKit insets (M6b3a-5: no `framed` step in `atl-controls`); VoiceOver staying in the topmost
   modal window (M6b3a-7: an absence check in `atl-dialog-content` if the agent's walk honours
-  `accessibilityViewIsModal`); one night switch reaching every running app and the uikit panel's
-  room after a window resize (M6b3c-12, M6b3c-13: `atl-config` runs one app).
+  `accessibilityViewIsModal`); the uikit panel's room after a window resize (M6b3c-13).
 - State: open; found 2026-11-20 (overhaul A5b, stage rows PreM4-M4a-1, M5b-4, M6b3b-2, M6b3c-3,
   M6b3c-15, late-5, from the old plans and the audit; round 1: M3-4, M3-7, M3-12, M4c-11, M5b-5,
   M5c-2, M6b3a-5, M6b3a-7, M6b3c-12, M6b3c-13).
@@ -596,7 +596,6 @@ apps, or that no suite reads; each is a line to turn into a check when a stage n
   (M6b3a-2); `setIcon`, `setIconAttribute` and ProgressDialog's secondary progress and number formats
   are ignored (M6b3a-9); the agent's accessibility taps still reach Android views under an open menu
   (M6b3b-7, [TOOL-8](general-todo.md#tool-8)).
-- Checks that need two running apps (dialog answers, the night switch): the area A9 two-app scenario.
 
 ### ATL-166
 
@@ -635,6 +634,16 @@ and MPRIS. A check: one D-Bus action and one notification on the gtk build, in `
 display).
 - Where: as named; `tools/py/dine/linux.py`.
 
+### ATL-175
+
+**The `native` slot.** `notes/atl-port.md` names it in the slot and build tables; `meson_options.txt`
+has no option for it and `src/slots/` no header. libandroid and the bionic pieces, `native_window.c`
+with them, build only for the desktop build.
+- Wanted: the meson option, the `bionic` and `none` backends, the move of `native_window.h` into
+  the slot.
+- State: open; found 2026-11-14 (overhaul stage claims M0-2). DINE-12 covers iOS substitutes for an
+  APK's own `.so` files only.
+
 ## DINE
 
 ### DINE-6
@@ -648,10 +657,18 @@ apps can get JIT through StikDebug from iOS 17.4; iOS 26.4 broke it for some use
 **Navigation checks on the phone:**
 - a vertical scroll in the middle of the screen never fires Home, and a swipe from the top-left
   corner opens Notification Center, not Home (`notes/nav-gestures.md` "By hand on the phone");
+- a short swipe cancels, and a swipe over a span the app excluded reaches the app and fires
+  nothing (the nav APK's B, right edge, 200-540 px from the window's top; the classifier alone is
+  `tests/launcher/`'s test);
+- immersive (the atl screen's "nav immersive"; its window reaches the screen's top and bottom,
+  screenshot 2026-11-22; a DVT screenshot shows no home indicator on any screen, so the indicator
+  is a hand check): the first swipe up only reveals and the second
+  leaves; the same from the top with the status bar hidden (`.top` deferred);
+- dismissing the apps list by swiping it down returns to the app it was opened from;
 - the safe-area values Dine sends on the iPhone;
 - the iOS 26+ full-content pop gesture.
 
-The settings check waits for M8c; the excluded-span check is M4a's "Open:" in `notes/atl-port.md`.
+The settings check waits for M8c.
 
 ### DINE-8
 
@@ -698,6 +715,21 @@ background `URLSession` in one batch. It needs a bridge in Dine's HTTP layer, be
 its own downloads. No Option in that file builds it (Option 1's `DownloadManager` backend serves apps
 that call `DownloadManager`; Option 4 documents the limit), and M8d's questions don't test it.
 - Where: `notes/background-tasks.md` "Split plan"; Dine's HTTP layer (not located).
+
+### DINE-14
+
+**Check the licences of the APKs dev builds bundle.** `tools/libexec/build-ios-dev.sh` puts six
+third-party APKs from atl_test_apks into `Dine.app/dev`; that repo's README says "to our knowledge"
+they allow redistribution, and no upstream licence was read (Gravity Defied's first).
+- Until then dev builds go to nobody (`docs/first-run.md` §8). Release builds bundle none.
+- Wanted: each APK's licence, next to its row there. DINE-5 covers api-impl.jar's notices only.
+
+### DINE-15
+
+**A launcher test.** Nothing taps Add App, adds an app or reads a launcher tile: `dbg smoke` waits
+for `loaded N apps`, which an empty table passes. Wanted, once M8a's launcher lists the registry's
+rows: a row added, shown again after a relaunch (`tests/launcher/`, which has the edge classifier's
+test only).
 
 ## TOOL
 
@@ -765,12 +797,14 @@ rule that a library outside the embedder's symbol lists doesn't load has no test
 
 ### TOOL-15
 
-**The debug agent reaches only the first 28 tiles of the atl screen's grid.** The grid is lazy
-(`LazyVGrid`): it builds the tiles on the screen, and `dbg ui` lists built elements only, so a smoke
-step can't tap a later tile (seen 2026-11-21, overhaul A7: with a 29th tile before `config` the
-`atl-keyboard-dialog` step found no `keyboard dialog`). Workaround: `AtlView.swift` lists the tiles the
-scenarios tap first.
-- Fix: a grid that builds every tile, or a scroll action in the agent.
+**The debug agent reaches only the tiles of the atl screen that are on the screen.** The grid is
+lazy (`LazyVGrid`) and `dbg ui` lists only built elements with a frame on the screen, so a smoke step
+can't tap a tile further down (seen 2026-11-21, overhaul A7: with a 29th tile before `config` the
+`atl-keyboard-dialog` step found no `keyboard dialog`). Workaround: five columns, so the iPhone 13
+shows the 36 tiles at once (seen 2026-11-22), with the tiles the scenarios tap first in
+`AtlView.swift`.
+- Fix: a scroll action in the agent (a grid that builds every tile isn't enough: the walk skips
+  what is off the screen).
 - Where: `apps/Dine/Sources/Dine/Dev/AtlView.swift`, `native/dev/dbgagent`.
 
 ### TOOL-16
@@ -804,6 +838,28 @@ broken (found 2026-11-14 to 2026-11-21: the instruments audit, the A9 review, th
   (`DrawActivity`).
 - Where: `tests/harness/package.py`, `tests/harness/test_package.py`, `dine-atl/tests/package/`,
   `dine-atl/tests/framework/*/AndroidManifest.xml`, `dine-atl/tests/headless/` (DrawActivity).
+
+### TOOL-17
+
+**Test gaps of builds, tools and test mode (overhaul A10, from the stage claims).**
+- Nothing fails when `<depend closure="true">` is dropped from `dine-atl/src/api-impl/build.xml`:
+  the tracked generated headers turn dirty only after a from-scratch build (M5a-10). Wanted: a
+  check that they are clean after a build.
+- Nothing compares `src/api-impl/meson.build`'s list with the Java files in the tree: a file left
+  out compiles and an edit to it rebuilds nothing (M6b3b-15).
+- An expected failure of `test apps` keeps its reason when the app stops earlier
+  (`tests/harness/expect.py` compares statuses only) (M6a-4).
+- gtk: no check reads the GApplication id of `--package`, and gtk's `--install` and `--uninstall`
+  never run (MA0-MA1-14).
+- The parts of `tools/dine ios` that need no phone have no test: `sync-ios-icons.sh` with a
+  missing icon, `cmd_lldb`'s arguments, `tunnel_status`'s text (app-tools-17).
+- `smoke.run` (`tools/py/dine/dbg/smoke.py`): the relaunch rule, a declined tap, the `--network`
+  skip and the still-alive check have no unit test (app-tools-8).
+- gtk's debug target: no check attaches lldb, sets a breakpoint and reads an expression
+  (app-tools-3).
+- Test mode with several apps: no run has two apps answered from `ATL_DIALOG_ANSWERS` (each main
+  thread reads the whole list with its own cursor), and test-runner's
+  `SingleLaunchActivityTestCase` keeps VM-wide statics in a jar every app shares (MA2-10).
 
 ## Done
 

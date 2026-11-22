@@ -37,6 +37,7 @@ touches. Commands and setup live in `tools/dine <group> --help`, `README.md` and
 - `dine-atl/tests/headless/run-*.sh` drive one APK each; each script's header has its usage and
   what it checks, and `common.sh` beside them holds what they share. `tools/dine linux smoke` runs
   them.
+- The cli host's `-b` sends Home before the apps start: each starts with its task in the back.
 - The cli host's `-c` reads commands on stdin: `back`, `home`, `front`, `insets` (12 or 20 dp
   values), `size <width> <height>` (dp), `night 0|1`, `dump` (the
   view tree of the window and its shown dialogs, test hooks only), `tap <text>` (a down and an up
@@ -165,8 +166,10 @@ interpreter, which is why Python is pinned to 3.12. What makes Swift `expr`/`po`
   (`project(<lib> OBJCXX)`).
 - Swift consumes a lib through a `.systemLibrary` target whose `module.modulemap` points at the
   header and `link`s the library; `Package.swift` adds `-L out/ios/lib` via `unsafeFlags`.
-  libjavacore, libopenjdk and, in dev builds, `native/dev/runtimetests` are `-force_load`ed
-  because ART finds their `JNI_OnLoad_<lib>` and `Java_*` with dlsym.
+  libjavacore, libopenjdk, libwolfssljni, libtranslation_layer_main and, in dev builds,
+  `native/dev/runtimetests` are `-force_load`ed (`Package.swift`, whose lines
+  `tools/libexec/jni-symbols.sh` reads) because ART finds their `JNI_OnLoad_<lib>` and `Java_*`
+  by name.
 - iOS links need xtool's linker: the system `ld64.lld` rejects the SDK's arm64e `.tbd` stubs
   (`malformed file … unknown target`), and plain clang falls back to GNU ld. Link with
   `clang -fuse-ld=lld -B"$DINE_IOS_TOOLSET_BIN"` (`env.sh` sets the variable;

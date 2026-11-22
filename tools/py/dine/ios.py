@@ -134,19 +134,19 @@ def launch(app: str, suspended: bool = False) -> int:
             return await asyncio.wait_for(pc.launch(bundle, kill_existing=True, start_suspended=suspended,
                                                     environment={AGENT_ENV: str(AGENT_PORT)}), 60)
     try:
-        return _with_rsd(run)
+        return _with_rsd(run, timeout=90)   # past the launch's own 60 s
     except (AssertionError, TimeoutError, PyMobileDevice3Exception) as e:
         raise DineError(f"launching {app} failed: {str(e) or type(e).__name__}\n(screen off or phone "
                         "locked, developer certificate not trusted, or the DDI unmounted after a reboot: "
                         "tools/dine ios tunnel start)") from None
 
 
-def _with_rsd(fn):
+def _with_rsd(fn, timeout: float = 30):
     """Run `fn(rsd)` against the tunneld device in a fresh event loop: in-process, ~1 s cheaper than
     a pymobiledevice3 CLI run."""
     from pymobiledevice3.tunneld.api import get_tunneld_devices
 
-    async def main():
+    async def call():
         rsds = await get_tunneld_devices()
         if not rsds:
             raise DineError("tunneld has no device: is the phone connected? tools/dine ios tunnel status")
@@ -155,7 +155,18 @@ def _with_rsd(fn):
         finally:
             for rsd in rsds:
                 await rsd.close()
-    return asyncio.run(main())
+
+    async def bounded():
+        deadline = asyncio.timeout(timeout)
+        try:
+            async with deadline:
+                return await call()
+        except TimeoutError:
+            if not deadline.expired():
+                raise
+            raise DineError(f"the phone didn't answer within {timeout:g}s: is it connected and unlocked? "
+                            "tools/dine ios tunnel status") from None
+    return asyncio.run(bounded())
 
 
 def processes(app: str | None = None) -> list[dict]:
@@ -293,10 +304,15 @@ def check_atl_build() -> None:
 
 def install_fingerprint(app: str) -> str:
     """Changes when anything the installed app is built from does: what `ios run` bundles (archives,
-    jars, the dev payload, assets) and the sources it compiles itself."""
+    jars, the dev payload, assets) and the sources it builds itself."""
+    atl_tests = paths.ROOT / "dine-atl/tests"
     roots = [paths.OUT / "ios/lib", paths.OUT / "ios/share", paths.OUT / "ios/dev", paths.OUT / "ios/assets" / app,
-             paths.APPS / app / "Sources", paths.APPS / app / "Package.swift", paths.APPS / app / "xtool.yml",
-             paths.ROOT / "native"]
+             paths.APPS / app / "Sources", paths.APPS / app / "Resources", paths.APPS / app / "Package.swift",
+             paths.APPS / app / "xtool.yml", paths.ROOT / "native",
+             # the dev payload's; only the dirs of tests/headless, whose files are scripts and goldens
+             *sorted(d for d in (atl_tests / "headless").glob("*") if d.is_dir()),
+             atl_tests / "package/fixtures", atl_tests / "package/keys",
+             paths.ROOT / "dine-art/tests/runtime/authored"]
     h = hashlib.sha1()
     for root in roots:
         for p in sorted(root.rglob("*")) if root.is_dir() else [root]:
@@ -317,6 +333,41 @@ def check_installed(app: str) -> None:
         raise DineError(f"the {app} on the phone is not this checkout's build: run tools/dine ios run")
 
 
+# What only dev builds hold, by bundle file. Strings the compiler keeps whole: over 15 bytes or a
+# log format, as Swift inlines shorter ones. A dev bundle has every one.
+DEV_MARKERS = {
+    "{app}": ("DINE_DBG_AGENT_PORT",    # native/dev/dbgagent
+              "(libc++ ok, ",           # native/dev/hello
+              "dinejniargs",            # native/dev/runtimetests
+              "art probe ", "core-junit", "ma probe ",     # artbridge's dev*.cpp
+              "Dine native: ", "probe done ", "dine-0002-jni-args", "atl: can't create ",  # Sources/Dine/Dev
+              "nav: surface ",          # Navigation.swift's #if DEBUG
+              "ATL_DIALOG_ANSWERS", "ATL_DUMP_VIEWTREE", "Java_android_atl_ATLTestHooks_"),  # ATL's test_hooks
+    "Assets.car": ("ProbeBadge",),      # Dev.xcassets
+}
+
+
+def dev_archives() -> list[str]:
+    """The archives native/dev builds."""
+    found = []
+    for cmake in sorted((paths.ROOT / "native/dev").glob("*/CMakeLists.txt")):
+        found += [f"lib{name}.a" for name in re.findall(r"^add_library\((\w+) STATIC", cmake.read_text(), re.M)]
+    return found
+
+
+def release_problems(bundle: Path, app: str, lib: Path) -> list[str]:
+    """Dev and test parts in a release bundle, and dev archives within reach of its link."""
+    if not (bundle / app).is_file():
+        return [f"no app binary in {bundle}"]
+    problems = [f"the bundle holds {p.relative_to(bundle)}" for p in sorted((bundle / "dev").rglob("*")) if p.is_file()]
+    for file, markers in DEV_MARKERS.items():
+        path = bundle / file.format(app=app)
+        data = path.read_bytes() if path.is_file() else b""
+        problems += [f"{path.name} holds {marker!r}" for marker in markers if marker.encode() in data]
+    problems += [f"{lib / name} is left for the link" for name in dev_archives() if (lib / name).exists()]
+    return problems
+
+
 def run_libexec(script: str, *args: str) -> int:
     release()  # a malformed DINE_RELEASE stops here, before any script reads it
     return subprocess.run([str(paths.LIBEXEC / script), *args]).returncode
@@ -327,7 +378,13 @@ def cmd_install(app: str) -> int:
     runs check_atl_build first and launches after."""
     rel = release()
     require_tunnel()
-    rc = run_libexec("build-ios-native.sh") or run_libexec("build-ios-dev.sh") or run_libexec("build-ios-assets.sh", app)
+    from . import linux   # not at the top, as in check_atl_build
+    rc = run_libexec("build-ios-native.sh")
+    if not rc:
+        # the payload's APKs compile against the Linux builds' jars
+        with linux.builds(exclusive=False):
+            rc = run_libexec("build-ios-dev.sh")
+    rc = rc or run_libexec("build-ios-assets.sh", app)
     if rc:
         return rc
     cmd = ["xtool", "dev", "run", *(["-c", "release"] if rel else [])]
@@ -343,6 +400,11 @@ def cmd_install(app: str) -> int:
     # Installs fine, then its pre-iOS-17 debugserver launch step fails; tolerate only that error.
     if proc.wait() and b"DebugserverClient" not in out:
         return proc.returncode
+    if rel and (problems := release_problems(paths.app_binary(app).parent, app, paths.OUT / "ios/lib")):
+        _install_stamp(app).unlink(missing_ok=True)
+        print(f"NOT A RELEASE BUILD: the {app} just installed holds dev or test parts:\n  " + "\n  ".join(problems),
+              file=sys.stderr)
+        return 1
     _install_stamp(app).write_text(install_fingerprint(app))
     return 0
 

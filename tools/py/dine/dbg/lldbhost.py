@@ -221,8 +221,11 @@ class LldbHost:
         return "detached; the app keeps running"
 
     def kill(self) -> str:
-        self.process.Kill()
-        self.wait_state(lambda: self.state == "exited", 10)
+        err = self.process.Kill()
+        if not err.Success():
+            raise CmdError(f"kill: {err.GetCString()}")
+        if not self.wait_state(lambda: self.state == "exited", 10):
+            raise CmdError("kill: the app didn't exit within 10s")
         return "killed the app"
 
     def resume(self) -> str:

@@ -31,6 +31,9 @@ class SmokeTableTest(unittest.TestCase):
             last = sc.steps[-1]
             self.assertTrue(last.back or last.action == "Home", f"{sc.name} must end back on the launcher")
             for st in sc.steps:
+                if st.action == "Home":
+                    self.assertIn("Add App", st.ui, f"{sc.name}: {st.title}: a log line alone isn't the launcher")
+            for st in sc.steps:
                 for rx in st.ok + st.fail:
                     re.compile(rx)
 
@@ -127,6 +130,37 @@ class SmokeRunTest(unittest.TestCase):
     def test_fatal_line_fails_the_scenario(self):
         rc, text = self.run_smoke(quiet=["E/art: java.lang.UnsatisfiedLinkError: No implementation found"])
         self.assertEqual((rc, "s: FAILED: 'UnsatisfiedLinkError'" in text), (1, True))
+
+
+class SmokeDebugTest(unittest.TestCase):
+    STEPS = [smoke.Step("attach", dbg=("attach", {}), says="attached"),
+             smoke.Step("bp", dbg=("bp", {"op": "add"}), says="breakpoint"),
+             smoke.Step("stop", dbg=("wait", {"at": "f:1"}), says="matched"),
+             smoke.Step("detach", dbg=("detach", {}), says="detached")]
+    REPLIES = {"attach": "attached to pid 1", "bp": "breakpoint 4: f:1", "wait": "matched --stop", "detach": "detached"}
+
+    def run_smoke(self, **replies):
+        calls = []
+
+        def call(cmd, args=None, timeout=None):
+            calls.append((cmd, args or {}))
+            if cmd == "log":
+                return {"code": 0, "text": "0 matches"}
+            return {"code": 0, "text": {**self.REPLIES, **replies}.get(cmd, ""), "cursor": 1}
+        with mock.patch.object(smoke.client, "call", call), \
+                mock.patch.dict(smoke.SCENARIOS, {"T": [smoke.Scenario("s", self.STEPS)]}), \
+                mock.patch.dict(smoke.STARTUP, {"T": "loaded"}):
+            return smoke.run("T", [], False, lambda: 1, out=lambda _: None), calls
+
+    def test_a_passing_run_detaches_once(self):
+        rc, calls = self.run_smoke()
+        self.assertEqual(rc, 0)
+        self.assertEqual([c for c, _ in calls].count("detach"), 1)
+
+    def test_another_reply_fails_and_lets_the_app_go(self):
+        rc, calls = self.run_smoke(wait="stopped elsewhere")
+        self.assertEqual(rc, 1)
+        self.assertEqual(calls[-2:], [("detach", {}), ("bp", {"op": "rm", "spec": "4"})])
 
 
 class ExecGuardTest(unittest.TestCase):

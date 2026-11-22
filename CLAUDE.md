@@ -43,7 +43,7 @@ install` from its GitHub repo (`docs/first-run.md`).
 ```sh
 tools/dine ios tunnel start|status       # iOS 17+ developer services; start mounts the DDI
 tools/dine ios build-art | build-atl     # dine-art, dine-atl for iOS (not run by ios run); build-atl after linux build atl
-tools/dine ios run [App]                 # native libs, dev payload (after test package), asset catalogs, xtool dev, launch
+tools/dine ios run [App]                 # native libs, dev payload (built from its sources), asset catalogs, xtool dev, launch
 tools/dine ios icons                     # Icons.xcassets from its sources.txt
 tools/dine linux build [bionic|art|opensles|atl|atl-headless ...]   # default: all, in that order
 tools/dine linux smoke [check...] [--list]
@@ -60,10 +60,12 @@ tools/dine dbg start-server [--target gtk --app <apk>] | smoke [--network] [--li
 match the flag. A release build leaves out every dev and test part: the dev screens in
 `apps/Dine/Sources/Dine/Dev/` (`#if DEBUG`; xtool `-c release`), the libs in `native/dev/` (debug
 agent, hello, runtimetests; Swift imports them only from `Sources/Dine/Dev/`), artbridge's
-`dev*.cpp` (ART's junit boot jars, `-Xcheck:jni`, probes), ATL's test hooks (meson `test_hooks`),
+`dev*.cpp` (ART's junit boot jars, `-Xcheck:jni`, probes), ATL's test hooks (meson `test_hooks`:
+the natives; `ATLTestHooks` stays in the shared api-impl.jar),
 `Resources/Dev.xcassets`, and the test APKs, test jars and junit jars (`out/ios/dev`, bundled as
-`dev/`). `dbg ui`, `dbg fresh` and `dbg smoke` need a dev build. A release build can't start an
-app until the launcher gets APK import (M8a).
+`dev/`). A release `ios run` ends with a check of its bundle (a new dev-only part gets a marker in
+`tools/py/dine/ios.py` `DEV_MARKERS`). `dbg ui`, `dbg fresh` and `dbg smoke` need a dev build. A
+release build can't start an app until the launcher gets APK import (M8a).
 
 **On-device and gtk-build debugging go through a subagent, never raw `lldb`/`pymobiledevice3` with
 `sleep`/`grep` waits.** Both drive `tools/dine dbg` (target `ios`, or `gtk`: ATL's gtk build on a

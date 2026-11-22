@@ -79,13 +79,24 @@ class IosTarget(AgentUi, LldbCommands, Target):
         out = []
         if self.syslog_running():
             out.append(self.do_syslog_stop())
-        if self.host.wedged:
-            out.append(f"lldb is stuck ({self.host.wedged}); not detaching. If the app stays stopped: "
-                       f"tools/dine ios kill {self.app}")
-        elif self.host.state in ("running", "stopped"):
-            out.append(self.host.kill() if kill_app else self.host.detach())
-        self.host.close()
+        try:
+            attached = self.host.state in ("running", "stopped") and not self.host.wedged
+            if self.host.wedged:
+                out.append(f"lldb is stuck ({self.host.wedged}); not detaching. If the app stays stopped: "
+                           f"tools/dine ios kill {self.app}")
+            if attached:
+                out.append(self.host.kill() if kill_app else self.host.detach())
+            elif kill_app:
+                out.append(self._kill_app())
+        finally:
+            self.host.close()
         return "\n".join(out)
+
+    def _kill_app(self) -> str:
+        pids = [p["pid"] for p in ios.processes(self.app)]
+        for pid in pids:
+            ios.kill(pid)
+        return "\n".join(f"killed pid {pid}" for pid in pids) or f"{self.app} isn't running"
 
     def do_attach(self, pid=None, timeout=120):
         self.host.need("none", "detached", "exited")

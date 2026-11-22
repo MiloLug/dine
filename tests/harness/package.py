@@ -531,6 +531,7 @@ def main() -> int:
     p.add_argument("--update-expectations", action="store_true",
                    help="drop the entries of rows that pass now and list the rows that ran; refused while a "
                         "regression stands")
+    p.add_argument("--build", action="store_true", help="build the fixture APKs and run nothing")
     a = p.parse_args()
 
     for f in (BUILD.dir / "android-translation-layer", BUILD.dir / "test_runner.jar"):
@@ -540,6 +541,8 @@ def main() -> int:
     errors = [e for e in parallel(build_fixture, list(FIXTURES), BUILD.jobs, "fixtures") if e]
     if errors:
         sys.exit("fixture build failed:\n" + "\n".join(errors))
+    if a.build:
+        return 0
 
     stop_on_signals()
     runs = new_run_dir(OUT / "runs")

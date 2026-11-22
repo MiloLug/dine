@@ -17,6 +17,8 @@ class Step:
     tap: str | None = None
     back: bool = False
     action: str | None = None  # an accessibility custom action's name
+    dbg: tuple[str, dict] | None = None  # a debug server command and its arguments
+    says: str | None = None     # a regex that command's reply must hold
     type: tuple[str, str] | None = None  # (label, text): the text typed into that field
     appearance: str | None = None  # light, dark or system: the key window's interface style
     declined: bool = False      # the tap must be declined (a disabled control or alert action)
@@ -135,6 +137,23 @@ def _spin_paced(since: int) -> str | None:
     return None
 
 
+_WINDOW_SIZE = re.compile(r"nav: window size (\d+x\d+)")
+_SURFACE_SIZE = re.compile(r"nav: surface (\d+x\d+)")
+
+
+# the last size Dine told ATL is the one UIKit laid the app's surface out at
+def _surface_size(since: int) -> str | None:
+    last = []
+    for line in (_WINDOW_SIZE, _SURFACE_SIZE):
+        resp = client.call("log", {"op": "grep", "pattern": line.pattern, "since": since, "src": ["syslog"],
+                                   "text": True, "n": 1})
+        sizes = line.findall(resp["text"])
+        if not sizes:
+            return f"no {line.pattern!r} line"
+        last.append(sizes[-1])
+    return None if last[0] == last[1] else f"the app's window is {last[0]}, its surface {last[1]}"
+
+
 _LOOPER_WAIT = re.compile(r"looper (timed|untimed) wait (\d+) ms cpu (\d+) ms")
 
 
@@ -159,32 +178,36 @@ ATL_FAIL = ("atl is still starting", "atl needs a process without a VM", "atl: c
             "or a library dir missing", r"atl (app )?main returned (?!0\b)")
 # never part of a passing scenario, whatever its steps wait for
 FATAL = ("UnsatisfiedLinkError", "JNI DETECTED ERROR", "Runtime aborting", "FATAL EXCEPTION",
-         "hacky_uncaught_exception_handler", "atl: app exception cleared")
+         "hacky_uncaught_exception_handler", "atl: app exception cleared",
+         r"nav: surface \d+x\d+ size constraints (?!2\b)",
+         "the navigation stack will not be updated")
 DIALOG_UNDER_KEYBOARD = r"keyboard: dialogbottom ime [1-9]\d* .* above false"  # atl-keyboard-dialog: ATL-160
 NAV_LIST_FAIL = (r"nav: list \d", "nav: list canceled")  # an answer nobody gave
+# the launcher's own button: a container left on the screen takes the escape and hides it
+BACK = Step("back", back=True, ui=("Add App",))
 
 SCENARIOS = {
     "Dine": [
         Scenario("hello", [
             Step("hello++", tap="hello++", ok=(r"Dine native: Hello from C\+\+",)),
-            Step("back", back=True),
+            BACK,
         ]),
         Scenario("probe", [
             Step("probe", tap="probe", ok=(r"probe done \d+ ok 0 fail",), fail=(r"probe done \d+ ok [1-9]",)),
-            Step("back", back=True),
+            BACK,
         ]),
         Scenario("atl-demo", [
             Step("atl", tap="atl"),
             Step("run demo", tap="demo_app", ok=("onResume", "viewtree: end", "nav: container shown demo_app"),
                  ui=("hello PoC world!", "second one (static)"), fail=ATL_FAIL, timeout=120),
-            Step("Home", action="Home", ok=("nav: launcher root",)),
+            Step("Home", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, check=_demo_viewtree),
         Scenario("atl-looper", [
             Step("atl", tap="atl"),
             Step("run looper", tap="looper", ok=("looper laid out", "looper done", "atl main returned 0",
                                                 "nav: container dismissed exit"),
                  fail=ATL_FAIL, timeout=120),
-            Step("back", back=True),
+            BACK,
         ], uses_vm=True, needs_clean=True, alive=True, check=_looper_waits),
         Scenario("atl-views", [
             Step("atl", tap="atl"),
@@ -194,7 +217,7 @@ SCENARIOS = {
                                                "views widgets", "views done", "atl main returned 0", "nav: container dismissed exit"),
                  fail=ATL_FAIL + ("native_1destructor", "native_1removeView", "nativeDestroy", "native_1unref"),
                  timeout=120),
-            Step("back", back=True),
+            BACK,
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-widgets", [
             Step("atl", tap="atl"),
@@ -202,7 +225,7 @@ SCENARIOS = {
                  fail=ATL_FAIL, timeout=120),
             Step("windowed after 5 s", ok=("widgets fullscreen off", "nav: frame fullscreen false"), ui=("widgets windowed",),
                  fail=ATL_FAIL),
-            Step("Home", action="Home", ok=("nav: launcher root",)),
+            Step("Home", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-draw", [
             Step("atl", tap="atl"),
@@ -213,12 +236,12 @@ SCENARIOS = {
                                                "widgets bitmap redraw done"),
                  fail=ATL_FAIL + ("widgets metrics failed", r"widgets view pixels (?!ok\b)"), timeout=120),
             Step("spin", ok=(r"widgets spin \d+ in \d+ ms",), fail=ATL_FAIL),
-            Step("Home", action="Home", ok=("nav: launcher root",)),
+            Step("Home", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, alive=True, check=_spin_paced),
         Scenario("atl-lists", [
             Step("atl", tap="atl"),
             Step("run lists", tap="lists", ok=(r"lists first [1-9]\d* of \d+ shown",), fail=ATL_FAIL, timeout=120),
-            Step("Home", action="Home", ok=("nav: launcher root",)),
+            Step("Home", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-frames", [
             Step("atl", tap="atl"),
@@ -226,7 +249,7 @@ SCENARIOS = {
             # FramesActivity moves a text that draws nothing a screen to the right: UIKit has the new frame
             # once the accessibility walk, which lists only what is on screen, no longer finds it
             Step("move", tap="move", ok=("frames moved",), gone=("target text",), fail=ATL_FAIL),
-            Step("Home", action="Home", ok=("nav: launcher root",)),
+            Step("Home", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-passes", [
             Step("atl", tap="atl"),
@@ -238,7 +261,7 @@ SCENARIOS = {
                                                  "passes frame", r"passes layouts ([2-9]\d|[1-3]\d\d) in [56]\d\d ms",
                                                  "atl main returned 0", "nav: container dismissed exit"),
                  fail=ATL_FAIL + (r"passes drawn after [0-3] calls", r"passes invalidate drawn after [01] calls"), timeout=120),
-            Step("back", back=True),
+            BACK,
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-windows", [
             Step("atl", tap="atl"),
@@ -248,7 +271,7 @@ SCENARIOS = {
                  ok=("state dialog shown", "state dialog laid out", "nav: keep screen on true",
                      "nav: exclusion left 1 right 0", r"state insets [1-9]\d* 0 0 0"),
                  fail=ATL_FAIL, timeout=120),
-            Step("Home", action="Home", ok=("nav: launcher root", "nav: keep screen on false")),
+            Step("Home", action="Home", ok=("nav: launcher root", "nav: keep screen on false"), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-keyboard", [
             Step("atl", tap="atl"),
@@ -257,21 +280,21 @@ SCENARIOS = {
             Step("run keyboard resize", tap="keyboard resize", ok=(r"keyboard: resize ime 0 nav [1-9]\d* size",),
                  ui=("resize field",), fail=ATL_FAIL + ("nav: window size",), timeout=120),
             Step("type into the field", type=("resize field", "a"), ok=(r"keyboard: resize ime 0 nav 0 size",), fail=ATL_FAIL),
-            Step("Home", action="Home", ok=("nav: launcher root",)),
+            # the keyboard's inset stays behind with the front: back in front, the bottom inset is the bar's again
+            Step("Home with the keyboard", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
+            Step("Recent apps", action="Recent apps", ok=("nav: apps list shown",)),
+            Step("back to app", tap="back to app", ok=(r"keyboard: resize ime 0 nav [1-9]\d* size",), fail=ATL_FAIL),
+            Step("Home", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-keyboard-dialog", [
             Step("atl", tap="atl"),
-            # a floating dialog at the bottom of the window, wholly under the keyboard when it comes: the window manager
-            # places it above the keyboard, so its field ends above it (the activity's own check of that)
-            # stateVisible: the keyboard comes with the dialog, no tap; the dialog sees an inset first, none once placed above it
-            # a line with the keyboard's inset and the field still under it is the failure (the dialog's first layout
-            # line, ime 0, is the same before and after, and `ok` alone would match it); the lines of the placed
-            # window carry ime 0, the one in between the old frame's inset with the field above (ATL-165)
+            # stateVisible: the keyboard comes with the dialog, which is placed above it. `ok` alone would match the first
+            # layout's line, so a field under the keyboard fails; the placed window's lines carry ime 0 (ATL-165)
             Step("run keyboard dialog", tap="keyboard dialog",
                  ok=(r"keyboard: dialogbottom ime [1-9]\d* ", r"keyboard: dialogbottom ime 0 .* above true"),
                  ui=("dialogbottom field",), fail=ATL_FAIL + ("nav: window size", DIALOG_UNDER_KEYBOARD), timeout=120),
             Step("type into the field", type=("dialogbottom field", "a"), fail=ATL_FAIL + (DIALOG_UNDER_KEYBOARD,)),
-            Step("Home", action="Home", ok=("nav: launcher root",)),
+            Step("Home", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-config", [
             Step("atl", tap="atl"),
@@ -283,7 +306,7 @@ SCENARIOS = {
             Step("light", appearance="light", ok=("config: application night 16", "config: activity night 16 color #ff112233"),
                  fail=ATL_FAIL),
             Step("system", appearance="system"),
-            Step("Home", action="Home", ok=("nav: launcher root",)),
+            Step("Home", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-popup", [
             Step("atl", tap="atl"),
@@ -301,7 +324,7 @@ SCENARIOS = {
             Step("apple", tap="apple", ok=("actv text apple",), fail=ATL_FAIL),
             # the app ends (its last activity finishes) while its toast shows: the toast goes with its window
             Step("bye", tap="bye", ok=("toast: gone with its window",), fail=ATL_FAIL),
-            Step("back", back=True),
+            BACK,
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-gd", [
             Step("atl", tap="atl"),
@@ -309,7 +332,7 @@ SCENARIOS = {
                  fail=ATL_FAIL + ("UnsatisfiedLinkError", "JNI DETECTED ERROR"), timeout=120),
             # the GameView redraws itself: the records draw pass's stats (test_hooks)
             Step("frames", ok=("atl frames ",), fail=ATL_FAIL + ("UnsatisfiedLinkError",), timeout=30),
-            Step("Home", action="Home", ok=("nav: launcher root",)),
+            Step("Home", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-dialog", [
             Step("atl", tap="atl"),
@@ -317,7 +340,7 @@ SCENARIOS = {
             Step("Yes", tap="Yes", ok=("dialog onClick -1", "dialog: presented"), fail=ATL_FAIL),
             Step("Green", tap="Green", ok=("dialog onClick 1", "dialog done", "nav: container dismissed exit"),
                  fail=ATL_FAIL),
-            Step("back", back=True),
+            BACK,
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-controls", [
             Step("atl", tap="atl"),
@@ -330,7 +353,7 @@ SCENARIOS = {
                  fail=ATL_FAIL),
             Step("switch", tap="switch", ok=("controls checked switch true",), fail=ATL_FAIL),
             Step("lamp off", tap="lamp off", ok=("controls click toggle lamp on",), ui=("lamp on",), fail=ATL_FAIL),
-            Step("Home", action="Home", ok=("nav: launcher root",)),
+            Step("Home", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-text", [
             Step("atl", tap="atl"),
@@ -349,7 +372,8 @@ SCENARIOS = {
             # Java moves the focus to notes and back to name at once, the keyboard stays on name: it is still
             # Java's request that hide answers
             Step("swap", tap="swap"),
-            Step("hide", tap="hide", ok=("text hide true",), fail=ATL_FAIL + ("text hide false",)),
+            # and the inset the keyboard left goes with it
+            Step("hide", tap="hide", ok=("text hide true", "text ime 0"), fail=ATL_FAIL + ("text hide false",)),
             # a field Android's tap rule gives no keyboard (showSoftInputOnFocus false, no input type) takes
             # the focus and no keyboard: nothing to hide. Its edits are refused only by the text field's
             # delegate, which the agent's insertText: bypasses: no step types into a field with no input type
@@ -362,8 +386,10 @@ SCENARIOS = {
             # the header's cap binds here: records' chrome must match the panel's laid-out header
             Step("long alert", tap="long alert", ok=(r"dialog: chrome measured .* ok",), ui=("Long", "Close"),
                  fail=ATL_FAIL + ("dialog: chrome measured .* differs",)),
+            # its label is over 4 KB: the agent takes a request of any length, and a text declines the tap
+            Step("tap the long message", tap="A line of a long message", declined=True),
             Step("Close", tap="Close", ok=("text long closed",), fail=ATL_FAIL),
-            Step("Home", action="Home", ok=("nav: launcher root",)),
+            Step("Home", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, alive=True, check=_text_layout),
         Scenario("atl-dialog-keep", [
             Step("atl", tap="atl"),
@@ -372,7 +398,7 @@ SCENARIOS = {
             Step("Yes", tap="Yes", declined=True),
             Step("No", tap="No", ok=("keep no kept", "dialog: presented"), ui=("Sure",), fail=ATL_FAIL),
             Step("Sure", tap="Sure", ok=("keep onClick -1", "keep done", "nav: container dismissed exit"), fail=ATL_FAIL),
-            Step("back", back=True),
+            BACK,
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-dialog-content", [
             Step("atl", tap="atl"),
@@ -383,7 +409,7 @@ SCENARIOS = {
             # the dim's activate is a tap outside the dialog: the second one cancels and the activity ends
             Step("Dismiss", tap="Dismiss", ok=("content canceled", "content dismissed", "nav: container dismissed exit"),
                  fail=ATL_FAIL),
-            Step("back", back=True),
+            BACK,
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-dialog-view", [
             Step("atl", tap="atl"),
@@ -393,7 +419,7 @@ SCENARIOS = {
             Step("Inner", tap="Inner", ok=("view inner click",), fail=ATL_FAIL),
             Step("type into name", type=("name", "hey"), fail=ATL_FAIL),
             Step("OK", tap="OK", ok=('view ok "hey"', "view dismissed", "nav: container dismissed exit"), fail=ATL_FAIL),
-            Step("back", back=True),
+            BACK,
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-dialog-choice", [
             Step("atl", tap="atl"),
@@ -406,7 +432,7 @@ SCENARIOS = {
             Step("Salt", tap="Salt", ok=("choice multi 0 true",), fail=ATL_FAIL),
             Step("OK multi", tap="OK", ok=("choice multi ok 0,1", "choice adapter shown"), ui=("Apple", "Pear", "Skip"), fail=ATL_FAIL),
             Step("Pear", tap="Pear", ok=("choice adapter 1", "choice done", "nav: container dismissed exit"), fail=ATL_FAIL),
-            Step("back", back=True),
+            BACK,
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-dialog-alerts", [
             Step("atl", tap="atl"),
@@ -430,7 +456,7 @@ SCENARIOS = {
             Step("first goes", ok=("alerts first dismissed later",), ui=("Close first", "Done"),
                  gone=("Show second", "the first alert, rebuilt"), fail=ATL_FAIL, timeout=30),
             Step("Done", tap="Done", ok=("alerts done", "nav: container dismissed exit"), fail=ATL_FAIL),
-            Step("back", back=True),
+            BACK,
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-dialog-late", [
             Step("atl", tap="atl"),
@@ -439,7 +465,7 @@ SCENARIOS = {
             # actions, a new one replaces it with the new labels
             Step("No", tap="No", ok=("late no kept", 'dialog: presented "Late test"'), ui=("Yes", "No"), gone=("Later",), fail=ATL_FAIL),
             Step("Yes", tap="Yes", declined=True),
-            Step("Home", action="Home", ok=("nav: launcher root",)),
+            Step("Home", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-dialog-modal", [
             Step("atl", tap="atl"),
@@ -447,14 +473,14 @@ SCENARIOS = {
             Step("run dialog modal", tap="dialog modal", ok=('dialog: presented "Modal test"',), ui=("Done", "More"),
                  fail=ATL_FAIL, timeout=120),
             Step("Done", tap="Done", ok=("modal done", "nav: container dismissed exit"), fail=ATL_FAIL),
-            Step("back", back=True),
+            BACK,
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-dialog-progress", [
             Step("atl", tap="atl"),
             Step("run dialog progress", tap="dialog progress", ok=("progress spinner shown true", "progress bar shown", "progress 5/10",
                                                                    "progress done", "nav: container dismissed exit"),
                  fail=ATL_FAIL, timeout=120),
-            Step("back", back=True),
+            BACK,
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-dialog-stack", [
             Step("atl", tap="atl"),
@@ -463,11 +489,11 @@ SCENARIOS = {
                  fail=ATL_FAIL, timeout=120),
             Step("next", tap="next", ok=("stack cover resumed",), fail=ATL_FAIL),
             Step("Back", action="Back", ok=("stack resumed",), ui=("next", "line 0"), fail=ATL_FAIL),
-            Step("Home", action="Home", ok=("nav: launcher root",)),
+            Step("Home", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-nav", [
             Step("atl", tap="atl"),
-            # px at 3x: 20 pt side strips, the home indicator at the bottom; B excludes 200-300 px of its right edge
+            # px at 3x: 20 pt side strips, the home indicator at the bottom; B's two rects at its right edge make one span
             Step("run nav", tap="nav", ok=("nav: B onResume", "nav: container shown nav",
                                           r"nav: B insets 60 0 60 [1-9]\d* 0 0 0 [1-9]\d* 0 0 0 [1-9]\d*",
                                           "nav: exclusion left 0 right 1"), fail=ATL_FAIL + ("nav: window size",), timeout=120),
@@ -478,19 +504,24 @@ SCENARIOS = {
             Step("Recent apps", action="Recent apps", ok=("nav: apps list shown",)),
             Step("back to app", tap="back to app", ok=("nav: A onRestart", "nav: A onResume", "nav: container shown nav"),
                  fail=ATL_FAIL),
-            Step("Home", action="Home", ok=("nav: A onStop", "nav: launcher root"), fail=ATL_FAIL),
+            Step("Home", action="Home", ok=("nav: A onStop", "nav: launcher root"), ui=("Add App",), fail=ATL_FAIL),
             # A showed its list in that onStop, while in the back: it waits for the front
             Step("Recent apps, list held", action="Recent apps", ok=("nav: apps list shown",)),
             Step("back to app, list shown", tap="back to app", ok=("nav: container shown nav", "dialog: presented"),
                  fail=ATL_FAIL + NAV_LIST_FAIL),
-            Step("Home with the list", action="Home", ok=("nav: container dismissed home", "nav: A onStop"),
+            Step("Home with the list", action="Home", ok=("nav: container dismissed home", "nav: A onStop"), ui=("Add App",),
                  fail=ATL_FAIL + NAV_LIST_FAIL),
             Step("Recent apps, list held again", action="Recent apps", ok=("nav: apps list shown",)),
             Step("back to app, list again", tap="back to app", ok=("nav: container shown nav", "dialog: presented"),
                  fail=ATL_FAIL + NAV_LIST_FAIL),
             Step("Odd item", tap="Odd ��\U0001f600��", ok=("dialog: closed", "nav: list 1"),
                  fail=ATL_FAIL + ("nav: list canceled",)),
-            Step("Home at the end", action="Home", ok=("nav: A onStop", "nav: launcher root"), fail=ATL_FAIL),
+            # from the app: it goes to the back, the list shows in its place
+            Step("Recent apps from the app", action="Recent apps",
+                 ok=("nav: A onStop", "nav: container dismissed list", "nav: apps list shown"), fail=ATL_FAIL),
+            Step("back to app from the list", tap="back to app",
+                 ok=("nav: A onRestart", "nav: container shown nav"), fail=ATL_FAIL),
+            Step("Home at the end", action="Home", ok=("nav: A onStop", "nav: launcher root"), ui=("Add App",), fail=ATL_FAIL),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-immersive", [
             Step("atl", tap="atl"),
@@ -499,7 +530,53 @@ SCENARIOS = {
                  ok=("nav: I onResume", "nav: frame fullscreen false cover true hide navigation true immersive true",
                      r"nav: window size \d+x\d+", r"nav: I edges status 0 [1-9]\d* 0 0 ime 0 0 0 0 hidden", r"nav: I size \d+x\d+"),
                  fail=ATL_FAIL, timeout=120),
-            Step("Home", action="Home", ok=("nav: I onStop", "nav: launcher root"), fail=ATL_FAIL),
+            Step("Home", action="Home", ok=("nav: I onStop", "nav: launcher root"), ui=("Add App",), fail=ATL_FAIL),
+            # in its second container the window moves back below the status bar: a new size
+            Step("Recent apps", action="Recent apps", ok=("nav: apps list shown",)),
+            Step("back to app", tap="back to app", ok=("nav: I onResume", "nav: container shown nav immersive"), fail=ATL_FAIL),
+            Step("windowed", tap="windowed", ok=("nav: frame fullscreen false cover false", r"nav: window size \d+x\d+"),
+                 fail=ATL_FAIL),
+            Step("Home at the end", action="Home", ok=("nav: I onStop", "nav: launcher root"), ui=("Add App",), fail=ATL_FAIL),
+        ], uses_vm=True, needs_clean=True, alive=True, check=_surface_size),
+        Scenario("atl-installer", [
+            Step("atl", tap="atl"),
+            # the package suite's installer app: a session confirmed from its Application context
+            Step("run installer", tap="installer", ok=("scenario: status -1 dev.dine.pkg.ext", "dialog: presented"),
+                 ui=("Install", "Cancel"), fail=ATL_FAIL + ("scenario: failed",), timeout=120),
+            Step("Install", tap="Install", ok=("scenario: status 0 dev.dine.pkg.ext", "scenario: installer dev.dine.pkg.driver",
+                                               "nav: container dismissed exit"),
+                 fail=ATL_FAIL + ("scenario: failed", r"scenario: status [1-9]")),
+            BACK,
+        ], uses_vm=True, needs_clean=True, alive=True),
+        Scenario("atl-two-apps", [
+            Step("atl", tap="atl"),
+            # two apps of one VM: each gets its own answers, a night change reaches both, and one's end leaves the other
+            Step("run dialog late", tap="dialog late", ok=("nav: container shown dialog late", 'dialog: presented "Late test"'),
+                 ui=("Yes", "No", "Later"), fail=ATL_FAIL, timeout=120),
+            Step("No in the first", tap="No", ok=("late no kept", 'dialog: presented "Late test"'), gone=("Later",),
+                 fail=ATL_FAIL),
+            Step("Home from the first", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
+            Step("atl again", tap="atl"),
+            Step("run text beside it", tap="text", ok=("atl app start", "nav: container shown text", "text shown"),
+                 ui=("name", "fill"), fail=ATL_FAIL + ("runs already",), timeout=120),
+            Step("long alert", tap="long alert", ui=("Long", "Close"), fail=ATL_FAIL),
+            Step("Close in the second", tap="Close", ok=("text long closed",), fail=ATL_FAIL + ("late onClick", "late done")),
+            Step("Home from the second", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
+            Step("atl for the first", tap="atl"),
+            Step("the first's tile", tap="dialog late",
+                 ok=("nav: dialog late runs already: front", "nav: container shown dialog late", 'dialog: presented "Late test"'),
+                 ui=("Yes", "No"), gone=("fill",), fail=ATL_FAIL + ("atl app start",)),
+            Step("Yes is still disabled", tap="Yes", declined=True, fail=("text long closed",)),
+            Step("light first", appearance="light"),
+            Step("dark for both", appearance="dark", ok=("late night 32", "text night 32"), fail=ATL_FAIL),
+            Step("light for both", appearance="light", ok=("late night 16", "text night 16"), fail=ATL_FAIL),
+            Step("system", appearance="system"),
+            Step("Back ends the first", action="Back", ok=("late done", "nav: container dismissed exit", "atl main returned 0"),
+                 fail=ATL_FAIL),
+            Step("the second's tile", tap="text", ok=("nav: text runs already: front", "nav: container shown text"),
+                 ui=("name", "fill"), fail=ATL_FAIL + ("atl app start",)),
+            Step("show in the second", tap="show", ok=('text show ""',), fail=ATL_FAIL),
+            Step("Home", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("art", [
             Step("art", tap="art", ok=("art probe done",)),
@@ -517,8 +594,23 @@ SCENARIOS = {
                  fail=("thread cpu time failed", *ART_FAIL)),
             Step("run netif", tap="run netif", ok=("netif ok", "art main returned"),
                  fail=("netif failed", *ART_FAIL)),
-            Step("back", back=True),
+            BACK,
         ], uses_vm=True, needs_clean=True),   # as a run of it alone: it creates the VM itself
+        # last, in a process of its own: the server's lldb on the running app
+        Scenario("lldb", [
+            Step("attach", dbg=("attach", {}), says="attached to pid", timeout=120),
+            Step("breakpoint", dbg=("bp", {"op": "add", "spec": "HelloView.swift:23", "once": True}),
+                 says=r"breakpoint \d+: .*HelloView\.swift:23"),
+            Step("continue", dbg=("continue", {}), says="running"),
+            Step("hello++", tap="hello++"),
+            Step("stop", dbg=("wait", {"at": "HelloView.swift:23"}), says="matched --stop"),
+            # C: a Swift expression needs the system symbols of the phone's iOS (`ios symbols`)
+            Step("expression", dbg=("exec", {"expr": "(const char *)dine_hello()", "lang": "c"}), says=r"Hello from C\+\+",
+                 timeout=90),
+            Step("continue from it", dbg=("continue", {}), says="running"),
+            Step("detach", dbg=("detach", {}), says="detached"),
+            BACK,
+        ], needs_clean=True, alive=True),
     ],
 }
 
@@ -529,7 +621,7 @@ def listing(app: str) -> str:
         flags = [f for f, on in (("fresh process", sc.needs_clean), ("app stays up", sc.alive)) if on]
         lines.append(f"{sc.name}" + (f" ({', '.join(flags)})" if flags else ""))
         for st in sc.steps:
-            what = f"tap {st.tap!r}" if st.tap else f"type {st.type[1]!r} into {st.type[0]!r}" if st.type else \
+            what = " ".join((st.dbg[0], *map(str, st.dbg[1].values()))) if st.dbg else f"tap {st.tap!r}" if st.tap else f"type {st.type[1]!r} into {st.type[0]!r}" if st.type else \
                 f"action {st.action!r}" if st.action else f"appearance {st.appearance}" if st.appearance else \
                 "back" if st.back else st.title
             lines.append(f"  {what}" + (f"; wait for {', '.join(st.ok)}" if st.ok else "")
@@ -580,6 +672,17 @@ def logged(patterns: tuple[str, ...], since: int) -> str | None:
 def run(app: str, names: list[str], network: bool, relaunch: Callable[[], int], out=print) -> int:
     """Relaunches before the first scenario and before ATL ones that need a clean process; exit 1 at
     the first failure."""
+    debugged: list[tuple[str, dict]] = []
+    try:
+        return _run(app, names, network, relaunch, out, debugged)
+    finally:
+        # a failure in between would leave the app stopped, the next relaunch refused and the breakpoint set
+        for cmd, args in debugged:
+            client.call(cmd, args)
+
+
+def _run(app: str, names: list[str], network: bool, relaunch: Callable[[], int], out,
+         debugged: list[tuple[str, dict]]) -> int:
     scenarios = table(app)
     known = {sc.name: sc for sc in scenarios}
     unknown = [n for n in names if n not in known]
@@ -604,7 +707,18 @@ def run(app: str, names: list[str], network: bool, relaunch: Callable[[], int], 
                 continue
             t = time.monotonic()
             step_start = client.call("status")["cursor"]
-            if st.tap or st.type or st.back or st.action or st.appearance:
+            if st.dbg:
+                if st.dbg[0] == "attach":
+                    debugged.append(("detach", {}))
+                resp = client.call(*st.dbg, timeout=st.timeout)
+                if resp["code"] or (st.says and not re.search(st.says, resp["text"])):
+                    out(f"{sc.name}: {st.title}: FAILED\n{resp['text']}")
+                    return 1
+                if set_at := re.match(r"breakpoint (\d+):", resp["text"]):
+                    debugged.append(("bp", {"op": "rm", "spec": set_at[1]}))
+                if st.dbg[0] == "detach":
+                    debugged.clear()   # a one-shot breakpoint went at its stop
+            elif st.tap or st.type or st.back or st.action or st.appearance:
                 resp = client.call("ui_tap", {"arg": st.tap}, timeout=30) if st.tap else \
                     client.call("ui_type", {"arg": st.type[0], "text": st.type[1]}, timeout=30) if st.type else \
                     client.call("ui_action", {"arg": st.action}, timeout=30) if st.action else \

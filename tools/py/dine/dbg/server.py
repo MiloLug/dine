@@ -1,6 +1,7 @@
 """The debug server: one process per session, driven over a Unix socket by `dine dbg …`.
 
-Run by `tools/dine dbg start-server` only: `python -m dine.dbg.server --target T --app A --session DIR`.
+Run by `tools/dine dbg start-server` only:
+`python -m dine.dbg.server --target T --app A --session DIR --lock-fd FD`.
 """
 
 import argparse
@@ -32,6 +33,11 @@ QUIET = {"status", "log", "wait", "note"}
 DEFAULT_SRCS = ("syslog", "event", "lldb")
 
 
+def own_wait(timeout: float) -> float:
+    """A locked command's own wait: it ends inside the request's, so its answer reaches the client."""
+    return timeout - min(1.0, timeout / 4)
+
+
 class Server:
     def __init__(self, target_name: str, app: str, directory: Path):
         self.dir = directory
@@ -50,8 +56,8 @@ class Server:
     def handle(self, req: dict) -> dict:
         cmd = req.get("cmd", "")
         args = req.get("args") or {}
-        timeout = float(req.get("timeout") or 30)
-        max_lines = int(req.get("max_lines") or 60)
+        timeout = float(30 if req.get("timeout") is None else req["timeout"])
+        max_lines = int(60 if req.get("max_lines") is None else req["max_lines"])
         code = 0
         try:
             server_fn = getattr(self, f"cmd_{cmd}", None)
@@ -63,7 +69,7 @@ class Server:
                     self.store.set_mark()
                 kw = dict(args)
                 if _accepts(fn, "timeout"):
-                    kw["timeout"] = timeout
+                    kw["timeout"] = timeout if cmd in UNLOCKED else own_wait(timeout)
                 if cmd == "interrupt" and self.busy:
                     text = self._interrupt_busy()
                     if self.target.state().get("state") == "running":
@@ -126,9 +132,11 @@ class Server:
             self.target.interrupt_command(True)
             t.join(5)
             self.target.interrupt_command(False)
-            raise CmdError(f"`{cmd}` timed out after {timeout:g}s"
-                           + ("; lldb is still busy with it (tools/dine dbg status)" if t.is_alive()
-                              else "; interrupted"))
+            late = f"`{cmd}` timed out after {timeout:g}s"
+            if t.is_alive():
+                raise CmdError(f"{late}; lldb is still busy with it (tools/dine dbg status)")
+            if isinstance(result.get("error"), CmdError):
+                raise CmdError(f"{late}; interrupted: {result['error']}")
         if "error" in result:
             raise result["error"]
         return result["value"]
@@ -165,9 +173,9 @@ class Server:
             self._interrupt_busy()
         try:
             text = self._locked("shutdown", lambda: self.target.shutdown(kill_app), timeout)
-        except CmdError as e:
+        except Exception as e:   # whatever failed, the server still stops
             code = 1
-            text = f"{e}\ncouldn't detach cleanly: the app may be left stopped ({self.target.relaunch})"
+            text = f"{str(e) or type(e).__name__}\ncouldn't end the session cleanly: the app may still run, or be left stopped ({self.target.relaunch})"
         # `serve` exits once this answer is sent.
         self.shut_down = True
         return (text + "\n" if text else "") + f"server stopped; logs kept in {self.dir}", code
@@ -303,7 +311,10 @@ def main() -> None:
     p.add_argument("--target", required=True, choices=sorted(TARGETS))
     p.add_argument("--app", required=True)
     p.add_argument("--session", required=True, type=Path)
+    p.add_argument("--lock-fd", required=True, type=int)
     a = p.parse_args()
+    # the lock ends with this process: none of its children may hold it on
+    os.set_inheritable(a.lock_fd, False)
     server = Server(a.target, a.app, a.session)
     signal.signal(signal.SIGTERM, lambda *_: server.stopping.set())
     try:
@@ -313,8 +324,7 @@ def main() -> None:
             server.target.shutdown(kill_app=False)
     finally:
         server.store.close()
-        session.SOCKET.unlink(missing_ok=True)
-        session.PIDFILE.unlink(missing_ok=True)
+        session.clear()
 
 
 if __name__ == "__main__":

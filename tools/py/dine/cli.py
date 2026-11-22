@@ -37,8 +37,7 @@ def _ios(sub):
     t.set_defaults(func=lambda a: ios.run_libexec("build-ios-art.sh"))
 
     t = s.add_parser("build-atl", help="dine-atl uikit build → out/ios/lib/libtranslation_layer_main.a, jars → "
-                                       "out/ios/share/atl, test APKs → out/tests/apks (after linux build atl); "
-                                       "DINE_RELEASE=1: no test hooks or APKs")
+                                       "out/ios/share/atl (after linux build atl); DINE_RELEASE=1: no test hooks")
     t.set_defaults(func=_ios_build_atl)
 
     t = s.add_parser("icons", help="apps/Dine/Resources/Icons.xcassets from its sources.txt and the icon pack's "
@@ -167,8 +166,8 @@ def _linux(sub):
     t.add_argument("stages", nargs="*", choices=[[], "bionic", "art", "opensles", "atl", "atl-headless"],
                    metavar="stage")
     t.set_defaults(func=_linux_build)
-    t = s.add_parser("smoke", help="gtk runs Gravity Defied to onResume on a hidden display, headless runs "
-                                   "demo_app and looper (after linux build; --list for the checks)")
+    t = s.add_parser("smoke", help="checks of the gtk build (on a hidden display) and the headless one "
+                                   "(after linux build; --list for the checks)")
     t.add_argument("names", nargs="*", metavar="check")
     t.add_argument("--list", action="store_true", help="print the checks")
     t.set_defaults(func=_linux_smoke)
@@ -251,7 +250,7 @@ def _dbg(sub):
     t.set_defaults(func=_start_server)
 
     t = s.add_parser("stop-server", help="detach, stop streams, exit; logs are kept")
-    t.add_argument("--kill-app", action="store_true")
+    t.add_argument("--kill-app", action="store_true", help="also end the app, attached or not")
     t.add_argument("--timeout", type=float, default=30)
     t.set_defaults(func=_stop_server)
 
@@ -400,6 +399,7 @@ def _relaunch(st: dict, activity: str | None = None) -> int:
     if st["target"] == "gtk":
         if (st.get("state") or {}).get("attached"):
             raise DineError("the debug server is attached, which blocks a relaunch: tools/dine dbg detach first")
+        linux.require_fresh(paths.ATL_GTK_BUILD, "tools/dine linux build atl")
         client.call("kill", timeout=30)
         _notify_server("launching", f"launching {app}", mark=True)
         resp = client.call("launch", {"activity": activity}, timeout=30)
@@ -489,9 +489,10 @@ def _stop_server(a) -> int:
     resp = client.call("shutdown", {"kill_app": a.kill_app}, timeout=a.timeout, max_lines=a.max_lines)
     print(resp["text"])
     deadline = time.monotonic() + 15
-    while pid and session.server_pid() == pid and time.monotonic() < deadline:
-        time.sleep(0.2)
-    if session.server_pid() == pid:
+    # its lock outlasts its pid file until the process is gone, and the next start-server needs it
+    while session.locked() and time.monotonic() < deadline:
+        time.sleep(0.1)
+    if session.locked():
         print(f"server pid {pid} still alive after 15s; kill it: kill {pid}")
         return 1
     return resp["code"]

@@ -50,11 +50,19 @@ def call(cmd: str, args: dict | None = None, timeout: float = 30, max_lines: int
 
 
 def start_server(target: str, app: str, timeout: float) -> tuple[int, str]:
-    pid = session.server_pid()
-    if pid:
-        return 1, f"already running (pid {pid}, session {session.CURRENT.resolve()}); " \
-                  "one server at a time: tools/dine dbg stop-server first"
-    session.clear_stale()
+    lock = session.lock()
+    if lock is None:
+        pid = session.server_pid()
+        which = f"pid {pid}, session {session.CURRENT.resolve()}" if pid else "it is starting or stopping"
+        return 1, f"already running ({which}); one server at a time: tools/dine dbg stop-server first"
+    try:
+        session.clear()
+        return _spawn(target, app, timeout, lock)
+    finally:
+        os.close(lock)
+
+
+def _spawn(target: str, app: str, timeout: float, lock: int) -> tuple[int, str]:
     cls = TARGETS[target]
     cls.preflight(app)
     directory = session.new_session_dir()
@@ -63,9 +71,9 @@ def start_server(target: str, app: str, timeout: float) -> tuple[int, str]:
     log = open(directory / "server.log", "w")
     proc = subprocess.Popen(
         [sys.executable, "-m", "dine.dbg.server", "--target", target, "--app", app,
-         "--session", str(directory)],
+         "--session", str(directory), "--lock-fd", str(lock)],
         stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, env=env,
-        cwd=paths.ROOT, start_new_session=True)
+        cwd=paths.ROOT, start_new_session=True, pass_fds=(lock,))
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if proc.poll() is not None:

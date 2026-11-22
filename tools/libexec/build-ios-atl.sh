@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Cross-compile dine-atl's iOS build (out/ios/lib/libtranslation_layer_main.a) and stage ATL's
 # jars in out/ios/share/atl. Needs `tools/dine linux build atl` first: the jars and the JNI headers
-# come from that build. Without DINE_RELEASE=1: with test_hooks, and the test APKs built into
-# out/tests/apks (`ios run` bundles them).
+# come from that build. Without DINE_RELEASE=1: with test_hooks.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -11,7 +10,6 @@ JOBS="${JOBS:-$(nproc)}"
 OUT="$ROOT/out/ios"
 BUILD="$OUT/build/dine-atl"
 LINUX_JARS="$DINE_LINUX_PREFIX/lib/java/dex/android_translation_layer"
-APKS="$ROOT/out/tests/apks"
 hooks=true
 [[ ${DINE_RELEASE:-} == 1 ]] && hooks=false
 
@@ -68,12 +66,6 @@ fi
 meson compile -C "$BUILD" -j "$JOBS"
 meson install -C "$BUILD" --quiet
 
-if [[ $hooks == true ]]; then
-  for apk in looper dialog nav views widgets windows; do
-    python3 "$ROOT/tests/harness/apk.py" "$ROOT/dine-atl/tests/headless/$apk" "$APKS/$apk.apk" \
-      --atl "$ROOT/out/linux/build/dine-atl"
-  done
-fi
 # the whole dir is bundled: nothing else may stay in it. ATLPaths expects gstub.jar and ghax.jar
 # next to api-impl.jar.
 rm -rf "$OUT/share/atl"

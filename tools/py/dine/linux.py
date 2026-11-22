@@ -1,6 +1,5 @@
-"""Linux smoke: the gtk build runs Gravity Defied to onResume, the dialog and views APKs and the
-widgets APK's drawing, on a hidden display (display.py); the headless build runs demo_app and the
-looper, dialog, nav, views, widgets and windows APKs. Needs a prior `tools/dine linux build`."""
+"""Linux smoke: the CHECKS table, which runs ATL's gtk build on a hidden display (display.py) and
+its headless build on test APKs. Needs a prior `tools/dine linux build`."""
 
 import fcntl
 import signal
@@ -25,7 +24,6 @@ NAV_APK = paths.OUT / "tests/apks/nav.apk"
 VIEWS_APK = paths.OUT / "tests/apks/views.apk"
 WIDGETS_APK = paths.OUT / "tests/apks/widgets.apk"
 WINDOWS_APK = paths.OUT / "tests/apks/windows.apk"
-# not in tests/apks: the iOS dev payload bundles every APK there
 CRASH_APK = paths.OUT / "tests/linux-apks/crash.apk"
 
 

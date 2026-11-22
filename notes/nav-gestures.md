@@ -22,8 +22,7 @@ Back and `moveTaskToBack`, cli `-c` (`back`, `home`, `front`), the nav APK (life
 `run-nav.sh` (Linux steps 3 to 7). Stage 2 without settings, insets and process management: the
 listener (`task_moved`, `exited`), artbridge, `AppContainerController`, the edge recognizers with
 the default bindings, the launcher's `NavigationStack(path:)`, the placeholder list, the
-accessibility actions, agent `ui action`, smoke `atl-nav` (steps 2-4 and 7-9, step 8 taps
-"back to app"), `atl-demo` ending with Home and `atl-looper` waiting for the exit dismissal.
+accessibility actions, agent `ui action`, smoke `atl-nav`, `atl-demo` ending with Home and `atl-looper` waiting for the exit dismissal.
 Dialogs follow the task: the app's window registry shows a dialog only while its task is in front
 and its activity is shown, so it hides on back and shows again on front; one shown in the back
 waits for the front, and backend results count only while it is drawn. The nav APK's A shows a list on its third
@@ -35,13 +34,14 @@ home indicator as insets and decide. Linux `linux smoke nav` checks the insets o
 the exclusion spans; `framework` has `WindowInsetsTest`; iOS `atl-nav` checks B's insets and its
 exclusion span. M6b3b and M6b3c added the status-bar insets for a window that covers the whole
 screen and the insets and exclusion of Dialog and WindowManager roots. Left:
-[ATL-3](bug-tracker.md#atl-3), and M4a's check on the phone that the recognizer ignores an excluded
-span (smoke checks the log line).
+[ATL-3](bug-tracker.md#atl-3), and the check on the phone that the recognizer ignores an excluded
+span ([DINE-7](general-todo.md#dine-7); the classifier is tested off the device by
+`tests/launcher/`, smoke checks the count line).
 
 **Left to do:** stages in `notes/atl-port.md`: settings (M8c: the `navigation` UserDefaults
 store, the observable `NavigationSettings`, today a constant value with the defaults in
-`apps/Dine/Sources/Dine/EdgeGestures.swift`, agent `ui defaults`, smoke `atl-nav` steps 1, 5 and
-6), the running apps list and the run states on the launcher's tiles (M8a; several apps: multi-app
+`apps/Dine/Sources/Dine/EdgeGesture.swift`, agent `ui defaults`, smoke `atl-nav`'s
+`defaults` steps), the running apps list and the run states on the launcher's tiles (M8a; several apps: multi-app
 MA8, `notes/multi-app-support/todo.md`), and [Immersive mode](#immersive-mode)'s Dine-wide setting
 (M8c; the mode itself was built in M6b3c). The by-hand default
 bindings fire their actions; the other phone checks are [DINE-7](general-todo.md#dine-7) and M8c's
@@ -113,9 +113,12 @@ Every binding is a setting (see [Settings](#settings)).
   On iOS the host accepts the move, so Back on the root activity is Home. On gtk the host refuses
   it and the activity finishes, which keeps the desktop behaviour. Back while the task is in the
   back does nothing.
-- **Home:** Dine dismisses the app container at once, pops the launcher to its root, then tells
-  ATL, which runs `onPause` and `onStop`. Home never waits for the Android main thread, so a hung
-  app can't trap the user.
+- **Home:** Dine starts the app container's dismissal and tells ATL, which runs `onPause` and
+  `onStop`; when the dismissal has ended it pops the launcher to its root, unanimated (so a pushed
+  screen shows during the slide). UIKit drops a navigation change made during the dismissal of a
+  container with an alert over it ("the navigation stack will not be updated", iOS 27), and the
+  empty path would then claim a root that doesn't show. Home never waits for the Android main
+  thread, so a hung app can't trap the user. A Home before the app runs holds for its start.
 - **Running apps list:** a Dine screen over the launcher, newest first, one entry per running app
   labelled with its name. Opening it from an app moves the app to the back. Tapping an entry brings
   that app to the front and presents its container. Dismissing the running apps list returns to the
@@ -215,7 +218,8 @@ then sends the new size (`atl_nav_set_window_size`) and the status-bar inset.
   10's `MIN_GESTURE_EXCLUSION_LIMIT_DP`, granted from the bottom up, verified), converts to dp, and
   calls `host_gesture_exclusion_changed` when the spans differ from the last ones sent.
 - Dine keeps the spans on the main queue; the container's recognizer ignores a touch in an
-  excluded span of its edge (pt from the window's top, the safe area's top).
+  excluded span of its edge (pt from the app window's top: the safe area's, or the screen's while
+  the window runs under the status bar, `cover_top`).
 
 ### Reach
 
@@ -232,7 +236,8 @@ Built in M6b3c; the Dine-wide setting is M8c's. The shown windows' flags reach D
 the status bar hidden: a first swipe there only reveals), and `SYSTEM_UI_FLAG_HIDE_NAVIGATION`
 without them to the container's `prefersHomeIndicatorAutoHidden`. On iOS 27 a hidden indicator lets
 the first swipe through a deferred bottom edge, and the deferral alone keeps the indicator away
-until a swipe (both seen on the phone, 2026-11-08). `InsetsController`'s `hide`, `show` and
+until a swipe (both seen on the phone, 2026-11-08, with the auto-hide turned off by the debugger;
+the swipe on the built rule and the top edge are [DINE-7](general-todo.md#dine-7)). `InsetsController`'s `hide`, `show` and
 `setSystemBarsBehavior` map onto the same flags. A hidden bar's visible inset is 0, its maximum kept
 (`getInsetsIgnoringVisibility`).
 
@@ -271,8 +276,8 @@ before the start; the cli and gtk hosts keep the one they run).
 | Function | Effect |
 |---|---|
 | `bool atl_nav_back(struct atl_app *)` | posts Back: the BACK key through the key chain (a shown dialog, the focused views, the current activity); no-op while in the back |
-| `bool atl_nav_home(struct atl_app *)` | posts task to back; no-op while in the back |
-| `bool atl_nav_front(struct atl_app *)` | posts task to front; no-op while in the front |
+| `void atl_nav_home(struct atl_app *)` | posts task to back; no-op while in the back; before the start it is stored and the app starts in the back |
+| `void atl_nav_front(struct atl_app *)` | posts task to front; no-op while in the front; before the start it is stored, undoing a Home |
 | `void atl_nav_set_insets(struct atl_app *, ...)` | stores insets, posts their dispatch ([Host to ATL](#host-to-atl)) |
 | `void atl_nav_set_window_size(struct atl_app *, float w, float h)` | stores the window's size in dp, posts a dispatch that lays the windows out again |
 | `void atl_nav_set_night(struct atl_app *, int night)` | stores the night mode (`Configuration.UI_MODE_NIGHT_*`), posts the app's configuration change |
@@ -371,7 +376,8 @@ struct atl_embedded_listener {
   AtlView read it.
 - **Log lines** (os_log, category `art`), which smoke waits on:
   - `nav: container shown <app>`
-  - `nav: container dismissed <reason>`, with reason `home`, `back`, `list` or `exit`
+  - `nav: container dismissed <reason>`, with reason `home`, `back`, `list` or `exit`, once UIKit's
+    dismissal has ended
   - `nav: launcher root`
 
 ## Tests
@@ -379,11 +385,13 @@ struct atl_embedded_listener {
 ### Test APK
 
 `dine-atl/tests/headless/nav/`, built with `tests/harness/apk.py`: package `dev.dine.nav`, minSdk
-29, activities `MainActivity` (A), `SecondActivity` (B), `ImmersiveActivity` (I), `ResultActivity`
-(R) and `AnswerActivity` (S). A starts B once, guarded by a static flag, from its first `onResume`.
+29; its manifest lists the activities, among them `MainActivity` (A), `SecondActivity` (B),
+`ImmersiveActivity` (I, whose "windowed" button leaves `cover_top`), `ResultActivity` (R) and
+`AnswerActivity` (S). A starts B once, guarded by a static flag, from its first `onResume`.
 All log their lifecycle and register an `OnApplyWindowInsetsListener` that logs `nav: <name> insets
 <gesture l t r b> <mandatory l t r b> <navigation bars l t r b>`, values in whole px. B sets two
-exclusion rects at its right edge, 30 px wide, y 200-300 and 250-540. A tap on R's "ask" starts S
+overlapping exclusion rects at its right edge, 30 px wide, y 200-300 and 250-540, which make one
+span. A tap on R's "ask" starts S
 for a result; a tap on S's "answer" sets it and finishes, and R logs `nav: R result <request>
 <code> <answer>`.
 
@@ -429,25 +437,15 @@ for a result; a tap on S's "answer" sets it and finishes, and R logs `nav: R res
   - Register them in `tools/py/dine/dbg/server.py` and the `cli.py` choices as
     `tools/dine dbg ui action <name>` and `tools/dine dbg ui defaults <key> <json>`. Smoke `Step`
     gets `action=` and `defaults=` fields.
-- **APK:** `build-ios-atl.sh` builds `nav.apk` into `out/tests/apks`, which dev builds bundle in `dev/`; AtlView gets "run nav"
-  with activity `dev/dine/nav/MainActivity`.
-- **Smoke scenario `atl-nav`,** with `uses_vm=True, needs_clean=True`, in `SCENARIOS` after
-  `atl-looper`. The safe-area values are unknown to the test, so its regexes accept any top and
-  bottom values.
-  1. `defaults navigation null`, so a value left by an earlier run can't leak in
-  2. tap "atl"
-  3. tap "run nav": `nav: insets B 20 <t> 20 <b> 0 <t> 0 <b>`
-  4. action "Back": B finishes, A resumes
-  5. `defaults navigation {"stripWidth":{"left":30,"right":30}}`:
-     `nav: insets A 30 <t> 30 <b> 0 <t> 0 <b>`
-  6. `defaults navigation null`: A's insets line back at 20
-  7. `back`: A's `onStop`, `nav: launcher root`
-  8. action "Recent apps", tap "nav": A's `onRestart`, `onResume`, `nav: container shown nav`
-  9. action "Home": `nav: launcher root`
-- **Existing scenarios:** `atl-demo` ends with action "Home" waiting for `nav: launcher root`,
-  instead of `back`. `atl-looper`'s run step also waits for `nav: container dismissed exit` before
-  its `back`. Both dismissals follow an async ATL event that arrives after the agent's `settle` has
-  returned, so the step waits for the log line.
+- **APK:** `ios run` builds `nav.apk` (`tools/libexec/build-ios-dev.sh`) and dev builds bundle it
+  in `dev/`; AtlView's tiles are "nav" (`dev/dine/nav/MainActivity`) and "nav immersive".
+- **Smoke scenarios:** `atl-nav` (Back, Home, the list from the launcher and from the app, A's held
+  list) and `atl-immersive` (the window under the status bar and back below it in its second
+  container); the steps are `tools/py/dine/dbg/smoke.py`'s table (`tools/dine dbg smoke --list`).
+  M8c adds the `defaults navigation` steps: strips of 30 pt reach the app as insets, and clearing
+  the key brings 20 back.
+- **The classifier:** `tests/launcher/edge_gesture_test.swift`, built and run on Linux by
+  `tools/dine test unit`.
 
 ### By hand on the phone
 

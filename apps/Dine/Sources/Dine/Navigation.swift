@@ -128,10 +128,9 @@ final class Navigator: ObservableObject {
 
     func home() {
         guard container != nil else { return }
-        dismissContainer("home")
-        popToRoot()
+        dismissToRoot("home")
         if let handle {
-            _ = atl_nav_home(handle)
+            atl_nav_home(handle)
         }
     }
 
@@ -140,7 +139,7 @@ final class Navigator: ObservableObject {
         guard appsList == nil else { return }
         listReturnsToApp = container != nil
         if listReturnsToApp, let handle {
-            _ = atl_nav_home(handle)
+            atl_nav_home(handle)
         }
         let list = AppsListController(navigator: self, appRuns: app != nil)
         appsList = list
@@ -200,7 +199,7 @@ final class Navigator: ObservableObject {
 
     private func front() {
         guard app != nil, let handle else { return }
-        _ = atl_nav_front(handle)
+        atl_nav_front(handle)
         showContainer()
     }
 
@@ -237,20 +236,32 @@ final class Navigator: ObservableObject {
         container = nil
         keyboardChanged(overlap: 0) // the keyboard stays with the app in front
         updateIdleTimer()
-        log.notice("nav: container dismissed \(reason, privacy: .public)")
         afterTransitions {
+            // once it is off the screen: until then it takes an escape meant for what is under it
+            let gone = {
+                log.notice("nav: container dismissed \(reason, privacy: .public)")
+                then?()
+            }
             // also takes down an alert ATL presented on it
             guard let presenter = controller.presentingViewController else {
-                then?()
+                gone()
                 return
             }
-            presenter.dismiss(animated: true, completion: then)
+            presenter.dismiss(animated: true, completion: gone)
         }
     }
 
-    private func popToRoot() {
-        path = NavigationPath()
-        log.notice("nav: launcher root")
+    /// The pop follows the dismissal: UIKit drops a navigation change made while one runs (an alert
+    /// over the container), and the path would claim a root that doesn't show.
+    private func dismissToRoot(_ reason: String) {
+        dismissContainer(reason) { [self] in
+            afterTransitions { [self] in
+                var unanimated = Transaction()
+                unanimated.disablesAnimations = true
+                withTransaction(unanimated) { path = NavigationPath() }
+                log.notice("nav: launcher root")
+            }
+        }
     }
 
     /// A window size in pt that is whole px, as ATL's window is.
@@ -283,8 +294,7 @@ final class Navigator: ObservableObject {
     private func taskMoved(_ app: OpaquePointer?, front: Bool, byHost: Bool) {
         // Dine's own moves updated the UI already: a late echo must not undo what the user did since
         guard app == current, !byHost, !front else { return }
-        dismissContainer("back")
-        popToRoot()
+        dismissToRoot("back")
     }
 
     private func exited(_ app: OpaquePointer?) {
@@ -359,6 +369,28 @@ final class AppSurfaceView: UIView, ATLSurface {
     private(set) var immersive = false
     private(set) var dim: CGFloat = 0
     var frameChanged: (@MainActor () -> Void)?
+    // the view holds them through every container that shows it
+    private lazy var windowWidth = widthAnchor.constraint(equalToConstant: 0)
+    private lazy var windowHeight = heightAnchor.constraint(equalToConstant: 0)
+
+    func setWindowSize(_ size: CGSize) {
+        windowWidth.constant = size.width
+        windowHeight.constant = size.height
+        NSLayoutConstraint.activate([windowWidth, windowHeight])
+    }
+
+    #if DEBUG
+    private var laidOut = CGSize.zero
+
+    // for dbg smoke: UIKit logs nothing for two required sizes that conflict
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard bounds.size != laidOut else { return }
+        laidOut = bounds.size
+        let sizes = constraints.filter { $0.isActive && $0.firstItem === self && $0.secondItem == nil }.count
+        log.notice("nav: surface \(Int(self.laidOut.width))x\(Int(self.laidOut.height)) size constraints \(sizes)")
+    }
+    #endif
 
     func atlFrameChanged(_ color: UIColor?, light: Bool, fullscreen: Bool, coverTop: Bool, hideNavigation: Bool, immersive: Bool) {
         frameColor = color
@@ -391,7 +423,6 @@ final class AppContainerController: UIViewController {
     private unowned let navigator: Navigator
     private var edges: EdgeGestureRecognizer?
     private var surfaceTop: NSLayoutConstraint?
-    private var surfaceSize: (width: NSLayoutConstraint, height: NSLayoutConstraint)?
     private var coversTop = false
 
     init(surface: AppSurfaceView, size: CGSize, navigator: Navigator) {
@@ -435,10 +466,7 @@ final class AppContainerController: UIViewController {
             statusDim.bottomAnchor.constraint(equalTo: statusBar.bottomAnchor),
             surface.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
         ])
-        let width = surface.widthAnchor.constraint(equalToConstant: size.width)
-        let height = surface.heightAnchor.constraint(equalToConstant: size.height)
-        surfaceSize = (width, height)
-        NSLayoutConstraint.activate([width, height])
+        surface.setWindowSize(size)
         coversTop = surface.coverTop
         pinSurfaceTop()
         let navigator = navigator, surface = surface
@@ -492,13 +520,12 @@ final class AppContainerController: UIViewController {
 
     // the window's safe area, as run() sizes it: the view's is 0 during the present animation
     private func resizeWindow() {
-        guard let window = view.window, let surfaceSize else { return }
+        guard let window = view.window else { return }
         let safeArea = window.safeAreaInsets
         let top = coversTop ? 0 : safeArea.top
         let size = Navigator.whole(CGSize(width: window.bounds.width - safeArea.left - safeArea.right, height: window.bounds.height - top),
                                    scale: window.traitCollection.displayScale)
-        surfaceSize.width.constant = size.width
-        surfaceSize.height.constant = size.height
+        surface.setWindowSize(size)
         navigator.windowChanged(surface, size: size, statusTop: coversTop ? safeArea.top : 0)
     }
 
@@ -514,7 +541,7 @@ final class AppContainerController: UIViewController {
     override var prefersStatusBarHidden: Bool { surface.fullscreen }
 
     private func matchFrame() {
-        if coversTop != surface.coverTop, surfaceSize != nil {
+        if coversTop != surface.coverTop, surfaceTop != nil {
             coversTop = surface.coverTop
             pinSurfaceTop()
             resizeWindow()

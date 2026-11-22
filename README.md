@@ -43,10 +43,10 @@ symbols, ATL build, and a verification checklist.
 | Command | What |
 |---|---|
 | `tools/dine ios tunnel start\|status` | iOS 17+ developer services: `dine-tunneld` runs from boot; `start` starts it if stopped (sudo), waits for the tunnel and mounts the DDI (after a phone reboot) |
-| `tools/dine ios build-native [lib…]` | `native/*`, plus `native/dev/*` unless `DINE_RELEASE=1` → `out/ios/{lib,include}` (`DINE_IOS_BUILD_TYPE`, default `RelWithDebInfo`) |
+| `tools/dine ios build-native [lib…]` | `native/*`, plus `native/dev/*` unless `DINE_RELEASE=1` (which removes those a dev build left) → `out/ios/{lib,include}` (`DINE_IOS_BUILD_TYPE`, default `RelWithDebInfo`) |
 | `tools/dine ios build-art` | dine-art (ART, libcore natives, androidfw) plus ICU, lz4, liblzma, wolfSSL → static archives in `out/ios/lib`, boot jars → `out/ios/share/art` (ART's junit jars → `out/ios/share/art-junit`, bundled by dev builds only) |
-| `tools/dine ios build-atl` | dine-atl's uikit build (meson cross) → `out/ios/lib/libtranslation_layer_main.a`; its jars → `out/ios/share/atl`; the looper, dialog, nav, views and widgets test APKs → `out/tests/apks`; needs `linux build atl` first |
-| `tools/dine ios run [App]` | kill a running instance → native libs → dev payload (test APKs and jars → `out/ios/dev`; the package suite's installer app, after `tools/dine test package`) → asset catalog (accord → `out/ios/assets/<App>`) → `xtool dev` (build/sign/install) → launch via DVT. `DINE_RELEASE=1` (after `DINE_RELEASE=1 tools/dine ios build-atl`): a release build without dev or test code (CLAUDE.md) |
+| `tools/dine ios build-atl` | dine-atl's uikit build (meson cross) → `out/ios/lib/libtranslation_layer_main.a`; its jars → `out/ios/share/atl`; needs `linux build atl` first |
+| `tools/dine ios run [App]` | kill a running instance → native libs → dev payload, built from its sources (ATL's test APKs → `out/tests/apks`, the runtime suite's authored jars, the package suite's installer app; all bundled from `out/ios/dev`) → asset catalog (accord → `out/ios/assets/<App>`) → `xtool dev` (build/sign/install) → launch via DVT. `DINE_RELEASE=1` (after `DINE_RELEASE=1 tools/dine ios build-atl`): a release build without dev or test code (CLAUDE.md); its last step reads the bundle and fails on a dev or test part |
 | `tools/dine ios icons` | `apps/Dine/Resources/Icons.xcassets` from its `sources.txt`: copies the listed icons from the pack's clone |
 | `tools/dine ios launch [--suspended] [App]` | (re)launch via DVT, print the pid |
 | `tools/dine ios ps [App] [--all]`, `tools/dine ios kill <App\|pid>` | device processes |
@@ -56,12 +56,12 @@ symbols, ATL build, and a verification checklist.
 | `tools/dine ios lldb-offline [App] <bp> [-- lldb args]` | same lldb setup on a synthetic core, no phone |
 | `tools/dine dbg …` | the debug server: see [Debug server](#debug-server) |
 | `tools/dine linux build [stage…]` | bionic_translation → dine-art → libopensles → dine-atl → `out/linux/prefix`, then headless dine-atl in `out/linux/build/dine-atl-headless` |
-| `tools/dine linux smoke [check…] [--list]` | gtk ATL runs Gravity Defied to `onResume`, the dialog and views APKs and the widgets APK's Canvas view, and takes pointer and key events fed through its debug agent into the dialog, nav and widgets APKs (`input-gtk`), types into the widgets APK's text fields (`text-gtk`); headless ATL runs demo_app (also at 480 dpi) and the looper, dialog, nav, crash, views, widgets (also its scroll nodes' interception, `pan`) and windows APKs; the loop slot's own test and the pointer tracker's run on both builds (after `linux build`; `--list` has every check) |
+| `tools/dine linux smoke [check…] [--list]` | checks of ATL's gtk build (on a hidden display) and its headless build on test APKs (after `linux build`); `--list` has every check |
 | `tools/dine test runtime [fetch\|build\|run\|all] [-f REGEX] [--update-expectations]` | ART run-tests on the local `dalvikvm -Xint` (suite `dine-art/tests/runtime`, engine `tests/harness`); `tools/dine test runtime -- --help` lists every option |
 | `tools/dine test framework [-f REGEX] [--gtk \| --one-vm] [--update-expectations]` | `android.*` JUnit suites in-VM on the headless ATL build, the gtk one with `--gtk`, or side by side as apps of one headless VM with `--one-vm` (suite `dine-atl/tests/framework`, after `linux build`) |
 | `tools/dine test apps [-f REGEX] [--gtk] [--update-expectations]` | real APKs (`tests/android-compat/apps/apps.toml`: Gravity Defied, AdaptiveIconDemo) to their log markers on the headless ATL build, or the gtk one with `--gtk` (after `linux build`) |
 | `tools/dine test package [-f REGEX] [--update-expectations]` | package install, query and removal on the headless ATL build: CLI installs graded on the registry's rows, a JUnit suite of `PackageManager` queries, and an installer app's sessions and intents with scripted dialog answers (suite `dine-atl/tests/package`, after `linux build`) |
-| `tools/dine test unit` | unit tests of `tests/harness` and `tools/py` |
+| `tools/dine test unit` | unit tests of `tests/harness` and `tools/py`, and the edge classifier's (`tests/launcher`, built with swiftc) |
 
 ## Device connection
 
@@ -133,7 +133,7 @@ tools/dine dbg bt; tools/dine dbg up; tools/dine dbg source
 tools/dine dbg log tail -n 20 --app; tools/dine dbg log grep 'art main'
 tools/dine dbg ui screenshot                      # PNG in the session dir
 tools/dine dbg detach
-tools/dine dbg stop-server                        # detaches; never kills the app without --kill-app
+tools/dine dbg stop-server                        # detaches; with --kill-app it ends the app, attached or not
 ```
 
 - `wait --timeout S` conditions: `--stop`, `--at LOC`, `--log TEXT` (loose match:
@@ -158,8 +158,9 @@ tools/dine dbg stop-server                        # detaches; never kills the ap
 - A reply starting `warning: the server runs older dbg code` means `tools/py/dine` changed since
   `start-server`: restart the server.
 - One lldb target per server: attaching to the next process reuses it, with its breakpoints.
-- `HelloView.swift:8` (`HelloView.init`) runs at launch (SwiftUI builds the `NavigationLink`
-  destination eagerly); `HelloView.swift:23` (`body`/`onAppear`) fires when the screen opens.
+- Nothing of `HelloView` runs before hello++ is opened: then `HelloView.swift:8` (its init) and
+  `HelloView.swift:23` (`body`/`onAppear`) fire. At launch `DineMain.init`,
+  `dine_dbg_agent_start` and `AppLibrary.init` (`AppLibrary.swift:31`) run.
 - Claude Code: the `dine-peek` (narrow reads) and `dine-debugger` subagents (`.claude/agents/`,
   gitignored) know this contract, for both targets.
 - Tests: `tools/dine test unit` runs the server against a scripted fake target
@@ -197,8 +198,9 @@ tools/dine dbg attach                             # local, about 1 s; bp, step, 
 tools/dine ios lldb                                   # interactive
 tools/dine ios lldb Dine -- -b -o bt -o "process detach"   # scripted
 # Break in startup code: the app waits for the debugger, so set breakpoints, then continue.
-tools/dine ios lldb --suspended -- -b -o "b hello.cpp:12" -o c -o "frame variable" -o "process detach"
-tools/dine ios lldb --suspended -- -b -o "b HelloView.swift:8" -o c -o "po self" -o "process detach"
+# These two breakpoints are unverified: read from the code, not run on the phone.
+tools/dine ios lldb --suspended -- -b -o "b dine_dbg_agent_start" -o c -o bt -o "process detach"
+tools/dine ios lldb --suspended -- -b -o "b AppLibrary.swift:31" -o c -o "po self" -o "process detach"
 # Unoptimized native libs (C++ locals not "optimized out"); plain ios run switches back.
 DINE_IOS_BUILD_TYPE=Debug tools/dine ios run
 # Logs that survive a killed/hung session: lldb types+expr, swift health, gdb-remote packets.
@@ -208,8 +210,8 @@ tools/dine ios lldb-offline HelloView.swift:8 -- -b -o "type lookup DineApp"
 ```
 
 What it does (the debug server does the same through the SB API): needs the tunnel
-(`ios tunnel start`: `dine-tunneld`, root for TUN, + personalized DDI), DVT-launches the app, gets
-the debugserver address from `developer debugserver start-server`, then in `tools/libexec/lldb`:
+(`ios tunnel start`: `dine-tunneld`, root for TUN, + personalized DDI), DVT-launches the app, takes
+the debugserver's port from the tunnel's `com.apple.internal.dt.remote.debugproxy` service, then in `tools/libexec/lldb`:
 `platform select remote-ios --sysroot out/ios-symbols/<ver>` → `target create
 apps/<App>/xtool/<App>.app/<App>` (local Mach-O + debug info) → `target.sdk-path` → async
 `process connect` (sync mode blocks with no process) → `process attach -p`.
@@ -252,7 +254,7 @@ apps/<App>/xtool/<App>.app/<App>` (local Mach-O + debug info) → `target.sdk-pa
 
 ```sh
 tools/dine linux build                  # all stages; or: bionic art opensles atl atl-headless
-tools/dine linux smoke                  # 26 checks, one line each; --list names them
+tools/dine linux smoke                  # one line per check; --list names them
 source env.sh                           # PATH + LD_LIBRARY_PATH for out/linux/prefix
 DINE_PREFIX=$PWD/out/linux/appdata \
   android-translation-layer third_party/apks/org.happysanta.gd_29.apk \

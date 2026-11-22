@@ -254,6 +254,9 @@ bytecode and, if it has native methods, in its JNI header.
 - Fix: a full javac on every Java edit closes the gap: 5.0 s, against 1.36 s for a leaf class and
   4.06 s for View with the closure (scratch runs of the hax build), and every edit then rewrites
   all 83 headers and recompiles the C files that include them.
+- Two more gaps of the same build: `javac -h` never deletes the header of a class that lost its
+  natives, and hax's `depend_files` (`dine-atl/src/api-impl/meson.build`) leaves out dine-art's boot
+  jars, so a changed libcore superclass reruns neither hax nor the headers.
 - Also in: `notes/decisions.md` (dine-atl), the closure rule.
 
 ### ATL-2
@@ -1503,8 +1506,8 @@ driver always sets the extra.
 **Dialogs and Home race: Dine dismisses the app container before Java hears Home.** An alert shown
 in between presents over the launcher until Java's close reaches it, and a tap whose answer
 reaches Java after Home is dropped: the alert comes back on front.
-- Where: `apps/Dine/Sources/Dine/Navigation.swift` `home()`: `dismissContainer` and `popToRoot`
-  run before `atl_nav_home`. It handles one container; with several apps there is one per task
+- Where: `apps/Dine/Sources/Dine/Navigation.swift` `home()`: `dismissToRoot` starts the
+  container's dismissal before `atl_nav_home`. It handles one container; with several apps there is one per task
   (multi-app MA6).
 - Owner: M8b.
 
@@ -1513,7 +1516,7 @@ reaches Java after Home is dropped: the alert comes back on front.
 **A vertical scroll that starts within 20 pt of the left edge can fire Home.** The 96 pt down
 commit distance and the app's exclusion rects are the only guards; a tradeoff of the default strip
 width.
-- Where: `apps/Dine/Sources/Dine/EdgeGestures.swift` (`stripWidth`, `commitDistance`).
+- Where: `apps/Dine/Sources/Dine/EdgeGesture.swift` (`stripWidth`, `commitDistance`).
 
 ### DINE-3
 

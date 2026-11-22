@@ -36,6 +36,8 @@ class GtkTarget(AgentUi, LldbCommands, Target):
         if not next((o["value"] for o in json.loads(info.read_text()) if o["name"] == "test_hooks"), False):
             raise DineError(f"{paths.ATL_GTK_BUILD} has test_hooks off, so ATL has no debug agent: "
                             "reconfigure it with -Dtest_hooks=true")
+        from ... import linux   # not at the top: the server imports this module, and linux.py is the client's
+        linux.require_fresh(paths.ATL_GTK_BUILD, "tools/dine linux build atl")
 
     @classmethod
     def server_env(cls) -> dict[str, str]:
@@ -70,7 +72,10 @@ class GtkTarget(AgentUi, LldbCommands, Target):
             if self.host.wedged:
                 out.append(f"lldb is stuck ({self.host.wedged})")
             elif self.host.state in ("running", "stopped"):
-                out.append(self.host.kill())
+                try:
+                    out.append(self.host.kill())
+                except CmdError as e:
+                    out.append(str(e))   # do_kill's signals end it
             self.host.close()
         out.append(self.do_kill())
         if self.display:

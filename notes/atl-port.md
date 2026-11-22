@@ -169,8 +169,10 @@ every backend the current builds select: `gtk` and `headless` from M0, `uikit` a
 files as gtk-backend code in legacy form, built only with `ui=gtk`. In other builds a call to one
 throws `UnsatisfiedLinkError`, and that is how the next extraction list is found.
 
-Shared code builds as its own meson static library whose dependencies exclude GTK and glib, so a
-stray include fails the build.
+Shared code builds as its own meson static library whose dependencies exclude GTK, and glib outside
+the desktop build (whose system graphene pulls glib's include dirs in): a stray GTK include fails
+every build, a stray glib one `linux build atl-headless` and the iOS build, not `linux build atl`
+alone.
 
 ### Loop slot
 
@@ -199,14 +201,15 @@ thread.
 - `util.h` and `util.c` split: JNI helpers, logging and NIO buffer helpers stay shared; the
   `atl_safe_gtk_*` helpers go to the gtk backend; intent serialization to GVariant goes to the
   `os` slot's `desktop-linux` backend (it exists for D-Bus and desktop notifications).
-- `native_window.h` moves to the `native` slot.
+- `native_window.h` moves to the `native` slot, which isn't built ([ATL-175](general-todo.md#atl-175)).
 - AssetManager: its few glib string helpers become libc.
 - MemoryFile: GHashTable becomes a small map; `memfd_create` becomes a platform helper.
 - SystemClock: `CLOCK_BOOTTIME` has no Darwin equivalent under that name; a platform helper picks
   the clock.
 - ContentResolver's content-type lookup and ConnectivityManager's network monitor go to the `os`
   slot (MIME lookup, connectivity).
-- The GInputStream wrapper exists for GdkPixbuf decoding and goes to `gsk`.
+- The GInputStream wrapper (`AssetInputStream.c`) serves only the gtk WebView native and stays with
+  it until M9's WebView work.
 - Matrix uses graphene (`src/shared/android_graphics_Matrix.c`; decided 2026-10-21); it
   cross-builds for iOS with NEON and no glib.
 
@@ -292,7 +295,7 @@ LinearLayout → two TextViews. As built:
   (artbridge's `dev.cpp`).
 - `record` holds plain paint and drawable records; the display list comes with the first
   extracted draw native (nothing on demo_app's path draws).
-- gtk+record is rejected for now: legacy GTK draw code is GSK-bound.
+- gtk+record is rejected: legacy GTK draw code is GSK-bound. No stage plans that build.
 - The GVariant intent helpers sit in legacy `gtk_util.c` until M7's open-links-and-files item moves
   them into `desktop-linux`.
 - dine-art's `libandroidfw` links libpng itself; the GTK build only got it through gdk-pixbuf.
@@ -320,7 +323,8 @@ matches the Linux one.
 
 **Status: done.** On the iPhone 13, Dine's **atl** → **run demo** reaches `onResume`
 and dumps the same five `viewtree:` lines as `dine-atl/tests/headless/demo_app.viewtree`; the art
-screen's runs then work on the VM ATL created. As built:
+screen's runs then work on the VM ATL created. Since M3 the phone runs uikit, `dbg smoke atl-demo`
+compares the dump's shape, and the tiles are named `demo_app` and `looper`. As built:
 - dine-art's iOS build adds libandroidfw, libutils and libcutils: without aapt2's PNG code (no
   libpng in the SDK) and libutils' epoll `Looper`, libcutils cut to `native_handle` and `trace`
   (all androidfw and libutils use). `androidfw_c_api.h` and `asset_manager.h` get `off64_t` (and
@@ -460,7 +464,8 @@ the Linux golden: `1170x2391` roots, TextViews `315x51` and `375x51` at y 0 and 
 - Dine: `Navigator.run` creates the surface (`AppSurfaceView`) and reads the window from the key
   window: below the status bar to the screen's bottom, density 160 × scale, night from traits;
   `dine_atl_run` takes them (`struct dine_atl_window`). The container pins the surface at the
-  safe area's top at that fixed size.
+  safe area's top at that size at the start; M6b3c resizes it and pins it to the screen's top under
+  `cover_top`.
 - Frame: `Window` sets up the status bar as `PhoneWindow.generateLayout` does (theme
   `statusBarColor`, `windowDrawsSystemBarBackgrounds`, `windowLightStatusBar`; `setStatusBarColor`,
   window flags, the decor's `SYSTEM_UI_FLAG_LIGHT_STATUS_BAR`, `setSystemBarsAppearance`). The
@@ -628,7 +633,7 @@ Gravity Defied stops at `NinePatchDrawable.nativeCreate` (M5d). As built:
   `linux smoke loop`), and `linux smoke input-gtk` (pointers and keys fed through the gtk agent).
 - AOSP provenance: `dine-atl/doc/AOSP.md`.
 - Open: the edge pans against an Android-hosted UIScrollView ([DINE-3](bug-tracker.md#dine-3))
-  and an excluded span, by hand; touches on popovers on gtk; a GtkText's Tab moves GTK's focus,
+  and an excluded span, by hand ([DINE-7](general-todo.md#dine-7)); touches on popovers on gtk; a GtkText's Tab moves GTK's focus,
   not Java's. Lists scroll since M6b1 (rows move without a relayout). A hardware keyboard and real
   drags on the phone: [ATL-144](general-todo.md#atl-144); gtk's limits (a drag that starts on a
   clickable child, `scrollTo` on a view that isn't a scroll node): [ATL-145](bug-tracker.md#atl-145);
@@ -1741,10 +1746,9 @@ row, its APK in `apps/<pkg>/`), and the launcher reads the registry's rows (`not
   `dine_atl_run`, and such a build keeps no `Java_*` symbol (`llvm-nm` count 0). ART finds those
   with dlsym, so once the launcher starts APKs, a release build must keep them: check the count,
   and if they are stripped, link with `-export_dynamic` or an exported-symbols list. Trap: the
-  release link also force-loads `libruntimetests.a` (Package.swift's
-  `.when(configuration: .debug)` doesn't reach the linking executable), which dead stripping
-  removes today; with `-export_dynamic` its `Java_*` would stay, so fix that condition first.
-  Whether a clean release tree, which has no `libruntimetests.a`, fails to link is unverified.
+  release link must never reach a dev archive: `DINE_RELEASE=1 tools/dine ios run` removes them and
+  fails on a dev part in the bundle it built (`release_problems`, `tools/py/dine/ios.py`), and
+  `-export_dynamic` would keep every symbol of one that got in.
 - The package suite (`dine-atl/tests/package`, from MA1) grades the label and icon columns.
 
 **Done when:** the package suite passes on headless (the label and icon columns of the test APKs,
@@ -1769,7 +1773,7 @@ imports `demo_app.apk` and shows both strings (by hand).
 #### M8c: navigation settings store
 
 - `notes/nav-gestures.md` Settings: the `navigation` store, the observable `NavigationSettings`
-  model, agent `ui defaults`, smoke `atl-nav` steps 1, 5 and 6, and the Dine setting that hides
+  model, agent `ui defaults`, smoke `atl-nav`'s `defaults` steps, and the Dine setting that hides
   the home indicator for every app over M6b3's immersive mode.
 - Phone check known so far: the settings steps of smoke `atl-nav` (`notes/nav-gestures.md` Tests).
 

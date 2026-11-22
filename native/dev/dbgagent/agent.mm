@@ -162,13 +162,17 @@ void Reply(int fd, NSDictionary *obj) {
   }
 }
 
+// Of any length: a tap carries the whole label, escaped.
 NSString *ReadLine(int fd) {
+  NSMutableData *line = [NSMutableData data];
   char buf[4096];
-  for (size_t n = 0; n < sizeof buf; n++) {
-    if (recv(fd, buf + n, 1, 0) != 1) return nil;
-    if (buf[n] == '\n') return [[NSString alloc] initWithBytes:buf length:n encoding:NSUTF8StringEncoding];
+  for (;;) {
+    ssize_t n = recv(fd, buf, sizeof buf, 0);
+    if (n <= 0) return nil;
+    auto end = static_cast<const char *>(memchr(buf, '\n', static_cast<size_t>(n)));
+    [line appendBytes:buf length:end ? static_cast<NSUInteger>(end - buf) : static_cast<NSUInteger>(n)];
+    if (end) return [[NSString alloc] initWithData:line encoding:NSUTF8StringEncoding];
   }
-  return nil;
 }
 
 // UIKit controls decline accessibilityActivate too (VoiceOver touches them): send what a tap sends.

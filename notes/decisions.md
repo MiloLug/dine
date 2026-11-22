@@ -463,6 +463,12 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 - An uninstall that fails, or is killed before its commit, keeps the package: its dirs come back from
   the trash in the call, or at the next registry open, whose sweep puts back a trash dir that holds
   its row's files.
+- Home and front asked for before an app runs are kept (`atl_app.front_wanted`, under `insets_lock`
+  as insets and night are) and `atl_app_create` applies them: the first activity of an app sent Home
+  is only created until the front. `atl_nav_home` and `atl_nav_front` return nothing.
+- The test hooks' Java class (`android.atl.ATLTestHooks`) is in every `api-impl.jar`, release
+  builds' too: the Linux build compiles the one jar that dev and release bundles share. Its natives
+  are behind `test_hooks`, so in a release build each throws `UnsatisfiedLinkError`.
 - Last merge: upstream d658957d (2026-10-20); hand ports start there.
 
 ## dine-art
@@ -499,6 +505,13 @@ Short entries that steer porting upstream changes into our forks. Newest first w
 
 ## dine
 
+- The launcher's path changes only when no presentation runs: Home pops after the container's
+  dismissal (`Navigator.dismissToRoot`). UIKit drops an earlier change, and the path desyncs.
+- An app's surface owns its one width and height constraint pair (`AppSurfaceView.setWindowSize`):
+  containers come and go, constant size constraints stay with the view.
+- A release build (`DINE_RELEASE=1`) removes `native/dev`'s archives before its link and checks the
+  bundle it built (`release_problems` in `tools/py/dine/ios.py`): a new dev-only part gets a marker
+  there.
 - Min iOS 17.4 (os_sync): `env.sh` for scripts and CMake, `apps/Dine/Package.swift` for Swift.
   Never equal to the SDK version (compatibility mode).
 - Linux gate after a merge: `tools/dine linux smoke` (every check in `tools/py/dine/linux.py`) +

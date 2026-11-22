@@ -175,7 +175,7 @@ suite is `dine-atl/tests/package/` (`tools/dine test package`).
 - `[x]` iOS: the prefix, with the registry, is `Application Support/dine`; dev-screen runs install
   into it. On the phone (2026-11-02, through `dine-peek` and the syslog): a first demo_app run installs it, a second start installs
   nothing; the `installer` tile's session install shows the confirmation from the Application
-  context and installs.
+  context and installs (`dbg smoke atl-installer`).
 - `[x]` `DelegateLastClassLoader(String, String, ClassLoader)` and a child-first `PathClassLoader`
   (Mihon's compat order) both load an installed extension's class from its `sourceDir`. Mihon's SDK
   threshold for the platform class: unchecked.
@@ -228,8 +228,9 @@ while each VM still runs one app; MA2b runs several apps in one VM. The record m
   `ATLLoadedApp.start` (MA2a's path), several per VM. A package starts once per VM: a second start
   of it is refused until MA4's drop.
 - `[x]` The embedded host and `dine_atl_run` start a second app; cfrunloop's quit per app; the dev
-  screen starts a second APK over the first, and a running app's tile brings it to front (phone,
-  2026-11-03: demo_app and widgets side by side).
+  screen starts a second APK over the first, and a running app's tile brings it to front
+  (`dbg smoke atl-two-apps`, with a dialog answered in each, a night change both hear and one
+  app's end).
 - `[x]` The native library table keyed by (path, loader); on Apple a library resolves only the
   `Java_*` names of its own archive (`art_register_jni_symbols`, lists from
   `tools/libexec/jni-symbols.sh`).
