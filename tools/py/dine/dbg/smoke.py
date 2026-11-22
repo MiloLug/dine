@@ -323,7 +323,7 @@ SCENARIOS = {
             Step("type into fruit", type=("fruit", "ap"), ok=("actv dropdown shown",), ui=("apple", "apricot"), fail=ATL_FAIL),
             Step("apple", tap="apple", ok=("actv text apple",), fail=ATL_FAIL),
             # the app ends (its last activity finishes) while its toast shows: the toast goes with its window
-            Step("bye", tap="bye", ok=("toast: gone with its window",), fail=ATL_FAIL),
+            Step("bye", tap="bye", ok=("toast: gone with its window", "nav: container dismissed exit"), fail=ATL_FAIL),
             BACK,
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-gd", [

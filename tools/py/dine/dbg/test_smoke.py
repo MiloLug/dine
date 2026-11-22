@@ -37,6 +37,12 @@ class SmokeTableTest(unittest.TestCase):
                 for rx in st.ok + st.fail:
                     re.compile(rx)
 
+    def test_a_closing_back_waits_for_the_container_to_go(self):
+        for sc in smoke.table("Dine"):
+            if sc.name.startswith("atl") and sc.steps[-1].back:
+                self.assertIn("nav: container dismissed exit", sc.steps[-2].ok,
+                              f"{sc.name}: a Back on the dying container is lost")
+
     def test_atl_scenarios_get_a_clean_process(self):
         for sc in smoke.table("Dine"):
             if sc.name.startswith("atl"):

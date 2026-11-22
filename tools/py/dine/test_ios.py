@@ -128,6 +128,16 @@ class DeviceDeadlineTest(unittest.TestCase):
                 ios._with_rsd(times_out, timeout=5)
 
 
+class LaunchTest(unittest.TestCase):
+    def test_a_refused_launch_names_the_phones_state(self):
+        from pymobiledevice3.dtx.exceptions import DTXNsError
+        refused = DTXNsError.__new__(DTXNsError)
+        Exception.__init__(refused, "Request to launch dev.dine.Dine failed.")
+        with mock.patch.object(ios, "require_tunnel"), mock.patch.object(ios, "_with_rsd", side_effect=refused):
+            with self.assertRaisesRegex(DineError, "phone locked"):
+                ios.launch("Dine")
+
+
 class ReleaseBundleTest(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())

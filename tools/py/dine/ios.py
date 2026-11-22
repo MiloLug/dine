@@ -123,6 +123,7 @@ async def _bundle_id(rsd, app: str) -> str:
 
 def launch(app: str, suspended: bool = False) -> int:
     """Launch through DVT with the debug agent on (kills a running instance first); returns the pid."""
+    from pymobiledevice3.dtx.exceptions import DTXNsError
     from pymobiledevice3.exceptions import PyMobileDevice3Exception
     from pymobiledevice3.services.dvt.instruments.dvt_provider import DvtProvider
     from pymobiledevice3.services.dvt.instruments.process_control import ProcessControl
@@ -135,7 +136,7 @@ def launch(app: str, suspended: bool = False) -> int:
                                                     environment={AGENT_ENV: str(AGENT_PORT)}), 60)
     try:
         return _with_rsd(run, timeout=90)   # past the launch's own 60 s
-    except (AssertionError, TimeoutError, PyMobileDevice3Exception) as e:
+    except (AssertionError, TimeoutError, DTXNsError, PyMobileDevice3Exception) as e:
         raise DineError(f"launching {app} failed: {str(e) or type(e).__name__}\n(screen off or phone "
                         "locked, developer certificate not trusted, or the DDI unmounted after a reboot: "
                         "tools/dine ios tunnel start)") from None
