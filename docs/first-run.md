@@ -343,8 +343,8 @@ command -v pymobiledevice3 meson xtool               # all inside the repo (.ven
 pymobiledevice3 usbmux list                          # phone visible
 tools/dine ios run                                   # Dine shows the app grid
 tools/dine dbg start-server && tools/dine dbg smoke  # every step "ok", then "smoke passed: …"
-# unverified: these two lldb lines were not run on the phone
-tools/dine ios lldb -- -b -o "expr -l c -- (int)getpid()" -o "process detach"
+# Dine's own code in both: without section 6's symbols a system function has no name here and po prints as p
+tools/dine ios lldb -- -b -o "expr -l c++ -- (void *)dine::Log()" -o "process detach"
 tools/dine ios lldb --suspended -- -b -o "b AppLibrary.swift:31" -o c -o "po self" -o "process detach"
 tools/dine test unit                                 # harness + tools unit tests (debug server on a fake target)
 tools/dine linux smoke                               # no window opens on Windows: "smoke passed: …"

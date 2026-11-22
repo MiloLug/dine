@@ -199,7 +199,6 @@ tools/dine dbg attach                             # local, about 1 s; bp, step, 
 tools/dine ios lldb                                   # interactive
 tools/dine ios lldb Dine -- -b -o bt -o "process detach"   # scripted
 # Break in startup code: the app waits for the debugger, so set breakpoints, then continue.
-# These two breakpoints are unverified: read from the code, not run on the phone.
 tools/dine ios lldb --suspended -- -b -o "b dine_dbg_agent_start" -o c -o bt -o "process detach"
 tools/dine ios lldb --suspended -- -b -o "b AppLibrary.swift:31" -o c -o "po self" -o "process detach"
 # Unoptimized native libs (C++ locals not "optimized out"); plain ios run switches back.
