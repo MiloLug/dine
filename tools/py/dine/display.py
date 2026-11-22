@@ -55,6 +55,15 @@ class Display:
             self.close()
             raise
 
+    def _ended(self) -> DineError:
+        tail = "\n".join(self.log.read_text(errors="replace").splitlines()[-20:])
+        return DineError(f"sway exited with {self.proc.returncode}:\n{tail}")
+
+    def check(self) -> None:
+        """Raises, with the tail of sway's log, when the compositor has ended."""
+        if self.proc.poll() is not None:
+            raise self._ended()
+
     def _wait_socket(self) -> Path:
         deadline = time.monotonic() + STARTUP
         while time.monotonic() < deadline:
@@ -62,7 +71,7 @@ class Display:
             if sockets:
                 return sockets[0]
             if self.proc.poll() is not None:
-                raise DineError(f"sway exited with {self.proc.returncode}:\n{self.log.read_text(errors='replace')}")
+                raise self._ended()
             time.sleep(0.05)
         raise DineError(f"sway made no socket in {STARTUP} s:\n{self.log.read_text(errors='replace')}")
 

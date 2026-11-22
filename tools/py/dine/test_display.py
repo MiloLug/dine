@@ -4,6 +4,7 @@ import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import unittest
 from pathlib import Path
@@ -21,6 +22,32 @@ class EnvTest(unittest.TestCase):
 
     def test_config_has_no_includes_or_execs(self):
         self.assertNotRegex(display.CONFIG, r"(?m)^\s*(include|exec)\b")
+
+
+class CheckTest(unittest.TestCase):
+    def display(self, status: int) -> "display.Display":
+        d = object.__new__(display.Display)
+        d.dir = Path(tempfile.mkdtemp(prefix="dinet-"))
+        self.addCleanup(shutil.rmtree, d.dir, True)
+        d.log = d.dir / "sway.log"
+        d.log.write_text("start\n" + "".join(f"line {i}\n" for i in range(30)) + "failed to open the output\n")
+        d.proc = subprocess.Popen(["sh", "-c", f"exit {status}"])
+        d.proc.wait()
+        return d
+
+    def test_an_ended_compositor_raises_with_the_tail_of_its_log(self):
+        with self.assertRaises(display.DineError) as caught:
+            self.display(3).check()
+        text = str(caught.exception)
+        self.assertIn("sway exited with 3", text)
+        self.assertIn("failed to open the output", text)
+        self.assertNotIn("start", text)
+
+    def test_a_running_compositor_passes(self):
+        d = self.display(0)
+        d.proc = subprocess.Popen(["sleep", "30"])
+        self.addCleanup(lambda: (d.proc.kill(), d.proc.wait()))
+        d.check()
 
 
 # the pid of sway, the only child of display's shell

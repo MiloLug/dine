@@ -3,8 +3,10 @@
 
 Rows: `cli:<check>` (installs and removals through the CLI, graded on exit codes, registry rows and
 files), `<Class>#<test>` (the JUnit suite in dine-atl/tests/package/suite, run in-VM after the
-fixtures are installed) and `scenario:<name>` (the driver app, one process per scenario, each with
-its own scripted dialog answers). Every check gets a fresh prefix.
+fixtures are installed; its tests share one prefix and one VM), `suite:junit` (that run itself),
+`cli:reparse` (graded after it: a row set to an old parse version before the run was parsed again)
+and `scenario:<name>` (the driver app, one process per scenario, each with its own scripted dialog
+answers). Each check, the JUnit run included, gets a fresh prefix.
 """
 
 import argparse

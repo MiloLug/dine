@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Builds the multi-app probes into out/probes/multi-app: driver.jar, app-a.jar, app-b.jar and
-# libprobe.so. DINE_PROBE_PREFIX: the ART prefix to build against (default out/linux/prefix).
+# libprobe.so, which bakes in libart's layout and compile line: every build takes them afresh.
+# DINE_PROBE_PREFIX: the ART prefix to build against (default out/linux/prefix).
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../.." && pwd)
 out=$root/out/probes/multi-app
-prefix=${DINE_PROBE_PREFIX:-$root/out/linux/prefix}
+prefix=$(realpath -- "${DINE_PROBE_PREFIX:-$root/out/linux/prefix}")
 core=$prefix/lib/java/core-all_classes.jar
 javac=(/usr/lib/jvm/java-8-openjdk/bin/javac -g -Xlint:-options -source 1.8 -target 1.8 -bootclasspath "$core")
 d8=$root/tools/bin/d8
@@ -31,17 +32,12 @@ for name in a b; do
 done
 
 # libart's compile line for one of its objects, from a make dry run (nothing is built).
-flags=$out/cxxflags
-if [[ ! -s $flags ]]; then
-  make -C "$root/dine-art" -n -W art/runtime/thread.cc ____PREFIX="$prefix" ____LIBDIR=lib \
-    out/host/linux-x86/lib64/libart.so 2>/dev/null |
-    grep -- '-o out/host/linux-x86/obj/SHARED_LIBRARIES/libart_intermediates/thread\.o' |
-    sed -e 's/^ *g++ //' -e 's/ -MD -MF .*//' -e 's/ -c / /' \
-      > "$flags.tmp"
-  [[ -s $flags.tmp ]] || { echo "build.sh: no libart compile line from make -n" >&2; exit 1; }
-  mv "$flags.tmp" "$flags"
-fi
-read -ra cxxflags < "$flags"
+flags=$(make -C "$root/dine-art" -n -W art/runtime/thread.cc ____PREFIX="$prefix" ____LIBDIR=lib \
+  out/host/linux-x86/lib64/libart.so 2>/dev/null |
+  grep -- '-o out/host/linux-x86/obj/SHARED_LIBRARIES/libart_intermediates/thread\.o' |
+  sed -e 's/^ *g++ //' -e 's/ -MD -MF .*//' -e 's/ -c / /') || flags=
+[[ -n $flags ]] || { echo "build.sh: no libart compile line from make -n" >&2; exit 1; }
+read -ra cxxflags <<< "$flags"
 # probe.cc copies libart's gHeapReferenceBase from this load-base-relative address (JNI_OnLoad)
 base=$(nm -D --defined-only "$prefix/lib/art/libart.so" | awk '$3 == "_ZN3art6mirror18gHeapReferenceBaseE" {print $1}')
 [[ -n $base ]] || { echo "build.sh: no gHeapReferenceBase in libart.so" >&2; exit 1; }

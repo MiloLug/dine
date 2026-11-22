@@ -48,6 +48,23 @@ class LinuxSmokeTest(unittest.TestCase):
         self.assertTrue(lines[-1].startswith("smoke passed: a ("))
 
 
+class GtkEnvTest(unittest.TestCase):
+    def tearDown(self):
+        linux._display = None
+
+    def test_a_display_that_ended_is_not_handed_out(self):
+        ended = subprocess.Popen(["sh", "-c", "exit 1"])
+        ended.wait()
+        log = Path(tempfile.mkdtemp(prefix="dinet-")) / "sway.log"
+        self.addCleanup(log.parent.rmdir)
+        self.addCleanup(log.unlink)
+        log.write_text("no output\n")
+        linux._display = linux.display.Display.__new__(linux.display.Display)
+        linux._display.proc, linux._display.log, linux._display.socket = ended, log, Path("/tmp/dine-wl-x/wayland-1")
+        with self.assertRaisesRegex(DineError, "sway exited with 1:\nno output"):
+            linux._gtk_env()
+
+
 class BuildsLockTest(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()

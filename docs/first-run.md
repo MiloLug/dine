@@ -12,7 +12,7 @@ go to gitignored dirs **inside the repo** (`out/`), never to `~/.local` or other
 
 | Source | Tools |
 |---|---|
-| **pacman** | `base-devel` (gcc, make, binutils, pkgconf), `git`, `curl`, `clang`, `lld`, `llvm` (llvm-ar/ranlib/otool/nm, dsymutil), `cmake`, `ninja`, `socat`, `libimobiledevice`, `fuse2`, `uv`, `rustup` (cargo for accord), `jdk8-openjdk`, `jdk21-openjdk` (runs d8), `ant` (ATL's incremental Java build), `patchelf`, ATL build libraries (below); for runtime tests: `smali`; for gtk runs on a hidden display: `sway`, `grim` |
+| **pacman** | `base-devel` (gcc, make, binutils, pkgconf), `git`, `curl`, `clang`, `lld`, `llvm` (llvm-ar/ranlib/otool/nm, dsymutil), `cmake`, `ninja`, `socat`, `libimobiledevice`, `fuse2`, `uv`, `rustup` (cargo for accord), `jdk8-openjdk`, `jdk21-openjdk` (runs d8), `ant` (ATL's incremental Java build), `patchelf`, ATL build libraries (below); for runtime tests: `smali`; for gtk runs on a hidden display: `sway`, `grim`, `dbus` (`dbus-run-session`) |
 | **AUR (paru)** | `swift-bin` (Swift 6.4 + its lldb), `ipsw-bin` (splits the phone's dyld shared cache), `wolfssl-jni`, `bsd-compat-headers`, `android-sdk-build-tools` (d8 for the ART/ATL dex build, zipalign; aapt2 for test APKs); for runtime tests: `jasmin` |
 | **uv → `.venv`** (`pyproject.toml`, `uv.lock`) | CPython 3.12, `pymobiledevice3`, `meson` |
 | **cargo** | `accord` (`cargo install --git https://github.com/MiloLug/dine-accord`, into `~/.cargo/bin`, which must be on `PATH`): the `actool` that `ios run` calls |
@@ -76,7 +76,7 @@ sudo pacman -S --needed base-devel git curl clang lld llvm cmake ninja socat lib
   zip alsa-lib ffmpeg gtk4 gtk4-layer-shell graphene libgudev libportal libsecret sqlite \
   vulkan-icd-loader vulkan-headers wayland wayland-protocols webkitgtk-6.0 openxr glib2-devel \
   libglvnd libdrm \
-  smali sway grim
+  smali sway grim dbus
 paru -S --needed swift-bin ipsw-bin wolfssl-jni bsd-compat-headers android-sdk-build-tools jasmin
 ```
 
@@ -90,6 +90,9 @@ paru -S --needed swift-bin ipsw-bin wolfssl-jni bsd-compat-headers android-sdk-b
 - `sway` and `grim` give the gtk build a hidden display: `linux smoke`, `test framework --gtk` and
   `dbg start-server --target gtk` run ATL in a headless sway, and `grim` takes the debug server's
   screenshots there.
+- `dbus` gives `linux smoke windows-gtk` `dbus-run-session`: its keyboard-dialog launch runs on a
+  private session bus (`dine-atl/tests/headless/private-bus.conf`), since the keyboard dialog's
+  natives take the D-Bus name `sm.puri.OSK0`.
 - The desktop ATL build needs gtk4 4.22 or later (its blend modes use GSK's composite, copy and paste
   nodes); Arch ships it.
 - `cairo` draws the headless ATL build's bitmaps (`Canvas(Bitmap)` pixels); the desktop build has
@@ -352,6 +355,7 @@ tools/dine test unit                                 # harness + tools unit test
 tools/dine linux smoke                               # no window opens on Windows: "smoke passed: …"
 tools/dine test runtime                              # ART run-tests: exits 0 (no regressions)
 tools/dine test framework                            # android.* JUnit suites: exits 0 (no regressions)
+tools/dine test apps                                 # the real APKs of section 8's table: exits 0 (no regressions)
 tools/dine test package                              # install, query, removal: exits 0 (no regressions)
 tools/dine ios build-art                             # ART as arm64-apple-ios archives in out/ios/lib
 tools/dine ios build-atl                             # dine-atl's uikit build as an archive in out/ios/lib
