@@ -373,7 +373,10 @@ row would visit only the edges a row crosses.
 - an ImageButton's themed background in a display list (M5d-11): `run-controls.sh` dumps none; a
   `round_rect` line in the button's block would show it;
 - gsk's guard for an empty or non-finite bitmap rect on a view (code-path proof only), and stroked
-  text on the phone's view path (A4).
+  text on the phone's view path (A4);
+- `BlendModeTest#testShadedTextIsFiltered` and `#testModulateOfManyColors`' text loop compare two
+  bitmaps with no check for ink, so they pass where no text draws (framework-r2-2);
+- a gradient's negative periods and the period cap have no pixel test (A1-20).
 
 ### ATL-129
 
@@ -845,7 +848,7 @@ window-ready point (`src/main-executable/main.c`, `src/backends/ui/gtk/dump.c`).
 needs `hprof-conv`, `141-class-unload` and `150-loadlibrary` need upstream's native test lib
 `libarttest` (which 100 skipped tests need too). `071-dexfile-map-clean`, `677-fsi` and
 `707-checker-invalid-profile` need dex2oat, which dine-art never runs: they stay expected
-failures. Reasons per test: `dine-art/tests/runtime/expectations/linux-x86_64.json`.
+failures (707's `check` also calls `./default-check`, which the harness doesn't provide). Reasons per test: `dine-art/tests/runtime/expectations/linux-x86_64.json`.
 
 ### TOOL-8
 
@@ -957,6 +960,9 @@ a product defect; the audit's id is in brackets.
 - Runtime suite: the log filter drops every line below FATAL, so a new runtime error line fails
   nothing (`corpus.toml` `log_tags`; its reason predates the runtime without boot image)
   (grading-r2-2).
+- Runtime suite: two runs share `out/tests/runtime/build/` with no lock, and `ios run`'s payload
+  build is one of them (grading-r1-7); a test that expects a non-zero exit can't pass, and the 14
+  custom-run-script tests never run (grading-r3-1).
 - Apps suite: nothing pins the third-party APKs' content, only their file names (framework-r2-6).
 - `linux smoke`: `_script` and `_gd`'s verdicts and the scripts' judges have no failing control in
   `test unit` (smoke-a-r2-7); a hidden display that dies is reused by the checks after it and its
@@ -977,6 +983,8 @@ a product defect; the audit's id is in brackets.
 - No Linux build compiles the side without `test_hooks`; only the iOS release build does
   (critic 5).
 - `DispatchCostTest#testMoveCost` asserts nothing (critic 7).
+- gtk checks: only `run-draw.sh` fails on a GLib critical, and only a Gtk or Gsk one
+  (smoke-a-r2-2).
 - Headless scripts: `run-windows.sh` skips a stray "menu item" or "popup row" line (smoke-c-r1-4); no
   run shows a light panel alert's show line (smoke-b-r2-4); the dialog chrome's dp at another density
   has no check (smoke-b-r3-2).

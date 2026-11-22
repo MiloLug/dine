@@ -49,7 +49,9 @@ found are in `findings-native-faults.md`.
 - `[ ]` A sigchain handler for SIGSEGV and SIGBUS on one-VM backends. It maps the faulting thread
   to its app (MA2a's member on ART's `Thread`, `art_thread_embedder_tag`). It contains the fault
   only when the thread is an app's thread in `kNative` with the held-shared-locks counter at zero,
-  and re-raises anything else with the default action so iOS still writes its crash report.
+  and re-raises anything else with the default action so iOS still writes its crash report. The
+  tag's window to settle here: while a thread detaches, `art_thread_embedder_tag` reads a `Thread`
+  already freed (overhaul A2-9).
 - `[ ]` Containment: park the thread with async-signal-safe calls on its alternate stack, write the
   app's crash log, then drop the app (MA4). Root visiting skips a parked thread, so the dropped
   app's class loader can unload (problem 8).
@@ -295,7 +297,8 @@ while each VM still runs one app; MA2b runs several apps in one VM. The record m
   `synchronized` block on a shared object is the app's code, so the exception may land inside it
   (`design.md` "Freeze and drop").
 - `[ ]` An ended app's window goes with it: its `ui_window` (one per app, never freed since M3),
-  the records left under it and their UIViews.
+  the records left under it and their UIViews; so does its main loop, whose quit drops accepted
+  posts unrun and their refs with them (overhaul A3-8).
 - `[ ]` A thread still running after a deadline (a `catch (Throwable)` loop) is suspended for good
   and its GC roots skipped (shared with B1's parked threads).
 - `[ ]` [ART-26](../bug-tracker.md#art-26): release pages with `MADV_FREE_REUSABLE` on Apple, so a

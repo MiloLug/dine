@@ -554,6 +554,8 @@ nothing draws until the `restore`.
 
 **`Bitmap.compress` throws the stream's IOException; Android 10 returns false.** AOSP's stream
 adaptor clears the exception and fails the encode.
+- A PNG encode that fails gives a NullPointerException there (`native_save_to_png` answers null), not
+  false (overhaul A1's audit, A1-4).
 - State: open; found in the phase 4 review, 2026-11-05.
 - Where: `dine-atl/src/api-impl/android/graphics/Bitmap.java` `compress`.
 
@@ -1069,6 +1071,8 @@ path (only night changes are dispatched, `ATLLoadedApp.applyNight`).
 **Configuration's `touchscreen`, `navigation` and `navigationHidden` are never set.** They stay
 UNDEFINED on every build (`Configuration.setToDefaults`); `atl_display_apply` writes the keyboard
 fields and not these.
+- Neither are `orientation` and `smallestScreenWidthDp`: they stay UNDEFINED too (overhaul A9's audit,
+  A9-22).
 - State: open; found 2026-11-09 (keyboard configuration), from the code.
 - Where: `dine-atl/src/shared/android_content_Context.c` `atl_display_apply`.
 
@@ -1526,6 +1530,19 @@ it (`Intent.resolveActivityInfo`) and refuses only what nothing resolves or anot
 - State: open; found 2026-11-22 (overhaul A11, beside framework-r3-6's fix).
 - Where: `dine-atl/src/api-impl/android/app/Instrumentation.java` `startActivitySync`.
 
+### ATL-180
+
+**A package name of dots becomes an install path: `..`, `.` or `.staging` land outside the package's
+own dir.** `PackageParser.validateName` takes any name with a dot and no bad character, and
+`ATLInstaller` builds `apps/<name>` and `ATLRegistry.dataDir` `data/<name>` from it. So `..` installs
+into the prefix itself, and `.staging` into the staging dir, whose sweep deletes what is a day old,
+the installed APKs with it.
+- State: open, from a code read; no run installs such an APK. Found by the overhaul's A9 audit
+  (A9-7), which left it to [ATL-32](general-todo.md#atl-32), whose entry is file isolation.
+- Where: `dine-atl/src/api-impl/android/content/pm/PackageParser.java` `validateName`,
+  `src/api-impl/android/atl/ATLInstaller.java`, `ATLRegistry.java`.
+- Fix: the install refuses a name that isn't one path component of its own (a leading dot, `..`).
+
 ## DINE
 
 ### DINE-1
@@ -1633,6 +1650,8 @@ no frame hook.
 ### TOOL-12
 
 **Small open defects of `tools/dine dbg smoke`.**
+- `ios launch`, and so `ios run`, takes any attached debug server for the iOS one: a gtk session
+  attached to ATL blocks the phone's launch (`tools/py/dine/cli.py` `_launch`; A10-16).
 - State: open; found 2026-11-14 (instruments audit).
 - An app that died is reported as a log timeout, after the step's whole timeout.
 - Waits read the server's one mark, which another client's action moves; a step with no action
