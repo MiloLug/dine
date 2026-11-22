@@ -732,6 +732,36 @@ rows: a row added, shown again after a relaunch (`tests/launcher/`, which has th
 test only), and a 40-character name in the launcher's four columns (truncation was seen only on
 the atl screen's five, with names up to 15 characters).
 
+### DINE-16
+
+**Back and Home behave differently towards the launcher: Back leaves it as it was, Home resets it at
+once.** The user, 2026-11-22: "distinguish back and home actions in their behaviour. Back from just
+started app does not reset the launcher state and just closes (or in the future minimizes/stops)
+the app. Home resets the launcher - e.g. scrolled to top, main launcher screen RIGHT AWAY. The
+secret is to reset the launcher view even when you just start the app closing gesture (home). If
+you started the gesture and decided to not continue - this is fine, yes it will be already reset
+and back will send you to the main launcher screen in reset state, no contradiction or bugs -
+android phones do this, at least samsungs".
+- Back out of an app (Back on the screen it started with): the app closes, later minimizes or
+  stops, and the launcher shows as the user left it, with its pushed screen and scroll position.
+- Home: the launcher resets (its main screen, scrolled to the top) as soon as the Home gesture
+  begins, before it commits. A cancelled gesture keeps the app and the reset is not undone: a later
+  Back lands on the reset launcher, as meant.
+- Today: Back on the task root resets as Home does (`taskMoved` calls `dismissToRoot("back")`); an
+  app's exit leaves the launcher as it was (`exited`); Home resets only after the container's
+  dismissal has ended and only the path, not the scroll (`dismissToRoot`). That late reset stays
+  until this is built (the user: "leave A for now").
+- Where: `apps/Dine/Sources/Dine/Navigation.swift`; `EdgeGestures.swift` (a gesture knows it is
+  Home when the pan begins, once its axis picked the binding); `LauncherView.swift` (nothing can
+  scroll it to the top). The Home accessibility action has no gesture: it resets when it runs.
+- Trap: UIKit drops a path change made during the dismissal of a container with an alert over it,
+  and the path then claims a root that doesn't show. Unverified: whether it takes one while the
+  container covers the launcher and nothing moves, which the early reset needs, with an alert, a
+  menu or the keyboard up too. Smoke `atl-dialog-late` and `atl-two-apps` show the refusal.
+- Changes with it: `notes/nav-gestures.md` "Actions" ("Back on the root activity is Home"), smoke
+  `atl-nav`'s "back on the task root" step (waits for `nav: launcher root`, and the next step's
+  "Recent apps" works only at the launcher's root).
+
 ## TOOL
 
 ### TOOL-4

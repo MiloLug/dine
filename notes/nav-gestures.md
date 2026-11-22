@@ -110,15 +110,17 @@ Every binding is a setting (see [Settings](#settings)).
   }
   ```
 
-  On iOS the host accepts the move, so Back on the root activity is Home. On gtk the host refuses
-  it and the activity finishes, which keeps the desktop behaviour. Back while the task is in the
-  back does nothing.
+  On iOS the host accepts the move, so Back on the root activity is Home
+  ([DINE-16](general-todo.md#dine-16) will tell them apart: Back leaves the launcher as it was). On
+  gtk the host refuses it and the activity finishes, which keeps the desktop behaviour. Back while
+  the task is in the back does nothing.
 - **Home:** Dine starts the app container's dismissal and tells ATL, which runs `onPause` and
   `onStop`; when the dismissal has ended it pops the launcher to its root, unanimated (so a pushed
   screen shows during the slide). UIKit drops a navigation change made during the dismissal of a
   container with an alert over it ("the navigation stack will not be updated", iOS 27), and the
   empty path would then claim a root that doesn't show. Home never waits for the Android main
   thread, so a hung app can't trap the user. A Home before the app runs holds for its start.
+  Wanted ([DINE-16](general-todo.md#dine-16)): the launcher resets when the Home gesture begins.
 - **Running apps list:** a Dine screen over the launcher, newest first, one entry per running app
   labelled with its name. Opening it from an app moves the app to the back. Tapping an entry brings
   that app to the front and presents its container. Dismissing the running apps list returns to the
