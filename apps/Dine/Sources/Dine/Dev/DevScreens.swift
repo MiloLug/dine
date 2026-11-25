@@ -1,5 +1,4 @@
 #if DEBUG
-import CDbgAgent
 import SwiftUI
 
 /// Dine's dev screens on the launcher's stack.
@@ -27,10 +26,5 @@ extension View {
             }
         }
     }
-}
-
-/// The debug agent (native/dev/dbgagent); it listens only when launched with DINE_DBG_AGENT_PORT.
-func startDevServices() {
-    dine_dbg_agent_start()
 }
 #endif

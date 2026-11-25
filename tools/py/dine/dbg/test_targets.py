@@ -78,13 +78,15 @@ class LldbKillTest(unittest.TestCase):
 
 
 class AgentUiTest(unittest.TestCase):
-    def ui(self, result):
+    def ui(self, result, label="Button"):
         ui = agentui.AgentUi()
         ui._ui, ui._values = [], []
         ui._stopped_at = lambda: None
+        self.sent = []
 
         def request(line, timeout):
-            labels = [[True, "Button"]]
+            self.sent.append(line)
+            labels = [[True, label]]
             if line == "ls":
                 return {"labels": labels}
             if line.startswith("settle"):
@@ -93,15 +95,20 @@ class AgentUiTest(unittest.TestCase):
         ui._request = request
         return ui
 
-    def test_tap(self):
-        self.assertEqual(self.ui(True).do_ui_tap("Button").splitlines()[0], "tapped 'Button'")
+    def test_activate(self):
+        self.assertEqual(self.ui(True).do_ui_activate("Button").splitlines()[0], "activated 'Button'")
         with self.assertRaisesRegex(CmdError, "declined the activation"):
-            self.ui(False).do_ui_tap("Button")
+            self.ui(False).do_ui_activate("Button")
 
-    def test_type(self):
-        self.assertEqual(self.ui(True).do_ui_type("Button", "x").splitlines()[0], "typed 'x' into 'Button'")
+    def test_activate_line_quotes_the_label(self):
+        self.ui(True, 'say "hi" é').do_ui_activate('say "hi" é')
+        self.assertEqual(self.sent[1], 'activate 0 "say \\"hi\\" \\u00e9"')
+
+    def test_insert(self):
+        self.assertEqual(self.ui(True).do_ui_insert("Button", "x").splitlines()[0], "inserted 'x' into 'Button'")
+        self.assertEqual(self.sent[1], 'insert 0 ["Button", "x"]')
         with self.assertRaisesRegex(CmdError, "takes no text"):
-            self.ui(False).do_ui_type("Button", "x")
+            self.ui(False).do_ui_insert("Button", "x")
 
 
 if __name__ == "__main__":

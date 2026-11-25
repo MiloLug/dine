@@ -84,12 +84,12 @@ class FakeServerTest(unittest.TestCase):
         self.assertEqual(slow.wait(10), 1)
         self.dbg("fake", "slow", "0", check=0)
 
-    def test_ui_tap_prints_the_new_screen(self):
+    def test_ui_activate_prints_the_new_screen(self):
         self.dbg("fake", "ui", "hello++|probe", check=0)
-        r = self.dbg("ui", "tap", "hello", check=0)
-        self.assertEqual(r.stdout.splitlines(), ["tapped 'hello++'", "screen: hello++ | probe"])
+        r = self.dbg("ui", "activate", "hello", check=0)
+        self.assertEqual(r.stdout.splitlines(), ["activated 'hello++'", "screen: hello++ | probe"])
         self.assertIn("#1 probe", self.dbg("ui", "ls", check=0).stdout)
-        self.assertIn("no element matches", self.dbg("ui", "tap", "nope", check=1).stdout)
+        self.assertIn("no element matches", self.dbg("ui", "activate", "nope", check=1).stdout)
         self.assertEqual(self.dbg("ui", "action", "Home", check=0).stdout.splitlines()[0], "ran 'Home'")
         self.assertEqual(self.dbg("ui", "appearance", "dark", check=0).stdout.splitlines()[0], "appearance dark")
 

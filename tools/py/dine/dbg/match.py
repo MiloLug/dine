@@ -1,4 +1,4 @@
-"""Text matchers shared by `wait --log`, `wait --at` and `ui tap`."""
+"""Text matchers shared by `wait --log`, `wait --at` and the `ui` verbs that take a label."""
 
 import re
 

@@ -17,8 +17,6 @@ from . import paths
 from .paths import DineError
 
 TUNNELD = "http://127.0.0.1:49151/"
-# native/dev/dbgagent listens on this port on the phone when the app gets it in its environment.
-AGENT_ENV, AGENT_PORT = "DINE_DBG_AGENT_PORT", 47801
 # uidrive's agent in the dev payload, a path inside the bundle; build-ios-dev.sh builds it.
 AGENT_DYLIB = "dev/libuidrive.dylib"
 
@@ -136,8 +134,7 @@ def launch(app: str, suspended: bool = False) -> int:
     async def run(rsd):
         bundle = await _bundle_id(rsd, app)
         return await uidrive.ios.launch(rsd, bundle, port=uidrive.ios.DEFAULT_PORT, dylib=AGENT_DYLIB,
-                                        suspended=suspended, inject=not release(),
-                                        env={AGENT_ENV: str(AGENT_PORT)})
+                                        suspended=suspended, inject=not release())
     try:
         return _with_rsd(run, timeout=90)   # past the launch's own 60 s
     except (AssertionError, TimeoutError, DTXNsError, PyMobileDevice3Exception, uidrive.client.UidriveError) as e:
@@ -347,8 +344,7 @@ def check_installed(app: str) -> None:
 # What only dev builds hold, by bundle file. Strings the compiler keeps whole: over 15 bytes or a
 # log format, as Swift inlines shorter ones. A dev bundle has every one.
 DEV_MARKERS = {
-    "{app}": ("DINE_DBG_AGENT_PORT",    # native/dev/dbgagent
-              "(libc++ ok, ",           # native/dev/hello
+    "{app}": ("(libc++ ok, ",           # native/dev/hello
               "dinejniargs",            # native/dev/runtimetests
               "art probe ", "core-junit", "ma probe ",     # artbridge's dev*.cpp
               "Dine native: ", "probe done ", "dine-0002-jni-args", "atl: can't create ",  # Sources/Dine/Dev

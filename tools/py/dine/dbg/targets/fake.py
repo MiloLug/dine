@@ -104,15 +104,15 @@ class FakeTarget(Target):
     def do_ui_ls(self):
         return agent.listing(self._labels())
 
-    def do_ui_tap(self, arg=None, timeout=10):
+    def do_ui_activate(self, arg=None, timeout=10):
         labels = self._labels()
         i = int(arg[1:]) if arg and arg[:1] == "#" and arg[1:].isdigit() else agent.pick(labels, arg or "")
-        return f"tapped {labels[i][1]!r}\nscreen: {agent.screen(labels)}"
+        return f"activated {labels[i][1]!r}\nscreen: {agent.screen(labels)}"
 
-    def do_ui_type(self, arg=None, text=None, timeout=10):
+    def do_ui_insert(self, arg=None, text=None, timeout=10):
         labels = self._labels()
         i = int(arg[1:]) if arg and arg[:1] == "#" and arg[1:].isdigit() else agent.pick(labels, arg or "")
-        return f"typed {text!r} into {labels[i][1]!r}\nscreen: {agent.screen(labels)}"
+        return f"inserted {text!r} into {labels[i][1]!r}\nscreen: {agent.screen(labels)}"
 
     def do_ui_back(self, timeout=10):
         return f"went back\nscreen: {agent.screen(self._labels())}"

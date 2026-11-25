@@ -1,14 +1,13 @@
-"""Client of an app's debug agent (iOS: native/dev/dbgagent/agent.mm; gtk: dine-atl
-src/backends/ui/gtk/agent.c): one request line, one JSON reply line, over the connection the target's
-`connect` makes (default: usbmux to the agent's port on the phone)."""
+"""Dine's side of an app's UI agent: uidrive's client (PROTOCOL.md in github.com/MiloLug/dine-uidrive)
+with Dine's label matching and wording. iOS: the injected uidrive agent, reached over usbmux; gtk:
+dine-atl src/backends/ui/gtk/agent.c, which speaks the same protocol over the Unix socket the
+target's `connect` opens."""
 
-import asyncio
-import json
 import socket
-import time
 from typing import Callable
 
-from .. import ios
+import uidrive.client
+
 from . import match
 from .targets.base import CmdError
 
@@ -24,56 +23,36 @@ class AgentClosed(CmdError):
 
 
 def _connect(timeout: float) -> socket.socket:
-    from pymobiledevice3 import usbmux
-    from pymobiledevice3.exceptions import ConnectionFailedError, ConnectionFailedToUsbmuxdError
-
-    async def connect():
-        device = await usbmux.select_device()
-        if device is None:
-            raise CmdError("no phone on usbmux: tools/dine ios tunnel status")
-        return await device.connect(ios.AGENT_PORT)
+    import uidrive.ios   # pymobiledevice3's modules are slow to import; only a request to the phone needs them
     try:
-        sock = asyncio.run(asyncio.wait_for(connect(), timeout))
-    except ConnectionFailedToUsbmuxdError:
+        return uidrive.ios.connect(uidrive.ios.DEFAULT_PORT, timeout)
+    except uidrive.ios.NoDevice:
+        raise CmdError("no phone on usbmux: tools/dine ios tunnel status") from None
+    except uidrive.ios.UsbmuxUnreachable:
         raise CmdError("usbmuxd isn't reachable: tools/dine ios tunnel status") from None
-    except ConnectionFailedError:
-        raise AgentDown from None
-    except TimeoutError:
+    except uidrive.client.AgentTimeout:
         raise CmdError(f"no usbmux connection to the app within {timeout:g}s") from None
-    sock.setblocking(True)
-    return sock
+    except uidrive.client.AgentDown:
+        raise AgentDown from None
 
 
 def request(line: str, timeout: float = 10, stopped: Callable[[], str | None] = lambda: None,
             connect: Callable[[float], socket.socket] = _connect) -> dict:
     """The agent's reply, or `{"stopped": where}` once `stopped()` names a stop: lldb stopping the app
     stops the agent too, so the reply would never come."""
-    deadline = time.monotonic() + timeout
     verb = line.split(" ", 1)[0]
-    with connect(timeout) as sock:
-        sock.sendall(line.encode() + b"\n")
-        buf = b""
-        while not buf.endswith(b"\n"):
-            where = stopped()
-            if where:
-                return {"stopped": where}
-            left = deadline - time.monotonic()
-            if left <= 0:
-                raise CmdError(f"the app's debug agent didn't answer `{verb}` within {timeout:g}s")
-            sock.settimeout(min(0.2, left))
-            try:
-                chunk = sock.recv(65536)
-            except socket.timeout:
-                continue
-            if not chunk:
-                break
-            buf += chunk
-    if not buf:
-        raise AgentClosed(f"the app's debug agent closed the connection on `{verb}` (did the app exit?)")
-    reply = json.loads(buf)
-    if "error" in reply:
-        raise CmdError(reply["error"])
-    return reply
+    try:
+        return uidrive.client.request(line, connect, timeout, interrupt=stopped)
+    except uidrive.client.Interrupted as e:
+        return {"stopped": e.value}
+    except uidrive.client.AgentTimeout:
+        raise CmdError(f"the app's debug agent didn't answer `{verb}` within {timeout:g}s") from None
+    except uidrive.client.AgentClosed:
+        raise AgentClosed(f"the app's debug agent closed the connection on `{verb}` (did the app exit?)") from None
+    except uidrive.client.AgentError as e:
+        raise CmdError(str(e)) from None
+    except uidrive.client.AgentDown:
+        raise AgentDown from None
 
 
 def labels_of(reply: dict) -> Labels:
@@ -101,8 +80,8 @@ def pick(labels: Labels, query: str) -> int:
 
 
 def listing(labels: Labels, values: list[str | None] | None = None) -> str:
-    """`#N label` per distinct label, `#N label = value` for an element with a value; N is what
-    `ui tap #N` sends."""
+    """`#N label` per distinct label, `#N label = value` for an element with a value; `#N` names that
+    element in `ui activate` and `ui insert`."""
     seen = set()
     lines = []
     for i, (_, label) in enumerate(labels):

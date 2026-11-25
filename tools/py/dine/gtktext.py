@@ -1,5 +1,5 @@
-"""The gtk smoke check `text-gtk`: widgets.apk's TextActivity under gtk, text typed through the gtk
-agent's `type` into a GtkText. Java answers with its filters and snapshots; the field shows what Java
+"""The gtk smoke check `text-gtk`: widgets.apk's TextActivity under gtk, text put through the gtk
+agent's `insert` into a GtkText. Java answers with its filters and snapshots; the field shows what Java
 holds, which the agent words as "hint: text"."""
 
 import time
@@ -25,32 +25,32 @@ def _field(s: Session, hint: str, want: str) -> None:
         time.sleep(0.2)
 
 
-def typing(env: dict[str, str]) -> None:
+def inserting(env: dict[str, str]) -> None:
     """The filter drops the digit and the field takes Java's text back; Java's setText reaches the field;
-    typing goes on at Java's cursor."""
+    inserting goes on at Java's cursor."""
     with Session(WIDGETS_APK, "dev/dine/widgets/TextActivity", env) as s:
         s.wait_line("text shown")
         mark = s.mark()
-        s.type("name", "hi1")
+        s.insert("name", "hi1")
         s.wait_line('text after "hi"', mark)
         _field(s, "name", "hi")
         mark = s.mark()
-        s.tap("fill")
+        s.activate("fill")
         s.wait_line('text after "filled"', mark)
         _field(s, "name", "filled")
         mark = s.mark()
-        s.type("name", "!")
+        s.insert("name", "!")
         s.wait_line('text after "filled!"', mark)
         _field(s, "name", "filled!")
 
 
 def key_behind_text(env: dict[str, str]) -> None:
-    """A Return typed in the same main-loop call as a character reaches Java after the character: its key
-    listener reads the text with it."""
+    """A Return pressed in the same main-loop call as an inserted character reaches Java after the
+    character: its key listener reads the text with it."""
     with Session(WIDGETS_APK, "dev/dine/widgets/TextActivity", env) as s:
         s.wait_line("text shown")
         mark = s.mark()
-        s.type("name", "o", RETURN)
+        s.insert("name", "o", RETURN)
         s.wait_line("text enter-key", mark)
         got = [l.split(": ", 1)[-1] for l in s.lines_since(mark) if "text enter-key" in l]
         if got != ['text enter-key "o"']:
@@ -59,17 +59,17 @@ def key_behind_text(env: dict[str, str]) -> None:
 
 def input_state(env: dict[str, str]) -> None:
     """GTK gives input where Android's dispatch does: to a field in a disabled ScrollView and to a
-    transparent one, not to a disabled one; a tap on a field under blocksDescendants, whose focus Java
-    refuses, leaves GTK's focus on the field Java holds focused."""
+    transparent one, not to a disabled one; an activation of a field under blocksDescendants, whose
+    focus Java refuses, leaves GTK's focus on the field Java holds focused."""
     with Session(WIDGETS_APK, "dev/dine/widgets/InputStateActivity", env) as s:
         s.wait_line("inputstate shown")
         want = {"scrolled": True, "faded": True, "off": False, "blocked": True}
         got = {hint: s.state(hint)["sensitive"] for hint in want}
         problems = [f"the fields' GTK sensitivity is {got}, want {want}"] if got != want else []
-        s.tap("scrolled")
+        s.activate("scrolled")
         s.wait_line("inputstate focus scrolled true")
         mark = s.mark()
-        s.tap("blocked")
+        s.activate("blocked")
         s.ask("settle 3000")
         deadline = time.monotonic() + 3
         while s.state("blocked")["focused"] or not s.state("scrolled")["focused"]:
@@ -89,7 +89,7 @@ def long_alert(env: dict[str, str]) -> None:
     with Session(WIDGETS_APK, "dev/dine/widgets/TextActivity", env) as s:
         s.wait_line("text shown")
         mark = s.mark()
-        s.tap("long alert")
+        s.activate("long alert")
         # the last layout's: the box gets the height it asks for
         deadline = time.monotonic() + 10
         while True:
@@ -99,11 +99,11 @@ def long_alert(env: dict[str, str]) -> None:
             if time.monotonic() > deadline:
                 raise s.fail(f"the alert's view got heights (of what it asks) {heights}")
             time.sleep(0.2)
-        s.tap("Close")
+        s.activate("Close")
         s.wait_line("text long closed", mark)
 
 
-CHECKS = [typing, key_behind_text, input_state, long_alert]
+CHECKS = [inserting, key_behind_text, input_state, long_alert]
 
 
 def run(env: dict[str, str]) -> str | None:

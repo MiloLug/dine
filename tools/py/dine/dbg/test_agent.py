@@ -5,9 +5,14 @@ import subprocess
 import sys
 import threading
 import unittest
+from unittest import mock
+
+import uidrive.client
+import uidrive.ios
 
 from dine import paths
 from dine.dbg import agent
+from dine.dbg.targets import agentui
 from dine.dbg.targets.base import CmdError
 
 LAUNCHER = [(False, "Toolbar"), (True, "Add App"), (True, "art"), (False, "art"), (True, "hello++"),
@@ -77,7 +82,7 @@ class RequestTest(unittest.TestCase):
 
     def test_error_reply(self):
         with self.assertRaisesRegex(CmdError, "screen changed"):
-            agent.request('tap 1 "x"', 5, connect=self.serve(b'{"error": "the screen changed"}\n'))
+            agent.request('activate 1 "x"', 5, connect=self.serve(b'{"error": "the screen changed"}\n'))
 
     def test_closed_without_reply(self):
         with self.assertRaisesRegex(CmdError, "closed the connection"):
@@ -91,6 +96,51 @@ class RequestTest(unittest.TestCase):
     def test_timeout(self):
         with self.assertRaisesRegex(CmdError, "didn't answer `settle`"):
             agent.request("settle 3000", 0.3, connect=self.serve(None))
+
+
+class AgentDownTest(unittest.TestCase):
+    def test_uidrive_agent_down_maps_to_dine_agent_down(self):
+        def connect(timeout):
+            raise uidrive.client.AgentDown("nothing listens on port 47802")
+        with self.assertRaises(agent.AgentDown):
+            agent.request("ls", 5, connect=connect)
+
+        class Target(agentui.AgentUi):
+            _stopped_at = staticmethod(lambda: None)
+
+            def _request(self, line, timeout):
+                return agent.request(line, timeout, connect=connect)
+
+            def _no_agent(self):
+                return "no debug agent in Dine: it isn't running"
+        with self.assertRaisesRegex(CmdError, "^no debug agent in Dine: it isn't running$"):
+            Target().do_ui_ls()
+
+
+class ConnectTest(unittest.TestCase):
+    def connect_raising(self, error: Exception, timeout: float = 3) -> str:
+        with mock.patch("uidrive.ios.connect", side_effect=error):
+            with self.assertRaises(CmdError) as caught:
+                agent._connect(timeout)
+        return str(caught.exception)
+
+    def test_connect_errors_keep_their_wording(self):
+        self.assertEqual(self.connect_raising(uidrive.ios.NoDevice("no device on usbmux")),
+                         "no phone on usbmux: tools/dine ios tunnel status")
+        self.assertEqual(self.connect_raising(uidrive.ios.UsbmuxUnreachable("usbmuxd isn't reachable")),
+                         "usbmuxd isn't reachable: tools/dine ios tunnel status")
+        self.assertEqual(self.connect_raising(uidrive.client.AgentTimeout("no usbmux connection to port 47802 within 3s")),
+                         "no usbmux connection to the app within 3s")
+
+    def test_connect_agent_down_is_dine_agent_down(self):
+        with mock.patch("uidrive.ios.connect", side_effect=uidrive.client.AgentDown("nothing listens on port 47802")):
+            with self.assertRaises(agent.AgentDown):
+                agent._connect(3)
+
+    def test_connect_goes_to_uidrives_port(self):
+        with mock.patch("uidrive.ios.connect", return_value="sock") as connect:
+            self.assertEqual(agent._connect(3), "sock")
+        connect.assert_called_once_with(uidrive.ios.DEFAULT_PORT, 3)
 
 
 if __name__ == "__main__":

@@ -14,14 +14,14 @@ from . import client
 @dataclass
 class Step:
     title: str
-    tap: str | None = None
+    activate: str | None = None  # an element's accessibility action, no touch
     back: bool = False
     action: str | None = None  # an accessibility custom action's name
     dbg: tuple[str, dict] | None = None  # a debug server command and its arguments
     says: str | None = None     # a regex that command's reply must hold
-    type: tuple[str, str] | None = None  # (label, text): the text typed into that field
+    insert: tuple[str, str] | None = None  # (label, text): text put into that field
     appearance: str | None = None  # light, dark or system: the key window's interface style
-    declined: bool = False      # the tap must be declined (a disabled control or alert action)
+    declined: bool = False      # the activation must be declined (a disabled control or alert action)
     ok: tuple[str, ...] = ()    # regexes that must all show up in the app's syslog
     ui: tuple[str, ...] = ()    # accessibility labels that must all show up, after ok
     gone: tuple[str, ...] = ()  # accessibility labels that must all be off the screen, after ui
@@ -189,30 +189,30 @@ BACK = Step("back", back=True, ui=("Add App",))
 SCENARIOS = {
     "Dine": [
         Scenario("hello", [
-            Step("hello++", tap="hello++", ok=(r"Dine native: Hello from C\+\+",)),
+            Step("hello++", activate="hello++", ok=(r"Dine native: Hello from C\+\+",)),
             BACK,
         ]),
         Scenario("probe", [
-            Step("probe", tap="probe", ok=(r"probe done \d+ ok 0 fail",), fail=(r"probe done \d+ ok [1-9]",)),
+            Step("probe", activate="probe", ok=(r"probe done \d+ ok 0 fail",), fail=(r"probe done \d+ ok [1-9]",)),
             BACK,
         ]),
         Scenario("atl-demo", [
-            Step("atl", tap="atl"),
-            Step("run demo", tap="demo_app", ok=("onResume", "viewtree: end", "nav: container shown demo_app"),
+            Step("atl", activate="atl"),
+            Step("run demo", activate="demo_app", ok=("onResume", "viewtree: end", "nav: container shown demo_app"),
                  ui=("hello PoC world!", "second one (static)"), fail=ATL_FAIL, timeout=120),
             Step("Home", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, check=_demo_viewtree),
         Scenario("atl-looper", [
-            Step("atl", tap="atl"),
-            Step("run looper", tap="looper", ok=("looper laid out", "looper done", "atl main returned 0",
+            Step("atl", activate="atl"),
+            Step("run looper", activate="looper", ok=("looper laid out", "looper done", "atl main returned 0",
                                                 "nav: container dismissed exit"),
                  fail=ATL_FAIL, timeout=120),
             BACK,
         ], uses_vm=True, needs_clean=True, alive=True, check=_looper_waits),
         Scenario("atl-views", [
-            Step("atl", tap="atl"),
+            Step("atl", activate="atl"),
             # c was laid out before its free; a layout pass after it walks the records without it
-            Step("run views", tap="views", ok=("dialogfreed:", "drawablefreed:", 'viewfreed: android.widget.TextView "c"',
+            Step("run views", activate="views", ok=("dialogfreed:", "drawablefreed:", 'viewfreed: android.widget.TextView "c"',
                                                "views row attached true", "views matrix 0,1 paint 2.0", "nav: frame fullscreen true",
                                                "views widgets", "views done", "atl main returned 0", "nav: container dismissed exit"),
                  fail=ATL_FAIL + ("native_1destructor", "native_1removeView", "nativeDestroy", "native_1unref"),
@@ -220,18 +220,18 @@ SCENARIOS = {
             BACK,
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-widgets", [
-            Step("atl", tap="atl"),
-            Step("run widgets", tap="widgets", ok=("widgets shown", "nav: frame fullscreen true"), ui=("widgets fullscreen",),
+            Step("atl", activate="atl"),
+            Step("run widgets", activate="widgets", ok=("widgets shown", "nav: frame fullscreen true"), ui=("widgets fullscreen",),
                  fail=ATL_FAIL, timeout=120),
             Step("windowed after 5 s", ok=("widgets fullscreen off", "nav: frame fullscreen false"), ui=("widgets windowed",),
                  fail=ATL_FAIL),
             Step("Home", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-draw", [
-            Step("atl", tap="atl"),
+            Step("atl", activate="atl"),
             # the bitmap redraws start when the draws are done, before the spin
             # view pixels: the replay of the view's list (cg_list_draw) read back; metrics: Paint against the labels
-            Step("run draw", tap="draw", ok=("widgets bitmap pixel ffff0000 0", "widgets pixels ok", "widgets blend ok", "widgets layers ok",
+            Step("run draw", activate="draw", ok=("widgets bitmap pixel ffff0000 0", "widgets pixels ok", "widgets blend ok", "widgets layers ok",
                                                "widgets view pixels ok scales 1 3", "widgets draw 3", "widgets draw done", "widgets metrics ok",
                                                "widgets bitmap redraw done"),
                  fail=ATL_FAIL + ("widgets metrics failed", r"widgets view pixels (?!ok\b)"), timeout=120),
@@ -239,66 +239,66 @@ SCENARIOS = {
             Step("Home", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, alive=True, check=_spin_paced),
         Scenario("atl-lists", [
-            Step("atl", tap="atl"),
-            Step("run lists", tap="lists", ok=(r"lists first [1-9]\d* of \d+ shown",), fail=ATL_FAIL, timeout=120),
+            Step("atl", activate="atl"),
+            Step("run lists", activate="lists", ok=(r"lists first [1-9]\d* of \d+ shown",), fail=ATL_FAIL, timeout=120),
             Step("Home", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-frames", [
-            Step("atl", tap="atl"),
-            Step("run frames", tap="frames", ok=("frames shown",), ui=("target text", "move"), fail=ATL_FAIL, timeout=120),
+            Step("atl", activate="atl"),
+            Step("run frames", activate="frames", ok=("frames shown",), ui=("target text", "move"), fail=ATL_FAIL, timeout=120),
             # FramesActivity moves a text that draws nothing a screen to the right: UIKit has the new frame
             # once the accessibility walk, which lists only what is on screen, no longer finds it
-            Step("move", tap="move", ok=("frames moved",), gone=("target text",), fail=ATL_FAIL),
+            Step("move", activate="move", ok=("frames moved",), gone=("target text",), fail=ATL_FAIL),
             Step("Home", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-passes", [
-            Step("atl", tap="atl"),
+            Step("atl", activate="atl"),
             # an OnPreDrawListener cancels three frames, so the view draws after its fourth call, and an
             # invalidate's after its second; a layout asked for from a global layout call is done in the same
             # pass; one asked for from every call comes at the frame rate (20 to 399 calls in the 500 ms of a
             # message that must still run)
-            Step("run passes", tap="passes", ok=("passes drawn after 4 calls", "passes invalidate drawn after 2 calls", "passes round 2",
+            Step("run passes", activate="passes", ok=("passes drawn after 4 calls", "passes invalidate drawn after 2 calls", "passes round 2",
                                                  "passes frame", r"passes layouts ([2-9]\d|[1-3]\d\d) in [56]\d\d ms",
                                                  "atl main returned 0", "nav: container dismissed exit"),
                  fail=ATL_FAIL + (r"passes drawn after [0-3] calls", r"passes invalidate drawn after [01] calls"), timeout=120),
             BACK,
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-windows", [
-            Step("atl", tap="atl"),
+            Step("atl", activate="atl"),
             # a dialog's window state: keep-screen-on, its exclusion rect at the left edge and its
             # share of the insets; its brightness reaches the host, which ignores it (DINE-11)
-            Step("run windows state", tap="windows state",
+            Step("run windows state", activate="windows state",
                  ok=("state dialog shown", "state dialog laid out", "nav: keep screen on true",
                      "nav: exclusion left 1 right 0", r"state insets [1-9]\d* 0 0 0"),
                  fail=ATL_FAIL, timeout=120),
             Step("Home", action="Home", ok=("nav: launcher root", "nav: keep screen on false"), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-keyboard", [
-            Step("atl", tap="atl"),
+            Step("atl", activate="atl"),
             # adjustResize: with the keyboard up the window lays out above it, so its bottom insets go
             # a window below the status bar keeps the size Dine started it with: no resize on the show
-            Step("run keyboard resize", tap="keyboard resize", ok=(r"keyboard: resize ime 0 nav [1-9]\d* size",),
+            Step("run keyboard resize", activate="keyboard resize", ok=(r"keyboard: resize ime 0 nav [1-9]\d* size",),
                  ui=("resize field",), fail=ATL_FAIL + ("nav: window size",), timeout=120),
-            Step("type into the field", type=("resize field", "a"), ok=(r"keyboard: resize ime 0 nav 0 size",), fail=ATL_FAIL),
+            Step("insert into the field", insert=("resize field", "a"), ok=(r"keyboard: resize ime 0 nav 0 size",), fail=ATL_FAIL),
             # the keyboard's inset stays behind with the front: back in front, the bottom inset is the bar's again
             Step("Home with the keyboard", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
             Step("Recent apps", action="Recent apps", ok=("nav: apps list shown",)),
-            Step("back to app", tap="back to app", ok=(r"keyboard: resize ime 0 nav [1-9]\d* size",), fail=ATL_FAIL),
+            Step("back to app", activate="back to app", ok=(r"keyboard: resize ime 0 nav [1-9]\d* size",), fail=ATL_FAIL),
             Step("Home", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-keyboard-dialog", [
-            Step("atl", tap="atl"),
+            Step("atl", activate="atl"),
             # stateVisible: the keyboard comes with the dialog, which is placed above it. `ok` alone would match the first
             # layout's line, so a field under the keyboard fails; the placed window's lines carry ime 0 (ATL-165)
-            Step("run keyboard dialog", tap="keyboard dialog",
+            Step("run keyboard dialog", activate="keyboard dialog",
                  ok=(r"keyboard: dialogbottom ime [1-9]\d* ", r"keyboard: dialogbottom ime 0 .* above true"),
                  ui=("dialogbottom field",), fail=ATL_FAIL + ("nav: window size", DIALOG_UNDER_KEYBOARD), timeout=120),
-            Step("type into the field", type=("dialogbottom field", "a"), fail=ATL_FAIL + (DIALOG_UNDER_KEYBOARD,)),
+            Step("insert into the field", insert=("dialogbottom field", "a"), fail=ATL_FAIL + (DIALOG_UNDER_KEYBOARD,)),
             Step("Home", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-config", [
-            Step("atl", tap="atl"),
-            Step("run config", tap="config", ok=("config: activity created color",), fail=ATL_FAIL, timeout=120),
+            Step("atl", activate="atl"),
+            Step("run config", activate="config", ok=("config: activity created color",), fail=ATL_FAIL, timeout=120),
             # from light, whatever the phone's own: a dark switch is then a change
             Step("light first", appearance="light"),
             Step("dark", appearance="dark", ok=("config: application night 32", "config: activity night 32 color #ffaabbcc",
@@ -309,192 +309,192 @@ SCENARIOS = {
             Step("Home", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-popup", [
-            Step("atl", tap="atl"),
-            Step("run windows popup", tap="windows popup", ok=("popup activity created",), fail=ATL_FAIL, timeout=120),
-            Step("anchor", tap="anchor", ok=("popup shown",), ui=("one", "two"), fail=ATL_FAIL),
-            Step("one", tap="one", ok=("popup row one",), fail=ATL_FAIL),
-            # outside the popup: it closes (ACTION_OUTSIDE) and the tap still reaches the activity
-            Step("elsewhere", tap="elsewhere", ok=("popup dismissed", "popup elsewhere"), fail=ATL_FAIL),
+            Step("atl", activate="atl"),
+            Step("run windows popup", activate="windows popup", ok=("popup activity created",), fail=ATL_FAIL, timeout=120),
+            Step("anchor", activate="anchor", ok=("popup shown",), ui=("one", "two"), fail=ATL_FAIL),
+            Step("one", activate="one", ok=("popup row one",), fail=ATL_FAIL),
+            # outside the popup: it closes (ACTION_OUTSIDE) and the activation's tap still reaches the activity
+            Step("elsewhere", activate="elsewhere", ok=("popup dismissed", "popup elsewhere"), fail=ATL_FAIL),
             # PopupMenu as iOS's own menu; the agent can't pick its items (a hand check), Back closes it
-            Step("menu", tap="menu", ok=("menu: presented",), ui=("Copy", "Paste", "Bold", "More"), fail=ATL_FAIL),
+            Step("menu", activate="menu", ok=("menu: presented",), ui=("Copy", "Paste", "Bold", "More"), fail=ATL_FAIL),
             Step("Back closes the menu", back=True, ok=("menu dismissed",), fail=ATL_FAIL + ("nav: container dismissed",)),
-            Step("toast", tap="toast", ok=('toast: shown "toasted"',), fail=ATL_FAIL),
+            Step("toast", activate="toast", ok=('toast: shown "toasted"',), fail=ATL_FAIL),
             # the drop-down doesn't take the keys: the field keeps the keyboard while it shows
-            Step("type into fruit", type=("fruit", "ap"), ok=("actv dropdown shown",), ui=("apple", "apricot"), fail=ATL_FAIL),
-            Step("apple", tap="apple", ok=("actv text apple",), fail=ATL_FAIL),
+            Step("insert into fruit", insert=("fruit", "ap"), ok=("actv dropdown shown",), ui=("apple", "apricot"), fail=ATL_FAIL),
+            Step("apple", activate="apple", ok=("actv text apple",), fail=ATL_FAIL),
             # the app ends (its last activity finishes) while its toast shows: the toast goes with its window
-            Step("bye", tap="bye", ok=("toast: gone with its window", "nav: container dismissed exit"), fail=ATL_FAIL),
+            Step("bye", activate="bye", ok=("toast: gone with its window", "nav: container dismissed exit"), fail=ATL_FAIL),
             BACK,
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-gd", [
-            Step("atl", tap="atl"),
-            Step("run gravity", tap="gravity", ok=("- onResume - yay!", "nav: container shown gravity"),
+            Step("atl", activate="atl"),
+            Step("run gravity", activate="gravity", ok=("- onResume - yay!", "nav: container shown gravity"),
                  fail=ATL_FAIL + ("UnsatisfiedLinkError", "JNI DETECTED ERROR"), timeout=120),
             # the GameView redraws itself: the records draw pass's stats (test_hooks)
             Step("frames", ok=("atl frames ",), fail=ATL_FAIL + ("UnsatisfiedLinkError",), timeout=30),
             Step("Home", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-dialog", [
-            Step("atl", tap="atl"),
-            Step("run dialog", tap="dialog", ok=("dialog: presented",), fail=ATL_FAIL, timeout=120),
-            Step("Yes", tap="Yes", ok=("dialog onClick -1", "dialog: presented"), fail=ATL_FAIL),
-            Step("Green", tap="Green", ok=("dialog onClick 1", "dialog done", "nav: container dismissed exit"),
+            Step("atl", activate="atl"),
+            Step("run dialog", activate="dialog", ok=("dialog: presented",), fail=ATL_FAIL, timeout=120),
+            Step("Yes", activate="Yes", ok=("dialog onClick -1", "dialog: presented"), fail=ATL_FAIL),
+            Step("Green", activate="Green", ok=("dialog onClick 1", "dialog done", "nav: container dismissed exit"),
                  fail=ATL_FAIL),
             BACK,
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-controls", [
-            Step("atl", tap="atl"),
-            Step("run controls", tap="controls", ok=("controls shown",), ui=("PUSH", "lamp off", "BOLD & CAPS"), fail=ATL_FAIL, timeout=120),
-            Step("PUSH", tap="PUSH", ok=("controls click push",), fail=ATL_FAIL),
-            Step("locked", tap="locked", declined=True),
-            Step("check", tap="check", ok=("controls checked check true",), fail=ATL_FAIL),
-            Step("red", tap="red", ok=("controls checked red true", "controls radio red"), fail=ATL_FAIL),
-            Step("green", tap="green", ok=("controls checked green true", "controls checked red false", "controls radio green"),
+            Step("atl", activate="atl"),
+            Step("run controls", activate="controls", ok=("controls shown",), ui=("PUSH", "lamp off", "BOLD & CAPS"), fail=ATL_FAIL, timeout=120),
+            Step("PUSH", activate="PUSH", ok=("controls click push",), fail=ATL_FAIL),
+            Step("locked", activate="locked", declined=True),
+            Step("check", activate="check", ok=("controls checked check true",), fail=ATL_FAIL),
+            Step("red", activate="red", ok=("controls checked red true", "controls radio red"), fail=ATL_FAIL),
+            Step("green", activate="green", ok=("controls checked green true", "controls checked red false", "controls radio green"),
                  fail=ATL_FAIL),
-            Step("switch", tap="switch", ok=("controls checked switch true",), fail=ATL_FAIL),
-            Step("lamp off", tap="lamp off", ok=("controls click toggle lamp on",), ui=("lamp on",), fail=ATL_FAIL),
+            Step("switch", activate="switch", ok=("controls checked switch true",), fail=ATL_FAIL),
+            Step("lamp off", activate="lamp off", ok=("controls click toggle lamp on",), ui=("lamp on",), fail=ATL_FAIL),
             Step("Home", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-text", [
-            Step("atl", tap="atl"),
-            Step("run text", tap="text", ok=("text shown",), ui=("name", "fill"), fail=ATL_FAIL, timeout=120),
+            Step("atl", activate="atl"),
+            Step("run text", activate="text", ok=("text shown",), ui=("name", "fill"), fail=ATL_FAIL, timeout=120),
             # the field's filter drops the digit: Java's watcher sees the filtered text, and the field shows it
-            Step("type into name", type=("name", "hi1"), ok=('text after "hi"',), text=("name", "hi"), fail=ATL_FAIL),
-            Step("show", tap="show", ok=('text show "hi" 2,2',), fail=ATL_FAIL),
-            Step("fill", tap="fill", ok=('text after "filled"',), text=("name", "filled"), fail=ATL_FAIL),
-            Step("type after fill", type=("name", "!"), ok=('text after "filled!"',), text=("name", "filled!"), fail=ATL_FAIL),
+            Step("insert into name", insert=("name", "hi1"), ok=('text after "hi"',), text=("name", "hi"), fail=ATL_FAIL),
+            Step("show", activate="show", ok=('text show "hi" 2,2',), fail=ATL_FAIL),
+            Step("fill", activate="fill", ok=('text after "filled"',), text=("name", "filled"), fail=ATL_FAIL),
+            Step("insert after fill", insert=("name", "!"), ok=('text after "filled!"',), text=("name", "filled!"), fail=ATL_FAIL),
             # a selection that ends before it starts stays Java's: UIKit's ordered range is no change
-            Step("reverse", tap="reverse", ok=("text reversed 5,2",), fail=ATL_FAIL),
-            Step("show reversed", tap="show", ok=('text show "filled!" 5,2',), fail=ATL_FAIL + ('text show "filled!" 2,5',)),
-            # a tap into the field, its text and range unchanged: the range stays Java's
-            Step("tap name", tap="name"),
-            Step("show after tap", tap="show", ok=(r'text show "filled!" \d+,\d+',), fail=ATL_FAIL + ('text show "filled!" 2,5',)),
+            Step("reverse", activate="reverse", ok=("text reversed 5,2",), fail=ATL_FAIL),
+            Step("show reversed", activate="show", ok=('text show "filled!" 5,2',), fail=ATL_FAIL + ('text show "filled!" 2,5',)),
+            # an activation of the field, its text and range unchanged: the range stays Java's
+            Step("activate name", activate="name"),
+            Step("show after activate", activate="show", ok=(r'text show "filled!" \d+,\d+',), fail=ATL_FAIL + ('text show "filled!" 2,5',)),
             # Java moves the focus to notes and back to name at once, the keyboard stays on name: it is still
             # Java's request that hide answers
-            Step("swap", tap="swap"),
+            Step("swap", activate="swap"),
             # and the inset the keyboard left goes with it
-            Step("hide", tap="hide", ok=("text hide true", "text ime 0"), fail=ATL_FAIL + ("text hide false",)),
+            Step("hide", activate="hide", ok=("text hide true", "text ime 0"), fail=ATL_FAIL + ("text hide false",)),
             # a field Android's tap rule gives no keyboard (showSoftInputOnFocus false, no input type) takes
             # the focus and no keyboard: nothing to hide. Its edits are refused only by the text field's
-            # delegate, which the agent's insertText: bypasses: no step types into a field with no input type
-            Step("type into calc", type=("calc", "7"), ok=("text focus calc true", 'text calc "7"'), text=("calc", "7"),
+            # delegate, which the agent's insertText: bypasses: no step inserts into a field with no input type
+            Step("insert into calc", insert=("calc", "7"), ok=("text focus calc true", 'text calc "7"'), text=("calc", "7"),
                  fail=ATL_FAIL),
-            Step("calc has no keyboard", tap="hide", ok=("text hide false",), fail=ATL_FAIL + ("text hide true",)),
+            Step("calc has no keyboard", activate="hide", ok=("text hide false",), fail=ATL_FAIL + ("text hide true",)),
             # the native view of a text with a colored first word is swapped for a selectable one
-            Step("select", tap="select", ok=("text selectable",), ui=("Error: disk full",), fail=ATL_FAIL),
+            Step("select", activate="select", ok=("text selectable",), ui=("Error: disk full",), fail=ATL_FAIL),
             # a message taller than the screen scrolls in the alert's panel; the view under it keeps room (_text_layout)
             # the header's cap binds here: records' chrome must match the panel's laid-out header
-            Step("long alert", tap="long alert", ok=(r"dialog: chrome measured .* ok",), ui=("Long", "Close"),
+            Step("long alert", activate="long alert", ok=(r"dialog: chrome measured .* ok",), ui=("Long", "Close"),
                  fail=ATL_FAIL + ("dialog: chrome measured .* differs",)),
-            # its label is over 4 KB: the agent takes a request of any length, and a text declines the tap
-            Step("tap the long message", tap="A line of a long message", declined=True),
-            Step("Close", tap="Close", ok=("text long closed",), fail=ATL_FAIL),
+            # its label is over 4 KB: the agent takes a request of any length, and a text declines the activation
+            Step("activate the long message", activate="A line of a long message", declined=True),
+            Step("Close", activate="Close", ok=("text long closed",), fail=ATL_FAIL),
             Step("Home", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, alive=True, check=_text_layout),
         Scenario("atl-dialog-keep", [
-            Step("atl", tap="atl"),
+            Step("atl", activate="atl"),
             # onShow disabled "Yes", hid "Later" and took over "No"
-            Step("run dialog keep", tap="dialog keep", ok=("dialog: presented",), fail=ATL_FAIL, timeout=120),
-            Step("Yes", tap="Yes", declined=True),
-            Step("No", tap="No", ok=("keep no kept", "dialog: presented"), ui=("Sure",), fail=ATL_FAIL),
-            Step("Sure", tap="Sure", ok=("keep onClick -1", "keep done", "nav: container dismissed exit"), fail=ATL_FAIL),
+            Step("run dialog keep", activate="dialog keep", ok=("dialog: presented",), fail=ATL_FAIL, timeout=120),
+            Step("Yes", activate="Yes", declined=True),
+            Step("No", activate="No", ok=("keep no kept", "dialog: presented"), ui=("Sure",), fail=ATL_FAIL),
+            Step("Sure", activate="Sure", ok=("keep onClick -1", "keep done", "nav: container dismissed exit"), fail=ATL_FAIL),
             BACK,
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-dialog-content", [
-            Step("atl", tap="atl"),
+            Step("atl", activate="atl"),
             # a Dialog with a content view: drawn over the activity, its dim over the status bar too
-            Step("run dialog content", tap="dialog content", ok=("content shown", r"nav: status dim 0\.[1-9]"),
+            Step("run dialog content", activate="dialog content", ok=("content shown", r"nav: status dim 0\.[1-9]"),
                  ui=("content text", "Close", "Dismiss"), fail=ATL_FAIL, timeout=120),
-            Step("Close", tap="Close", ok=("content click", "content dismissed", "content shown"), fail=ATL_FAIL),
+            Step("Close", activate="Close", ok=("content click", "content dismissed", "content shown"), fail=ATL_FAIL),
             # the dim's activate is a tap outside the dialog: the second one cancels and the activity ends
-            Step("Dismiss", tap="Dismiss", ok=("content canceled", "content dismissed", "nav: container dismissed exit"),
+            Step("Dismiss", activate="Dismiss", ok=("content canceled", "content dismissed", "nav: container dismissed exit"),
                  fail=ATL_FAIL),
             BACK,
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-dialog-view", [
-            Step("atl", tap="atl"),
+            Step("atl", activate="atl"),
             # setView content in the alert's panel: the field takes the keyboard, the panel's OK answers
-            Step("run dialog view", tap="dialog view", ok=("view shown", r"dialog: chrome measured .* ok"),
+            Step("run dialog view", activate="dialog view", ok=("view shown", r"dialog: chrome measured .* ok"),
                  ui=("View test", "Inner", "OK", "Cancel"), fail=ATL_FAIL + ("dialog: chrome measured .* differs",), timeout=120),
-            Step("Inner", tap="Inner", ok=("view inner click",), fail=ATL_FAIL),
-            Step("type into name", type=("name", "hey"), fail=ATL_FAIL),
-            Step("OK", tap="OK", ok=('view ok "hey"', "view dismissed", "nav: container dismissed exit"), fail=ATL_FAIL),
+            Step("Inner", activate="Inner", ok=("view inner click",), fail=ATL_FAIL),
+            Step("insert into name", insert=("name", "hey"), fail=ATL_FAIL),
+            Step("OK", activate="OK", ok=('view ok "hey"', "view dismissed", "nav: container dismissed exit"), fail=ATL_FAIL),
             BACK,
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-dialog-choice", [
-            Step("atl", tap="atl"),
+            Step("atl", activate="atl"),
             # the panel's own rows; Blue opens a plain alert over the panel, which waits under it
-            Step("run dialog choice", tap="dialog choice", ok=(r"dialog: chrome measured .* ok",), ui=("Pick one", "Red", "Blue", "OK"),
+            Step("run dialog choice", activate="dialog choice", ok=(r"dialog: chrome measured .* ok",), ui=("Pick one", "Red", "Blue", "OK"),
                  fail=ATL_FAIL + ("dialog: chrome measured .* differs",), timeout=120),
-            Step("Blue", tap="Blue", ok=("choice single 2", "dialog: presented"), ui=("Blue is taken", "Okay"), fail=ATL_FAIL),
-            Step("Okay", tap="Okay", ok=("dialog: closed",), ui=("Pick one", "OK"), fail=ATL_FAIL),
-            Step("OK", tap="OK", ok=("choice single ok 2",), ui=("Pick some", "Salt"), fail=ATL_FAIL),
-            Step("Salt", tap="Salt", ok=("choice multi 0 true",), fail=ATL_FAIL),
-            Step("OK multi", tap="OK", ok=("choice multi ok 0,1", "choice adapter shown"), ui=("Apple", "Pear", "Skip"), fail=ATL_FAIL),
-            Step("Pear", tap="Pear", ok=("choice adapter 1", "choice done", "nav: container dismissed exit"), fail=ATL_FAIL),
+            Step("Blue", activate="Blue", ok=("choice single 2", "dialog: presented"), ui=("Blue is taken", "Okay"), fail=ATL_FAIL),
+            Step("Okay", activate="Okay", ok=("dialog: closed",), ui=("Pick one", "OK"), fail=ATL_FAIL),
+            Step("OK", activate="OK", ok=("choice single ok 2",), ui=("Pick some", "Salt"), fail=ATL_FAIL),
+            Step("Salt", activate="Salt", ok=("choice multi 0 true",), fail=ATL_FAIL),
+            Step("OK multi", activate="OK", ok=("choice multi ok 0,1", "choice adapter shown"), ui=("Apple", "Pear", "Skip"), fail=ATL_FAIL),
+            Step("Pear", activate="Pear", ok=("choice adapter 1", "choice done", "nav: container dismissed exit"), fail=ATL_FAIL),
             BACK,
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-dialog-alerts", [
-            Step("atl", tap="atl"),
-            Step("run dialog alerts", tap="dialog alerts", ok=("alerts first shown", 'dialog: presented "First"'),
+            Step("atl", activate="atl"),
+            Step("run dialog alerts", activate="dialog alerts", ok=("alerts first shown", 'dialog: presented "First"'),
                  ui=("Show second", "Cover"), fail=ATL_FAIL, timeout=120),
             # a window with a view over the plain alert: it goes while the window shows (covered), and comes back
-            Step("Cover", tap="Cover", ok=("alerts cover shown",), ui=("Uncover",), gone=("Show second",), fail=ATL_FAIL),
-            Step("Uncover", tap="Uncover", ok=("alerts cover closed", 'dialog: presented "First"'), ui=("Show second", "Cover"),
+            Step("Cover", activate="Cover", ok=("alerts cover shown",), ui=("Uncover",), gone=("Show second",), fail=ATL_FAIL),
+            Step("Uncover", activate="Uncover", ok=("alerts cover closed", 'dialog: presented "First"'), ui=("Show second", "Cover"),
                  gone=("Uncover",), fail=ATL_FAIL),
             # the button kept the first alert open, the second shows over it, as in the registry: UIKit stacks the
-            # controllers in the order they present, and the first is presented again after a tap (the lines name
+            # controllers in the order they present, and the first is presented again after an activation (the lines name
             # the alert a presented one is over; the first one's labels stay in the tree under the second's)
-            Step("Show second", tap="Show second", ok=("alerts second shown", 'dialog: presented "Second" above "First"'),
+            Step("Show second", activate="Show second", ok=("alerts second shown", 'dialog: presented "Second" above "First"'),
                  ui=("Close first", "Done"), fail=ATL_FAIL),
             # a button of the second dismisses the second before its listener runs, so the first changes and goes from a
             # timer, with the second up (presented again): UIKit's dismiss of a controller that presents another takes
             # that one down too; the second must be put back over the rebuilt first, and stay when the first goes
-            Step("Later", tap="Later", ok=("alerts first rebuilt",), ui=("the first alert, rebuilt", "Close first", "Done"),
+            Step("Later", activate="Later", ok=("alerts first rebuilt",), ui=("the first alert, rebuilt", "Close first", "Done"),
                  fail=ATL_FAIL),
-            # (the second timer is 6 s after the tap: this step starts about 2.5 s after it, and waits from its own mark)
+            # (the second timer is 6 s after the activation: this step starts about 2.5 s after it, and waits from its own mark)
             Step("first goes", ok=("alerts first dismissed later",), ui=("Close first", "Done"),
                  gone=("Show second", "the first alert, rebuilt"), fail=ATL_FAIL, timeout=30),
-            Step("Done", tap="Done", ok=("alerts done", "nav: container dismissed exit"), fail=ATL_FAIL),
+            Step("Done", activate="Done", ok=("alerts done", "nav: container dismissed exit"), fail=ATL_FAIL),
             BACK,
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-dialog-late", [
-            Step("atl", tap="atl"),
-            Step("run dialog late", tap="dialog late", ok=('dialog: presented "Late test"',), ui=("Yes", "No", "Later"), fail=ATL_FAIL, timeout=120),
+            Step("atl", activate="atl"),
+            Step("run dialog late", activate="dialog late", ok=('dialog: presented "Late test"',), ui=("Yes", "No", "Later"), fail=ATL_FAIL, timeout=120),
             # "No" disables "Yes" and hides "Later" while the alert is presented: UIKit's alert can't change its
             # actions, a new one replaces it with the new labels
-            Step("No", tap="No", ok=("late no kept", 'dialog: presented "Late test"'), ui=("Yes", "No"), gone=("Later",), fail=ATL_FAIL),
-            Step("Yes", tap="Yes", declined=True),
+            Step("No", activate="No", ok=("late no kept", 'dialog: presented "Late test"'), ui=("Yes", "No"), gone=("Later",), fail=ATL_FAIL),
+            Step("Yes", activate="Yes", declined=True),
             Step("Home", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-dialog-modal", [
-            Step("atl", tap="atl"),
+            Step("atl", activate="atl"),
             # not cancelable: only its buttons close it
-            Step("run dialog modal", tap="dialog modal", ok=('dialog: presented "Modal test"',), ui=("Done", "More"),
+            Step("run dialog modal", activate="dialog modal", ok=('dialog: presented "Modal test"',), ui=("Done", "More"),
                  fail=ATL_FAIL, timeout=120),
-            Step("Done", tap="Done", ok=("modal done", "nav: container dismissed exit"), fail=ATL_FAIL),
+            Step("Done", activate="Done", ok=("modal done", "nav: container dismissed exit"), fail=ATL_FAIL),
             BACK,
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-dialog-progress", [
-            Step("atl", tap="atl"),
-            Step("run dialog progress", tap="dialog progress", ok=("progress spinner shown true", "progress bar shown", "progress 5/10",
+            Step("atl", activate="atl"),
+            Step("run dialog progress", activate="dialog progress", ok=("progress spinner shown true", "progress bar shown", "progress 5/10",
                                                                    "progress done", "nav: container dismissed exit"),
                  fail=ATL_FAIL, timeout=120),
             BACK,
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-dialog-stack", [
-            Step("atl", tap="atl"),
+            Step("atl", activate="atl"),
             # a non-touch-modal dialog: an activity started over it hides it, Back brings both back
-            Step("run dialog stack", tap="dialog stack", ok=("stack resumed",), ui=("next", "line 0", "under"),
+            Step("run dialog stack", activate="dialog stack", ok=("stack resumed",), ui=("next", "line 0", "under"),
                  fail=ATL_FAIL, timeout=120),
-            Step("next", tap="next", ok=("stack cover resumed",), fail=ATL_FAIL),
+            Step("next", activate="next", ok=("stack cover resumed",), fail=ATL_FAIL),
             Step("Back", action="Back", ok=("stack resumed",), ui=("next", "line 0"), fail=ATL_FAIL),
             Step("Home", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-nav", [
-            Step("atl", tap="atl"),
+            Step("atl", activate="atl"),
             # px at 3x: 20 pt side strips, the home indicator at the bottom; B's two rects at its right edge make one span
-            Step("run nav", tap="nav", ok=("nav: B onResume", "nav: container shown nav",
+            Step("run nav", activate="nav", ok=("nav: B onResume", "nav: container shown nav",
                                           r"nav: B insets 60 0 60 [1-9]\d* 0 0 0 [1-9]\d* 0 0 0 [1-9]\d*",
                                           "nav: exclusion left 0 right 1"), fail=ATL_FAIL + ("nav: window size",), timeout=120),
             Step("Back", action="Back", ok=("nav: B onDestroy", "nav: A onResume", "nav: exclusion left 0 right 0"),
@@ -502,97 +502,97 @@ SCENARIOS = {
             Step("back on the task root", back=True,
                  ok=("nav: A onStop", "nav: container dismissed back", "nav: launcher root"), fail=ATL_FAIL),
             Step("Recent apps", action="Recent apps", ok=("nav: apps list shown",)),
-            Step("back to app", tap="back to app", ok=("nav: A onRestart", "nav: A onResume", "nav: container shown nav"),
+            Step("back to app", activate="back to app", ok=("nav: A onRestart", "nav: A onResume", "nav: container shown nav"),
                  fail=ATL_FAIL),
             Step("Home", action="Home", ok=("nav: A onStop", "nav: launcher root"), ui=("Add App",), fail=ATL_FAIL),
             # A showed its list in that onStop, while in the back: it waits for the front
             Step("Recent apps, list held", action="Recent apps", ok=("nav: apps list shown",)),
-            Step("back to app, list shown", tap="back to app", ok=("nav: container shown nav", "dialog: presented"),
+            Step("back to app, list shown", activate="back to app", ok=("nav: container shown nav", "dialog: presented"),
                  fail=ATL_FAIL + NAV_LIST_FAIL),
             Step("Home with the list", action="Home", ok=("nav: container dismissed home", "nav: A onStop"), ui=("Add App",),
                  fail=ATL_FAIL + NAV_LIST_FAIL),
             Step("Recent apps, list held again", action="Recent apps", ok=("nav: apps list shown",)),
-            Step("back to app, list again", tap="back to app", ok=("nav: container shown nav", "dialog: presented"),
+            Step("back to app, list again", activate="back to app", ok=("nav: container shown nav", "dialog: presented"),
                  fail=ATL_FAIL + NAV_LIST_FAIL),
-            Step("Odd item", tap="Odd ��\U0001f600��", ok=("dialog: closed", "nav: list 1"),
+            Step("Odd item", activate="Odd ��\U0001f600��", ok=("dialog: closed", "nav: list 1"),
                  fail=ATL_FAIL + ("nav: list canceled",)),
             # from the app: it goes to the back, the list shows in its place
             Step("Recent apps from the app", action="Recent apps",
                  ok=("nav: A onStop", "nav: container dismissed list", "nav: apps list shown"), fail=ATL_FAIL),
-            Step("back to app from the list", tap="back to app",
+            Step("back to app from the list", activate="back to app",
                  ok=("nav: A onRestart", "nav: container shown nav"), fail=ATL_FAIL),
             Step("Home at the end", action="Home", ok=("nav: A onStop", "nav: launcher root"), ui=("Add App",), fail=ATL_FAIL),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-immersive", [
-            Step("atl", tap="atl"),
+            Step("atl", activate="atl"),
             # nav.apk's ImmersiveActivity: the window grows under the status bar, the home indicator hides
-            Step("run nav immersive", tap="nav immersive",
+            Step("run nav immersive", activate="nav immersive",
                  ok=("nav: I onResume", "nav: frame fullscreen false cover true hide navigation true immersive true",
                      r"nav: window size \d+x\d+", r"nav: I edges status 0 [1-9]\d* 0 0 ime 0 0 0 0 hidden", r"nav: I size \d+x\d+"),
                  fail=ATL_FAIL, timeout=120),
             Step("Home", action="Home", ok=("nav: I onStop", "nav: launcher root"), ui=("Add App",), fail=ATL_FAIL),
             # in its second container the window moves back below the status bar: a new size
             Step("Recent apps", action="Recent apps", ok=("nav: apps list shown",)),
-            Step("back to app", tap="back to app", ok=("nav: I onResume", "nav: container shown nav immersive"), fail=ATL_FAIL),
-            Step("windowed", tap="windowed", ok=("nav: frame fullscreen false cover false", r"nav: window size \d+x\d+"),
+            Step("back to app", activate="back to app", ok=("nav: I onResume", "nav: container shown nav immersive"), fail=ATL_FAIL),
+            Step("windowed", activate="windowed", ok=("nav: frame fullscreen false cover false", r"nav: window size \d+x\d+"),
                  fail=ATL_FAIL),
             Step("Home at the end", action="Home", ok=("nav: I onStop", "nav: launcher root"), ui=("Add App",), fail=ATL_FAIL),
         ], uses_vm=True, needs_clean=True, alive=True, check=_surface_size),
         Scenario("atl-installer", [
-            Step("atl", tap="atl"),
+            Step("atl", activate="atl"),
             # the package suite's installer app: a session confirmed from its Application context
-            Step("run installer", tap="installer", ok=("scenario: status -1 dev.dine.pkg.ext", "dialog: presented"),
+            Step("run installer", activate="installer", ok=("scenario: status -1 dev.dine.pkg.ext", "dialog: presented"),
                  ui=("Install", "Cancel"), fail=ATL_FAIL + ("scenario: failed",), timeout=120),
-            Step("Install", tap="Install", ok=("scenario: status 0 dev.dine.pkg.ext", "scenario: installer dev.dine.pkg.driver",
+            Step("Install", activate="Install", ok=("scenario: status 0 dev.dine.pkg.ext", "scenario: installer dev.dine.pkg.driver",
                                                "nav: container dismissed exit"),
                  fail=ATL_FAIL + ("scenario: failed", r"scenario: status [1-9]")),
             BACK,
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("atl-two-apps", [
-            Step("atl", tap="atl"),
+            Step("atl", activate="atl"),
             # two apps of one VM: each gets its own answers, a night change reaches both, and one's end leaves the other
-            Step("run dialog late", tap="dialog late", ok=("nav: container shown dialog late", 'dialog: presented "Late test"'),
+            Step("run dialog late", activate="dialog late", ok=("nav: container shown dialog late", 'dialog: presented "Late test"'),
                  ui=("Yes", "No", "Later"), fail=ATL_FAIL, timeout=120),
-            Step("No in the first", tap="No", ok=("late no kept", 'dialog: presented "Late test"'), gone=("Later",),
+            Step("No in the first", activate="No", ok=("late no kept", 'dialog: presented "Late test"'), gone=("Later",),
                  fail=ATL_FAIL),
             Step("Home from the first", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
-            Step("atl again", tap="atl"),
-            Step("run text beside it", tap="text", ok=("atl app start", "nav: container shown text", "text shown"),
+            Step("atl again", activate="atl"),
+            Step("run text beside it", activate="text", ok=("atl app start", "nav: container shown text", "text shown"),
                  ui=("name", "fill"), fail=ATL_FAIL + ("runs already",), timeout=120),
-            Step("long alert", tap="long alert", ui=("Long", "Close"), fail=ATL_FAIL),
-            Step("Close in the second", tap="Close", ok=("text long closed",), fail=ATL_FAIL + ("late onClick", "late done")),
+            Step("long alert", activate="long alert", ui=("Long", "Close"), fail=ATL_FAIL),
+            Step("Close in the second", activate="Close", ok=("text long closed",), fail=ATL_FAIL + ("late onClick", "late done")),
             Step("Home from the second", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
-            Step("atl for the first", tap="atl"),
-            Step("the first's tile", tap="dialog late",
+            Step("atl for the first", activate="atl"),
+            Step("the first's tile", activate="dialog late",
                  ok=("nav: dialog late runs already: front", "nav: container shown dialog late", 'dialog: presented "Late test"'),
                  ui=("Yes", "No"), gone=("fill",), fail=ATL_FAIL + ("atl app start",)),
-            Step("Yes is still disabled", tap="Yes", declined=True, fail=("text long closed",)),
+            Step("Yes is still disabled", activate="Yes", declined=True, fail=("text long closed",)),
             Step("light first", appearance="light"),
             Step("dark for both", appearance="dark", ok=("late night 32", "text night 32"), fail=ATL_FAIL),
             Step("light for both", appearance="light", ok=("late night 16", "text night 16"), fail=ATL_FAIL),
             Step("system", appearance="system"),
             Step("Back ends the first", action="Back", ok=("late done", "nav: container dismissed exit", "atl main returned 0"),
                  fail=ATL_FAIL),
-            Step("the second's tile", tap="text", ok=("nav: text runs already: front", "nav: container shown text"),
+            Step("the second's tile", activate="text", ok=("nav: text runs already: front", "nav: container shown text"),
                  ui=("name", "fill"), fail=ATL_FAIL + ("atl app start",)),
-            Step("show in the second", tap="show", ok=('text show ""',), fail=ATL_FAIL),
+            Step("show in the second", activate="show", ok=('text show ""',), fail=ATL_FAIL),
             Step("Home", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, alive=True),
         Scenario("art", [
-            Step("art", tap="art", ok=("art probe done",)),
-            Step("run hello", tap="run hello", ok=("Hello from dine runtime tests", "art main returned"),
+            Step("art", activate="art", ok=("art probe done",)),
+            Step("run hello", activate="run hello", ok=("Hello from dine runtime tests", "art main returned"),
                  fail=ART_FAIL),
-            Step("run jni args", tap="run jni args", ok=("jni args ok", "art main returned"),
+            Step("run jni args", activate="run jni args", ok=("jni args ok", "art main returned"),
                  fail=("jni args failed", *ART_FAIL)),
-            Step("run https", tap="run https", ok=("https ok", "art main returned"),
+            Step("run https", activate="run https", ok=("https ok", "art main returned"),
                  fail=("https failed", *ART_FAIL), network=True, timeout=120),
-            Step("run park", tap="run park", ok=("park ok", "art main returned"),
+            Step("run park", activate="run park", ok=("park ok", "art main returned"),
                  fail=("park failed", *ART_FAIL)),
-            Step("run cleanup", tap="run cleanup", ok=("cleanup ok", "art main returned"),
+            Step("run cleanup", activate="run cleanup", ok=("cleanup ok", "art main returned"),
                  fail=("cleanup failed", *ART_FAIL), timeout=90),
-            Step("run cpu time", tap="run cpu time", ok=("thread cpu time ok", "art main returned"),
+            Step("run cpu time", activate="run cpu time", ok=("thread cpu time ok", "art main returned"),
                  fail=("thread cpu time failed", *ART_FAIL)),
-            Step("run netif", tap="run netif", ok=("netif ok", "art main returned"),
+            Step("run netif", activate="run netif", ok=("netif ok", "art main returned"),
                  fail=("netif failed", *ART_FAIL)),
             BACK,
         ], uses_vm=True, needs_clean=True),   # as a run of it alone: it creates the VM itself
@@ -602,7 +602,7 @@ SCENARIOS = {
             Step("breakpoint", dbg=("bp", {"op": "add", "spec": "HelloView.swift:23", "once": True}),
                  says=r"breakpoint \d+: .*HelloView\.swift:23"),
             Step("continue", dbg=("continue", {}), says="running"),
-            Step("hello++", tap="hello++"),
+            Step("hello++", activate="hello++"),
             Step("stop", dbg=("wait", {"at": "HelloView.swift:23"}), says="matched --stop"),
             # C: a Swift expression needs the system symbols of the phone's iOS (`ios symbols`)
             Step("expression", dbg=("exec", {"expr": "(const char *)dine_hello()", "lang": "c"}), says=r"Hello from C\+\+",
@@ -621,7 +621,7 @@ def listing(app: str) -> str:
         flags = [f for f, on in (("fresh process", sc.needs_clean), ("app stays up", sc.alive)) if on]
         lines.append(f"{sc.name}" + (f" ({', '.join(flags)})" if flags else ""))
         for st in sc.steps:
-            what = " ".join((st.dbg[0], *map(str, st.dbg[1].values()))) if st.dbg else f"tap {st.tap!r}" if st.tap else f"type {st.type[1]!r} into {st.type[0]!r}" if st.type else \
+            what = " ".join((st.dbg[0], *map(str, st.dbg[1].values()))) if st.dbg else f"activate {st.activate!r}" if st.activate else f"insert {st.insert[1]!r} into {st.insert[0]!r}" if st.insert else \
                 f"action {st.action!r}" if st.action else f"appearance {st.appearance}" if st.appearance else \
                 "back" if st.back else st.title
             lines.append(f"  {what}" + (f"; wait for {', '.join(st.ok)}" if st.ok else "")
@@ -718,9 +718,9 @@ def _run(app: str, names: list[str], network: bool, relaunch: Callable[[], int],
                     debugged.append(("bp", {"op": "rm", "spec": set_at[1]}))
                 if st.dbg[0] == "detach":
                     debugged.clear()   # a one-shot breakpoint went at its stop
-            elif st.tap or st.type or st.back or st.action or st.appearance:
-                resp = client.call("ui_tap", {"arg": st.tap}, timeout=30) if st.tap else \
-                    client.call("ui_type", {"arg": st.type[0], "text": st.type[1]}, timeout=30) if st.type else \
+            elif st.activate or st.insert or st.back or st.action or st.appearance:
+                resp = client.call("ui_activate", {"arg": st.activate}, timeout=30) if st.activate else \
+                    client.call("ui_insert", {"arg": st.insert[0], "text": st.insert[1]}, timeout=30) if st.insert else \
                     client.call("ui_action", {"arg": st.action}, timeout=30) if st.action else \
                     client.call("ui_appearance", {"arg": st.appearance}, timeout=30) if st.appearance else \
                     client.call("ui_back", {}, timeout=30)

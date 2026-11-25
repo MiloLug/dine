@@ -1,4 +1,4 @@
-"""`ui` commands through an app's debug agent (agent.py's wire format), for the targets that have one."""
+"""`ui` commands through an app's UI agent (agent.py), for the targets that have one."""
 
 from __future__ import annotations
 
@@ -28,8 +28,8 @@ class AgentUi:
         return self._ui
 
     def _settle(self) -> tuple[str, dict]:
-        """Waits for the screen the last tap/back led to; text to append, and the reply. No stop check
-        first: a tap into a breakpoint stops the app right after the tap's reply."""
+        """Waits for the screen the last action led to; text to append, and the reply. No stop check
+        first: an action that runs into a breakpoint stops the app right after the action's reply."""
         try:
             r = self._request("settle 3000", 8)
         except agent.AgentDown:
@@ -64,24 +64,24 @@ class AgentUi:
             return None
         return next((l for _, l in agent.labels_of(r) if m(l)), None)
 
-    def do_ui_tap(self, arg=None, timeout=60):
+    def do_ui_activate(self, arg=None, timeout=60):
         if not arg:
-            raise CmdError("usage: tools/dine dbg ui tap <label|#N>")
+            raise CmdError("usage: tools/dine dbg ui activate <label|#N>")
         i = self._pick(arg)
         label = self._ui[i][1]
-        self._agent(f"tap {i} {json.dumps(label)}")
+        self._agent(f"activate {i} {json.dumps(label)}")
         tail, r = self._settle()
         if r.get("ran") and r.get("result") is False:
             raise CmdError(f"{label!r} declined the activation (back navigation: tools/dine dbg ui back)")
-        return f"tapped {label!r}" + tail
+        return f"activated {label!r}" + tail
 
-    def do_ui_type(self, arg=None, text=None, timeout=60):
+    def do_ui_insert(self, arg=None, text=None, timeout=60):
         if not arg or text is None:
-            raise CmdError("usage: tools/dine dbg ui type <label|#N> <text>")
+            raise CmdError("usage: tools/dine dbg ui insert <label|#N> <text>")
         i = self._pick(arg)
         label = self._ui[i][1]
-        self._agent(f"type {i} {json.dumps([label, text])}")
+        self._agent(f"insert {i} {json.dumps([label, text])}")
         tail, r = self._settle()
         if r.get("ran") and r.get("result") is False:
             raise CmdError(f"{label!r} takes no text (not a text field, or it can't take the focus)")
-        return f"typed {text!r} into {label!r}" + tail
+        return f"inserted {text!r} into {label!r}" + tail

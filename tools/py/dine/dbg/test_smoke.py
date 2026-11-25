@@ -80,16 +80,16 @@ class SmokeTableTest(unittest.TestCase):
 
 
 class FakeServer:
-    """The debug server as smoke.run uses it: a tap logs the lines scripted for its label."""
+    """The debug server as smoke.run uses it: an activation logs the lines scripted for its label."""
 
-    def __init__(self, taps: dict[str, list[str]]):
-        self.taps, self.log, self.mark = taps, ["loaded 0 apps"], 0
+    def __init__(self, activations: dict[str, list[str]]):
+        self.activations, self.log, self.mark = activations, ["loaded 0 apps"], 0
 
     def call(self, cmd, args=None, timeout=None):
         args = args or {}
-        if cmd == "ui_tap":
+        if cmd == "ui_activate":
             self.mark = len(self.log)
-            self.log += self.taps[args["arg"]]
+            self.log += self.activations[args["arg"]]
         elif cmd == "wait":
             for line in self.log[self.mark:]:
                 for pattern in args["log_re"]:
@@ -103,12 +103,12 @@ class FakeServer:
 
 
 class SmokeRunTest(unittest.TestCase):
-    STEPS = [smoke.Step("go", tap="go", ok=("done",), fail=("bad",)),
-             smoke.Step("quiet", tap="quiet", fail=("bad",)),
+    STEPS = [smoke.Step("go", activate="go", ok=("done",), fail=("bad",)),
+             smoke.Step("quiet", activate="quiet", fail=("bad",)),
              smoke.Step("back", back=True)]
 
-    def run_smoke(self, **taps) -> tuple[int, str]:
-        server = FakeServer({"go": ["done"], "quiet": [], **taps})
+    def run_smoke(self, **activations) -> tuple[int, str]:
+        server = FakeServer({"go": ["done"], "quiet": [], **activations})
         lines = []
         with mock.patch.object(smoke.client, "call", server.call), \
                 mock.patch.dict(smoke.SCENARIOS, {"T": [smoke.Scenario("s", self.STEPS)]}), \

@@ -301,7 +301,7 @@ class ReleaseBundleTest(unittest.TestCase):
             path.write_bytes(whole)
 
     def test_every_dev_lib_is_known(self):
-        self.assertEqual(sorted(ios.dev_archives()), ["libdbgagent.a", "libdinehello.a", "libruntimetests.a"])
+        self.assertEqual(sorted(ios.dev_archives()), ["libdinehello.a", "libruntimetests.a"])
 
     def test_no_bundle(self):
         shutil.rmtree(self.bundle)

@@ -354,12 +354,12 @@ def _dbg(sub):
         args=_log_args)
 
     def ui_setup(t):
-        t.add_argument("op", choices=["ls", "tap", "type", "back", "action", "appearance", "screenshot"])
-        t.add_argument("arg", nargs="?", help="tap, type: label (loose match) or #N from ls; action (ios): an "
+        t.add_argument("op", choices=["ls", "activate", "insert", "back", "action", "appearance", "screenshot"])
+        t.add_argument("arg", nargs="?", help="activate, insert: label (loose match) or #N from ls; action (ios): an "
                                               "accessibility custom action's name (Back, Home, Recent apps); "
                                               "appearance (ios): light, dark or system; screenshot: path")
-        t.add_argument("text", nargs="?", help="type: the text a keyboard inserts")
-    req("ui", None, "app UI: ls | tap <label|#N> | type <label|#N> <text> | back | action <name> | appearance <style> | screenshot [path]",
+        t.add_argument("text", nargs="?", help="insert: the text put into the field")
+    req("ui", None, "app UI: ls | activate <label|#N> | insert <label|#N> <text> | back | action <name> | appearance <style> | screenshot [path]",
         timeout=60, setup=ui_setup).set_defaults(
         func=lambda a: _request(a, f"ui_{a.op}", {k: v for k, v in (("arg", a.arg), ("text", a.text)) if v is not None}))
 
@@ -370,7 +370,7 @@ def _dbg(sub):
     req("call", "call", "call a function in the app on its main thread through lldb (pauses, then resumes it)",
         timeout=60, setup=call_setup, args=lambda a: {"fn": a.fn, "args": a.args, "po": a.po})
 
-    t = s.add_parser("fresh", help="syslog on, relaunch the app (its debug agent on), wait until its UI "
+    t = s.add_parser("fresh", help="syslog on, relaunch the app (its UI agent on), wait until its UI "
                                    "answers; --attach: then attach and continue")
     t.add_argument("--attach", action="store_true")
     t.add_argument("--activity", help="gtk: the activity to start, as ATL's -l takes it (default: the APK's "

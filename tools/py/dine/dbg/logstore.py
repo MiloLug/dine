@@ -38,7 +38,7 @@ class LogStore:
         self._cond = threading.Condition()
         self._jsonl = open(directory / "events.jsonl", "a", buffering=1)
         self._mirrors = {s: open(directory / f"{s}.log", "a", buffering=1) for s in SOURCES}
-        # Seq before the latest action command (continue, step, tap, …): `wait --since mark` starts
+        # Seq before the latest action command (continue, step, ui activate, …): `wait --since mark` starts
         # there, so an event that fires between the action and the `wait` call isn't missed.
         self.mark = 0
 

@@ -68,7 +68,7 @@ def popup_outside(env: dict[str, str]) -> None:
     closes it, and the activity under it still gets the touch."""
     with Session(WINDOWS_APK, "dev/dine/windows/PopupActivity", env) as s:
         s.wait_line("popup activity created")
-        s.tap("anchor")
+        s.activate("anchor")
         s.wait_line("popup shown")
         x, y = s.centre("elsewhere")
         mark = s.mark()
@@ -102,7 +102,7 @@ def gesture_outlives_activity(env: dict[str, str]) -> None:
     with Session(NAV_APK, "dev/dine/nav/TouchTapActivity", env) as s:
         s.wait_line("nav: U onResume")
         x, y = s.centre("go")
-        s.tap("go")  # U starts Q, which finishes on its DOWN
+        s.activate("go")  # U starts Q, which finishes on its DOWN
         s.wait_line("nav: Q onResume")
         mark = s.mark()
         s.touch("down", 0, x, y)

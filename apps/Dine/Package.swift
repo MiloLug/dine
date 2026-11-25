@@ -36,11 +36,10 @@ let package = Package(
         .systemLibrary(name: "CArtBridge"),
         // Dev builds only: imported from Sources/Dine/Dev (#if DEBUG), so `-c release` links none.
         .systemLibrary(name: "CArtDev"),
-        .systemLibrary(name: "CDbgAgent"),
         .systemLibrary(name: "CDineHello"),
         .target(
             name: "Dine",
-            dependencies: ["CArtBridge", "CArtDev", "CDbgAgent", "CDineHello"],
+            dependencies: ["CArtBridge", "CArtDev", "CDineHello"],
             linkerSettings: [.unsafeFlags([
                 "-L", nativeLibDir,
                 "-Xlinker", "-platform_version", "-Xlinker", "ios",

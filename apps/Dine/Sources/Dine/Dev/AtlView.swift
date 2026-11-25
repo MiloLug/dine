@@ -17,7 +17,7 @@ struct AtlView: View {
     var body: some View {
         ScrollView {
             LazyVGrid(columns: columns, spacing: 8) {
-                // the tiles the smoke scenarios tap come first (TOOL-15)
+                // the tiles the smoke scenarios activate come first (TOOL-15)
                 tile("demo_app", activity: "com/example/demo_application/MainActivity")
                 tile("looper", activity: "dev/dine/looper/MainActivity")
                 tile("dialog", activity: "dev/dine/dialog/MainActivity")

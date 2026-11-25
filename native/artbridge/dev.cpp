@@ -175,7 +175,7 @@ void *VmThread(void *arg) {
     std::lock_guard<std::mutex> lock(gLock);
     gRunning = false;
   }
-  // logged once the next run may start: the smoke taps its next button on this line
+  // logged once the next run may start: the smoke activates its next button on this line
   if (threw) {
     os_log_error(Log(), "art main threw");
   } else if (env) {
