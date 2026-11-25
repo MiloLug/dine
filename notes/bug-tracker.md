@@ -1722,6 +1722,25 @@ Dine's launcher. The DVT launch seemingly got a process iOS had prewarmed (mecha
 - Where: `tools/py/dine/cli.py` (the relaunch polls `ui_ls` for 30 s and doesn't relaunch),
   uidrive's `ios.launch`.
 
+### TOOL-26
+
+**`dbg ui tap` and `drag` check points against a screen size read once per server session.**
+`IosTarget._screen_size` keeps the largest window's size from its first read, so after a rotation
+`_point` would refuse an on-screen element (`'X' has no on-screen frame`) or pass an off-screen
+point on to the agent.
+- State: unchecked; landscape never ran, and uidrive's touch points in landscape are unmeasured.
+- Where: `tools/py/dine/dbg/targets/ios.py` (`_screen_size`, `_point`).
+- Fix: read the size for each `_point`, once landscape is measured.
+
+### TOOL-27
+
+**`dbg ui press` sends `key down` and `key up` as two requests, so a stall between them holds the
+key.** A usbmux connect that times out (TOOL-13), or an lldb stop that makes the server refuse the
+`up`, leaves the key down until the next `key up` of that usage.
+- State: unchecked, never seen; whether UIKit repeats a synthesized held key is unmeasured.
+- Where: `tools/py/dine/dbg/targets/ios.py` (`do_ui_press`), uidrive's `key` verb.
+- Fix: one request per press (a `key` line that carries both events, or the agent queues the up).
+
 ## Fixed
 
 ### ART-33
