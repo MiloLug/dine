@@ -402,8 +402,8 @@ def _dbg(sub):
 
 
 def _relaunch(st: dict, activity: str | None = None) -> int:
-    """ios: syslog on, `ios launch`; gtk: the server kills and launches ATL. Then wait for the debug
-    agent to show the UI; the pid."""
+    """ios: syslog on, `ios launch`; gtk: the server kills and launches ATL. Then wait for the UI
+    agent (ios) or the gtk agent to show the UI; the pid."""
     app = st["app"]
     if st["target"] == "gtk":
         if (st.get("state") or {}).get("attached"):

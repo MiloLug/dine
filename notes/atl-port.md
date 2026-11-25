@@ -404,12 +404,12 @@ compares the dump's shape, and the tiles are named `demo_app` and `looper`. As b
   `atl_nav_*`, the host slot's task functions, Dine's container, edge swipes and accessibility
   actions; the running apps list is a placeholder. Status and what is left: that spec's Status.
 
-**Done when:** on the phone, `dbg ui tap` on a button produces the `onClick` log line and the
+**Done when:** on the phone, `dbg ui activate` on a button produces the `onClick` log line and the
 dialog closes; the same APK passes on gtk and headless.
 
-**Status: done (2026-10-20).** `dbg smoke atl-dialog` on the iPhone 13 taps "Yes" (`dialog onClick
--1`, the list appears) and "Green" (`dialog onClick 1`, the app finishes); `linux smoke dialog`
-and `dialog-gtk` pass the same APK with `ATL_DIALOG_ANSWERS='Yes;Green'`. As built:
+**Status: done (2026-10-20).** `dbg smoke atl-dialog` on the iPhone 13 activates "Yes" (`dialog
+onClick -1`, the list appears) and "Green" (`dialog onClick 1`, the app finishes); `linux smoke
+dialog` and `dialog-gtk` pass the same APK with `ATL_DIALOG_ANSWERS='Yes;Green'`. As built:
 - `ui.h`: `struct ui_alert` (title, message, items, three button labels, cancelable),
   `ui_dialog_new/show/close/set_cancel_on_touch_outside`, `UI_DIALOG_CANCEL`;
   `atl_upcall_dialog_result`. An AlertDialog's handle is its alert's `struct ui_window *` (the
@@ -433,8 +433,8 @@ and `dialog-gtk` pass the same APK with `ATL_DIALOG_ANSWERS='Yes;Green'`. As bui
   records (`src/backends/ui/records/`); uikit is ObjC with ARC, meson adds `objc` only for it.
 - `ATL_DIALOG_ANSWERS` (`src/shared/test_hooks.c`, with `test_hooks`): labels or `!cancel`, `;`-separated, one per
   shown alert; headless posts the result, gtk activates its own widget; no match exits 1.
-- Debug agent: alert actions and UIKit controls decline `accessibilityActivate`; `tap` falls back
-  to the alert action's handler or the control's events.
+- UI agent: alert actions and UIKit controls decline `accessibilityActivate`; `activate` falls back
+  to the control's events or the alert action's handler.
 - The iOS build is `ui=uikit`; `build-ios-atl.sh` wipes the build dir when the cross file
   changes (meson keeps the compilers it found).
 
@@ -482,7 +482,7 @@ the Linux golden: `1170x2391` roots, TextViews `315x51` and `375x51` at y 0 and 
   uikit hands it to the surface (`ATLSurface`, `atl/surface.h`) in the batch of the activity
   switch; Dine paints it behind the status bar (none: `.systemBackground`) with the text style
   from the light flag. gtk colors the header bar; headless prints `window: frame` lines.
-- Debug agent: `back` and `action` also climb from every presented controller's view, so screens
+- UI agent: `back` and `action` also climb from every presented controller's view, so screens
   whose views have no labels (empty TextViews, an alert over the container) still reach the
   container's actions.
 - Freeing: `ViewGroup.removeView` and `View.finalize`'s destructor go through the ui slot
@@ -544,12 +544,14 @@ Natives that layouts and app setup reach before any input, moved behind the slot
 - Shared Java: one floating ViewTreeObserver per view without a window; the View constructor
   reads `keepScreenOn`.
 - Input for tests: the cli host's `-c` stdin takes touch and key lines next to `back`, `home` and
-  `front`, and M4c's text lines. The gtk debug agent feeds pointer and key events through the
+  `front`, and M4c's text lines. The gtk agent feeds pointer and key events through the
   functions GTK's own events reach (`input_pointer`, `input_key`: `touch`, `key`, `at`;
   `linux smoke input-gtk`); what stays by hand on gtk is the GdkEvent reading (`on_pointer_event`'s
-  event-type switch, `native_point`). iOS has no public touch synthesis and its agent's `tap` is
-  `accessibilityActivate` into `input_tap`, so uikit's touch steps (UITouch, scroll pans, drags)
-  and a hardware keyboard's presses are checks by hand ([ATL-144](general-todo.md#atl-144)).
+  event-type switch, `native_point`). On iOS `dbg ui activate` is `accessibilityActivate` into
+  `input_tap`, and `dbg ui tap`, `drag` and `press` send real touches and hardware keys through
+  UIKit's event queue (uidrive). The smoke covers one finger's tap and list scroll and Return in a
+  field; the rest of uikit's touch steps (UITouch, scroll pans, drags) and a hardware keyboard's
+  presses are checks by hand ([ATL-144](general-todo.md#atl-144)).
 - Target: the widgets APK, which exists for checks by eye on iOS (`dbg smoke atl-widgets`), gets
   steps graded on headless: a tap, a long press, a scroll, a key, and a selector background's
   selected child following the pressed state, read from a log line (nothing draws it before M5b).
@@ -699,14 +701,14 @@ pass. Not checked by hand: the controls' look on gtk, and the hover styling `can
 - uikit: `ATLButton` holds a passive UIButton (gray; filled for a toggle that is on; plain with a
   background of its own; SF Symbols `square`, `checkmark.square.fill`, `circle` and
   `largecircle.fill.circle` for check and radio) or a label and a UISwitch, measured with a scratch
-  view per kind. Accessibility activation (VoiceOver, `dbg ui tap`) calls `performClick` through
-  `atl_upcall_click`. `dialog.m` queues with the views (`uikit_enqueue`); `ATLDialog` keeps the
-  alert as a model and builds the controller when it presents, so `onShow`'s changes are in the
+  view per kind. Accessibility activation (VoiceOver, `dbg ui activate`) calls `performClick`
+  through `atl_upcall_click`. `dialog.m` queues with the views (`uikit_enqueue`); `ATLDialog` keeps
+  the alert as a model and builds the controller when it presents, so `onShow`'s changes are in the
   first one; `enabled` changes in place, a label or visibility change rebuilds the alert without
   animation.
 - Tests: `run-controls.sh` (`linux smoke controls`, the widgets APK's `ControlsActivity`),
   `run-dialog.sh`'s `KeepActivity` runs, the framework suite `controls`, smoke `atl-controls` and
-  `atl-dialog-keep` (`Step.declined`: a tap the agent must be refused).
+  `atl-dialog-keep` (`Step.declined`: an activation that must be declined).
 - Open: a Switch's thumb can't be dragged on iOS (a tap toggles it; it won't be done: [ATL-87](bug-tracker.md#atl-87));
   a view with INHERIT keeps its native alignment when its parent's changes later
   ([ATL-88](bug-tracker.md#atl-88)); Button text gravity ([ATL-79](bug-tracker.md#atl-79)), and with it
@@ -727,7 +729,7 @@ pass. Not checked by hand: the controls' look on gtk, and the hover styling `can
 - Target: the widgets APK's text field, graded on headless and checked by hand on gtk and iOS.
 
 **Status: done (2026-10-25).** `linux smoke text` and the framework suite `text` pass on headless;
-on the iPhone 13 `dbg smoke atl-text` passes, and `dbg ui type` into a Button is refused. Not
+on the iPhone 13 `dbg smoke atl-text` passes, and `dbg ui insert` into a Button is refused. Not
 checked by hand: on gtk typing, Enter, the selection and Copy/Paste; on the phone the software
 keyboard's own typing, a CJK keyboard's marked text, the selection handles and edit menu, a
 selectable TextView's Copy, the return keys and the pads' Done bar, password dots, the number
@@ -803,13 +805,13 @@ keyboard, the keyboard after Home and front ([ATL-144](general-todo.md#atl-144))
   number and phone pads, which have no return key, get a round glass button above the pad's corner
   (M6b3c). The hint is the
   accessibility label. A scratch UITextField or UITextView measures, an empty one as a space.
-- Debug agent: `ui type <label> <text>` (`insertText:`; no marked text, and no delegate call: it
+- UI agent: `ui insert <label> <text>` (`insertText:`; no marked text, and no delegate call: it
   doesn't prove an edit refused); `ui ls` lists a field's text as `#N hint = text` (the elements'
   `accessibilityValue`).
 - Tests: `run-text.sh` (`linux smoke text`, the widgets APK's `TextActivity`: it reads each field's
-  config from the `keyboard:` line), `linux smoke text-gtk` (typing through the gtk agent, a key
-  behind a character), the framework suite `text`, smoke `atl-text` (the fields' text, Java moving
-  the keyboard, a field with no keyboard).
+  config from the `keyboard:` line), `linux smoke text-gtk` (text put through the gtk agent's
+  `insert`, a key behind a character), the framework suite `text`, smoke `atl-text` (the fields'
+  text, Java moving the keyboard, a field with no keyboard, Return in a field).
 - Open: a keypad Enter
   in an EditText has no key listener to type it ([ATL-96](bug-tracker.md#atl-96)); Java's click and touch listeners on a field or a selectable
   TextView where the toolkit takes its touches (gtk; on iOS unchecked); a hardware keyboard types
@@ -1400,8 +1402,8 @@ As built:
   `draw.displaylist` has the masked icon and a greyscale bitmap; `atl-draw` reads a bitmap pixel and
   redraws an ImageView's bitmap 50 times.
 - AOSP provenance: `dine-atl/doc/AOSP.md`.
-- Open: flower_finder's list scrolled by hand on the phone (the debug agent has no drag):
-  [ATL-164](general-todo.md#atl-164), [TOOL-8](general-todo.md#tool-8).
+- Open: flower_finder's list scrolled on the phone (a `dbg ui drag` step):
+  [ATL-164](general-todo.md#atl-164).
 
 #### M6b2: windows
 
@@ -1600,13 +1602,13 @@ and toast steps; the framework `windows` suite passes on headless, gtk and one V
   test lines.
 - Hand checks (iPhone 13, dark mode): the menu (Paste greyed, Bold checked, More with its
   chevron); Copy picked by hand: UIKit runs the item's action at the tap, 1.2 s before the end
-  animation completes, so Java gets the item, then the dismissal (the debug agent can't pick
-  UIMenu items); the toast capsule bottom-centre with Dine's status-bar strip unchanged. Not done:
+  animation completes, so Java gets the item, then the dismissal (no `dbg ui` run has picked a
+  UIMenu item); the toast capsule bottom-centre with Dine's status-bar strip unchanged. Not done:
   light mode, a toast over a plain alert and VoiceOver ([ATL-164](general-todo.md#atl-164)), and
   ACTION_OUTSIDE from native controls through UIKit's hit test ([ATL-144](general-todo.md#atl-144)).
 - Open: a `setView` toast draws under a presented plain alert; popups and drop-downs follow their
-  anchor in a panned or resized window (M6b3c), unchecked on the phone, and on iOS the agent's
-  accessibility taps still reach Android views under an open menu (real touches close it; both
+  anchor in a panned or resized window (M6b3c), unchecked on the phone, and on iOS `dbg ui
+  activate` still reaches Android views under an open menu (a finger's touch closes it; both
   ATL-164); the toast and popup cases here are [ATL-93](bug-tracker.md#atl-93); a text
   toast whose app comes back to the front mid-toast stays hidden; on gtk the toast's label goes
   above an application overlay (AOSP keeps toasts under them); a popup that goes with its removed
@@ -1617,7 +1619,7 @@ and toast steps; the framework `windows` suite passes on headless, gtk and one V
 - The Done bar becomes a round glass button.
 - `atl_window_insets` gets IME and status-bar edges; the window size is per app.
 - Keyboard avoidance (`softInputMode`), immersive mode and status-bar insets, night changes
-  delivered to running apps (with a dev agent verb that switches the appearance).
+  delivered to running apps (with the UI agent's `appearance` verb).
 
 **Done when:** `linux smoke keyboard nav config` pass with their new goldens; the framework
 `windows` suite passes on headless, gtk and one VM; on the phone `dbg smoke` passes with
@@ -1658,7 +1660,7 @@ unchanged; both builds build; the hand checks are listed in the Status block.
   it made take it, then Application and its registered `ComponentCallbacks`, and the activities
   whose manifest covers uiMode with their view tree; the others log that they keep their
   configuration. The Resources caches get Java change bits and drop a drawable on any change
-  (`CONFIG_NATIVE_BITS` is empty, so native bits would be 0). Dev agent:
+  (`CONFIG_NATIVE_BITS` is empty, so native bits would be 0). UI agent:
   `ui appearance light|dark|system`.
 - Tests: framework `windows` `SoftInputTest`, `SystemUiTest` (also the frame's background),
   `ConfigTest`; windows APK

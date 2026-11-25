@@ -475,7 +475,7 @@ final class AppContainerController: UIViewController {
         for name in [UIResponder.keyboardWillChangeFrameNotification, UIResponder.keyboardWillHideNotification] {
             NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillChange(_:)), name: name, object: nil)
         }
-        // edge swipes don't work under VoiceOver, and the debug agent drives the UI through these
+        // edge swipes don't work under VoiceOver, and `dbg ui action` drives the UI through these
         view.accessibilityCustomActions = [
             UIAccessibilityCustomAction(name: "Back") { _ in MainActor.assumeIsolated { navigator.back() }; return true },
             UIAccessibilityCustomAction(name: "Home") { _ in MainActor.assumeIsolated { navigator.home() }; return true },

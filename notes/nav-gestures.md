@@ -53,8 +53,8 @@ settings steps. Open elsewhere: [DINE-1](bug-tracker.md#dine-1) (Dialogs and Hom
 - The container's escape is on its view (`EscapeView`), not on the view controller: escape and
   the agent's `action` climb accessibility containers, which skip view controllers.
 - UIKit controls and `UIAlertController` actions decline `accessibilityActivate` (VoiceOver
-  touches them). Agent `tap` falls back to a control's tap events, then to running the topmost
-  alert's action with that title.
+  touches them). `dbg ui activate` falls back to a control's tap events, then to running the
+  topmost alert's action with that title.
 - The host slot's functions are linked into ATL (`src/backends/host/{gtk,cli}/host.c`, the
   embedded host's `embedded.c`): the headless `.so` links with `--no-undefined`, so the cli
   executable can't provide them.
@@ -158,7 +158,8 @@ same model.
   immersive mode: `"homeIndicatorAutoHidden": "app"` (follow the app's flags) or `"always"`.
 - **Model:** one `@MainActor` observable `NavigationSettings`, owned by `DineMain`. It reads the
   key, writes through it, and reloads on `UserDefaults.didChangeNotification`, so a write from the
-  debug agent shows up like a write from a settings screen.
+  UI agent's `defaults` (M8c adds that verb to uidrive's protocol) shows up like a write from a
+  settings screen.
 - **Use:** recognizers read the model at touch-down, so a change applies to the next touch without
   rebuilding anything. Every change recomputes the gesture insets and sends them to ATL.
 
@@ -371,8 +372,8 @@ struct atl_embedded_listener {
   place of today's destination links. The launcher's recognizer and its custom action sit on the
   root view of the window's `UIHostingController`, enabled only while the path is empty and no
   container or running apps list is presented.
-- **Accessibility:** edge swipes don't work under VoiceOver, and the debug agent drives the UI
-  through accessibility.
+- **Accessibility:** edge swipes don't work under VoiceOver, and `dbg ui back` and `action` drive
+  the UI through accessibility.
   - The container's `accessibilityPerformEscape` is Back, so VoiceOver's escape gesture and
     `dbg ui back` inside an app send Android Back.
   - `accessibilityCustomActions`: "Back", "Home" and "Recent apps" on the container, "Recent apps"
@@ -433,12 +434,12 @@ for a result; a tap on S's "answer" sets it and finishes, and R logs `nav: R res
 
 ### iOS
 
-- **Debug agent:**
+- **UI agent:**
   - `action "Name"`: walks like `back` (content last, climbing `accessibilityContainer` and
     `nextResponder`) and runs the first custom action with that name.
-  - `defaults <key> <json>`: on the main queue, stores the JSON text as the key's String value;
-    `null` removes the key.
-  - Both set `gBefore`/`gResult` like `tap` and `back`, so `settle` works.
+  - `defaults <key> <json>`, a verb uidrive's protocol doesn't have yet (M8c adds it): on the main
+    queue, stores the JSON text as the key's String value; `null` removes the key.
+  - Both set `gBefore`/`gResult` like `activate` and `back`, so `settle` works.
   - Register them in `tools/py/dine/dbg/server.py` and the `cli.py` choices as
     `tools/dine dbg ui action <name>` and `tools/dine dbg ui defaults <key> <json>`. Smoke `Step`
     gets `action=` and `defaults=` fields.
@@ -454,7 +455,7 @@ for a result; a tap on S's "answer" sets it and finishes, and R logs `nav: R res
 
 ### By hand on the phone
 
-iOS has no public touch synthesis, so the swipes themselves are checked by hand:
+No smoke step makes these swipes, so they are checked by hand:
 
 - each default binding fires its action, and a short swipe cancels
 - a vertical scroll in the middle of the screen never fires Home

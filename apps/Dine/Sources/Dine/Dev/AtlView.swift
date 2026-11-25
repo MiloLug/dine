@@ -11,7 +11,7 @@ private let log = Logger(subsystem: "dev.dine.Dine", category: "art")
 struct AtlView: View {
     @EnvironmentObject private var navigator: Navigator
 
-    // dense: the debug agent reaches only the tiles on the screen (TOOL-15)
+    // dense: the UI agent's walk reaches only the tiles on the screen (TOOL-15)
     private let columns = Array(repeating: GridItem(.flexible()), count: 5)
 
     var body: some View {

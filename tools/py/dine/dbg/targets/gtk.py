@@ -1,5 +1,5 @@
 """Linux gtk target: ATL's gtk build run by the server on its hidden display (display.py), the run's
-output as the log, UI through ATL's debug agent (dine-atl src/backends/ui/gtk/agent.c), lldb attached
+output as the log, UI through ATL's gtk agent (dine-atl src/backends/ui/gtk/agent.c), lldb attached
 to it locally."""
 
 from __future__ import annotations

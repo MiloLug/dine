@@ -9,8 +9,9 @@ touches. Commands and setup live in `tools/dine <group> --help`, `README.md` and
 - [Running ATL by hand](#running-atl-by-hand): the gtk and headless builds outside the smoke
   checks, the test-hook env vars, the cli host's `-c` commands, authored test APKs.
 - [Smoke checks by eye](#smoke-checks-by-eye): what `atl-widgets` leaves on the phone to look at.
-- [Debug agent](#debug-agent): how `dbg ui` walks, taps, runs actions and waits; when the agent
-  listens. Read before changing `native/dev/dbgagent`, the gtk agent or a `dbg ui` command.
+- [UI agent](#ui-agent): how `dbg ui` reaches uidrive's agent in the app, what its walk sees, real
+  touches and keys, the gtk agent. Read before changing a `dbg ui` command, how Dine builds or
+  launches the agent, or the gtk agent.
 - [lldb and the debug server](#lldb-and-the-debug-server): SB API traps, ObjC and symbol settings,
   Swift expression internals.
   Read before changing `tools/py/dine/dbg/` or `tools/libexec/lldb`.
@@ -33,7 +34,7 @@ touches. Commands and setup live in `tools/dine <group> --help`, `README.md` and
   `ATL_DUMP_DISPLAYLIST=1` prints a drawing view's display list after each of its draws (records
   backends: headless, iOS);
   `ATL_DIALOG_ANSWERS='Yes;Green'` answers alerts in order (labels, `!cancel`);
-  `ATL_DBG_AGENT=<socket path>` (gtk) starts the debug agent ([Debug agent](#debug-agent)).
+  `ATL_DBG_AGENT=<socket path>` (gtk) starts the gtk agent ([UI agent](#ui-agent)).
 - `dine-atl/tests/headless/run-*.sh` drive one APK each; each script's header has its usage and
   what it checks, and `common.sh` beside them holds what they share. `tools/dine linux smoke` runs
   them.
@@ -62,49 +63,74 @@ touches. Commands and setup live in `tools/dine <group> --help`, `README.md` and
 sends Home and leaves it running for checks by eye on the phone: the status bar, the spinner, a
 bar at 50%, a grey box, the screen kept on. A full `dbg smoke` run relaunches Dine after it.
 
-## Debug agent
+## UI agent
 
-`native/dev/dbgagent`, linked into dev builds (`Sources/CDbgAgent`), serves `dbg ui …` in-process:
-an accessibility walk of the key window, `accessibilityActivate` or escape, and a settle wait (no
-transition, labels unchanged).
+`dbg ui` on iOS talks to uidrive's agent (`../dine-uidrive`), a dylib that runs inside the app; its
+wire format is that repo's `PROTOCOL.md`. `tools/libexec/build-ios-dev.sh` builds it with Dine's
+toolchain from the agent sources of the installed `uidrive` package (`python -m uidrive
+agent-src`) into `out/ios/dev`, so only dev builds bundle it, as `dev/libuidrive.dylib`.
+`tools/dine ios launch` (and `dbg fresh`, `ios run`, `ios lldb`) starts the app through DVT with
+`DYLD_INSERT_LIBRARIES` naming that file and `UIDRIVE_PORT=47802`, except under `DINE_RELEASE=1`.
+The agent's constructor turns app accessibility on and serves that port on the phone's loopback;
+the server reaches it through usbmux.
 
-- Alert actions decline `accessibilityActivate`: `tap` then dismisses the topmost
-  `UIAlertController` and runs the action's handler, as a touch would.
+- A home-screen launch has no agent, so `dbg ui` asks for a relaunch. A launch that names a dylib
+  the bundle lacks starts the app without the agent, and dyld logs nothing at the default syslog
+  level.
+- `ls`, `activate`, `insert`, `back`, `action` and `appearance` are the agent's accessibility
+  verbs, which act without a touch. `tap` is a 60 ms one-finger `gesture` at the element's frame
+  centre or at `@X,Y`, `drag` a one-finger `gesture` between two such points over `--ms`, `press`
+  a `key down` and `key up` of the usage `uidrive.client.KEYS` names, and `windows` the agent's
+  window list. After each action the server waits on the agent's `settle`. An element with no frame
+  on the screen (zero size, or its centre off the screen) is refused.
+- A touch goes to the topmost window whose hit test takes the point (`--window N` from `ui windows`
+  overrides it); a key goes to the keyboard's window while the first responder takes text, else to
+  the key window (`PROTOCOL.md` "Window routing").
+- An element that declines `accessibilityActivate` (alert actions, UIKit controls) still acts:
+  `activate` sends an enabled control the actions a tap sends, else dismisses the topmost
+  `UIAlertController` and runs its action with that title, as a touch would.
 - `action <name>` runs an accessibility custom action found the way escape is: up from the walked
   elements, then from the presented controllers' views, top first.
-- `type <label> <text>` makes the element the first responder if it edits text and inserts the text
-  with `insertText:`, as a keyboard's committed text; no marked text. It can't press return: a
-  UITextField takes an inserted newline as a space ([TOOL-4](general-todo.md#tool-4)).
+- `insert <label> <text>` makes the element the first responder if it edits text and inserts the
+  text with `insertText:`, as a keyboard's committed text: no marked text and no key events. A
+  UITextField takes an inserted newline as a space; Return in a field is `press return`.
 - `appearance light|dark|system` sets the key window's `overrideUserInterfaceStyle`, which Dine
   hears as a trait change and sends to every running app as its night (`atl_nav_set_night`).
 - The walk sees the key window only: a keyboard's `inputAccessoryView` (the pads' round return
-  button) sits in the keyboard's window, so `ls` doesn't list it and a screenshot may not show it.
-- It listens on the phone's loopback only when the app gets `DINE_DBG_AGENT_PORT` in its
-  environment, which `ios launch` passes; the server reaches it through a usbmux connection. A
-  home-screen launch has no agent, so `dbg ui` asks for a relaunch.
+  button) sits in the keyboard's window, so `ls` doesn't list it and a screenshot may not show it
+  ([TOOL-9](general-todo.md#tool-9)).
 - Host-side AX `perform_press` is ignored by our apps, and the host AX inspector's walk
   (`developer accessibility list-items`) highlights every element on the phone as it moves its
   focus. UI work goes through the agent.
 - SwiftUI builds the tree the walk reads only while app accessibility is on, and iOS can leave it
-  off for new launches (2026-11-08, after a VoiceOver session: no labels on three launches). The
-  agent turns it on for its own process at start (`_AXSApplicationAccessibilitySetEnabled`).
+  off for new launches (seen after a VoiceOver session: no labels). The agent turns it on for its
+  own process when it loads (`_AXSApplicationAccessibilitySetEnabled`).
+- The agent logs under the os_log subsystem `uidrive` (`dbg log grep uidrive`: `uidrive: injected
+  into Dine`, `uidrive: listening on 127.0.0.1:47802`). A raw request:
+  `.venv/bin/python -m uidrive ask --port 47802 '<line>'`.
+- `.venv` imports uidrive from the `../dine-uidrive` checkout
+  ([`docs/first-run.md`](../docs/first-run.md)). The install stamp of `ios run` covers the agent's
+  sources, so after an edit there `dbg smoke` refuses until `ios run`; the server's code check
+  covers uidrive's Python files, so after an edit there every reply starts with the stale-code
+  warning until the server restarts.
 
 The gtk target runs headless sway with the pixman renderer, not Xvfb (GTK's X11 path, while WSLg
 uses Wayland) or Broadway (another GDK backend, with a browser in the loop).
 
-The gtk build's agent (`dine-atl/src/backends/ui/gtk/agent.c`, test hooks) speaks the same
-protocol on the Unix socket in `ATL_DBG_AGENT`, which the gtk target sets per session. ATL starts it
-when the app window first has a size. Requests come in on the agent's own thread; the walk and the
-actions run on the GTK main thread, which is the Android main thread on gtk.
+The gtk agent (`dine-atl/src/backends/ui/gtk/agent.c`, test hooks) speaks uidrive's protocol, with
+the differences `PROTOCOL.md` lists, on the Unix socket in `ATL_DBG_AGENT`, which the gtk target
+sets per session. ATL starts it when the app window first has a size. Requests come in on the
+agent's own thread; the walk and the actions run on the GTK main thread, which is the Android main
+thread on gtk.
 
 - The walk lists every mapped GtkLabel and GtkText with text, on screen in its own surface: the app
   window first, then the other toplevels (dialogs). A GtkText's label is its hint, then
   `hint: text` once it holds text.
-- `tap` on a label inside a view sends one pointer's DOWN and UP at that view's centre through its
-  window's root view (`input_tap`); Java's dispatch decides, as for a press that GTK hands on. A
+- `activate` on a label inside a view sends one pointer's DOWN and UP at that view's centre through
+  its window's root view (`input_tap`); Java's dispatch decides, as for a press that GTK hands on. A
   GtkText takes `gtk_widget_grab_focus`, a dialog's own GtkButton or list row `gtk_widget_activate`.
-- `type` inserts at the GtkText's cursor (`gtk_editable_insert_text`), so `edit.c` reports the
-  edit as it does a keyboard's.
+- `insert` puts the text at the GtkText's cursor (`gtk_editable_insert_text`), so `edit.c` reports
+  the edit as it does a keyboard's.
 - `back` is `atl_nav_back`; its result is only whether the app ran and ATL's main loop was up
   ([TOOL-5](general-todo.md#tool-5)).
 - `at N "LABEL"` replies the centre of element N in the app window (px). `touch down|move|up|cancel SEQ
@@ -112,8 +138,8 @@ actions run on the GTK main thread, which is the Android main thread on gtk.
   events reach after `on_pointer_event` read them; SEQ is a made-up handle for the pointer (0: the
   mouse's NULL handle; two handles are two fingers). `key down|up KEYVAL KEYCODE [STATE]` feeds a key
   through the capture and then the bubble phase of the key controllers (`input_key`). Both run before
-  the reply and reply whether Java took the event. `type N ["LABEL", "TEXT", KEYVAL, KEYCODE]` also
-  presses and releases that key in the same main-loop call as the text. `state N "LABEL"` replies
+  the reply and reply whether Java took the event. `insert N ["LABEL", "TEXT", KEYVAL, KEYCODE]`
+  also presses and releases that key in the same main-loop call as the text. `state N "LABEL"` replies
   element N's `sensitive` (`gtk_widget_is_sensitive`) and `focused` (its window's focus widget;
   `gtk_widget_has_focus` needs an active window, which the hidden display's isn't). `linux smoke input-gtk` and `text-gtk` drive them
   (`tools/py/dine/gtkinput.py`); the tools' own `dbg ui` has no verb for them. GTK 4 has no public

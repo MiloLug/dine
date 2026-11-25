@@ -1,4 +1,4 @@
-"""iOS device target: lldb (remote-ios through the tunnel), the app's syslog, UI through the app's debug agent."""
+"""iOS device target: lldb (remote-ios through the tunnel), the app's syslog, UI through the injected uidrive agent."""
 
 from __future__ import annotations
 

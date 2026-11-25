@@ -450,9 +450,11 @@ prints nothing, so a wrapper that is never unreffed fails no check.
 ### ATL-144
 
 **Hand checks on the phone that no run makes: input, and looks and facts no step reads.** Input:
-no run drags or types on the phone (the debug agent has `tap` only and UIKit makes no `UITouch`; a
-hardware keyboard needs a keyboard). The last bullets (looks and facts) are checks the phone's
-smoke steps would need a new line or agent output for.
+the smoke makes one finger's tap, back swipe and list scroll (`touch`) and presses Return in a
+field (`atl-text`). Automatable: `dbg ui tap` and `drag` make real touches and `press` hardware
+key events (uidrive); the checks are later work. iOS's own system gestures (the home indicator,
+Control Center) stay by hand. The last bullets (looks and facts) are checks the phone's smoke steps
+would need a new line or agent output for.
 - A hardware keyboard (M4a): Tab, the arrows, Enter, Esc, a typed letter, and the character an arrow
   key carries (`input.m` takes the first UTF-16 unit of `UIKey.characters` for every key; what
   UIKit returns for arrows and function keys was never observed); a held key cancelled by the
@@ -466,20 +468,21 @@ smoke steps would need a new line or agent output for.
   inside `gtk_editable_insert_text`, focus leave on window deactivation. A keyboard shown with an
   empty `inputView` (a field with no `tap_keyboard`) was seen on iOS 27 (overhaul A6): no keyboard,
   the caret stays.
-- A drag through the real touch path (UITouch ids 0 and 1 for two fingers, `delaysContentTouches`,
-  the scroll pan against a child, [ATL-142](bug-tracker.md#atl-142)).
+- Drags through the real touch path beyond `touch`'s one-finger list scroll: UITouch ids 0 and 1 for
+  two fingers, `delaysContentTouches`, the scroll pan against a child
+  ([ATL-142](bug-tracker.md#atl-142)).
 - A press on a selector row on the phone and on gtk (M5b); the redraw `View.invalidateDrawable` asks
   for is graded nowhere (`run-widgets.sh` reads `getCurrent()`; display lists are dumped by
   `run-draw.sh` only).
 - The three cases of `ATLOutsideWatch` (M6b3b): a tap on a second field closes an open drop-down, a
   touch-modal window without a dim catches the touches outside it, a NOT_TOUCHABLE one lets them
-  through. The agent's activation never passes through UIKit's hit test.
+  through. `dbg ui activate` never passes through UIKit's hit test; `dbg ui tap` does.
 - M6b3c's hand checks on the final build: the home indicator's swipe with `hideNavigation` and not
   `immersive`, the top edge's deferral with the status bar hidden (`Navigation.swift`,
   `prefersHomeIndicatorAutoHidden`; [DINE-7](general-todo.md#dine-7)). The keyboard's corners show
   the window's background (`frame.background` on the surface; screenshot 2026-11-22).
 - M6b3c's experiment K2: whether UIKit scrolls an `ATLScrollView` to a first-responder field on its
-  own (a scroll report with no touch after `type` into `ResizeActivity`'s field); the stage's
+  own (a scroll report with no touch after `insert` into `ResizeActivity`'s field); the stage's
   Status records neither the result nor an Open line, and `view.m` has no suppression.
 - `Configuration`'s keyboard fields (late fix `76313409`): no phone
   scenario reads them (`atl-config` matches night lines; `atl-text` has no Back or Next
@@ -492,8 +495,8 @@ smoke steps would need a new line or agent output for.
   field changed in kind while it edits, two changes before a delivery, a field's deferred first
   responder (M4c-11); the in-flight frame skip, a view that stops drawing clearing its layer and
   `replace_native`'s hand-over (M5b-5); the capped field's growth and its last lines on the phone
-  (M5c-2: `atl-text` types into `name` only); a Button with a background and padding keeping no
-  UIKit insets (M6b3a-5: no `framed` step in `atl-controls`); VoiceOver staying in the topmost
+  (M5c-2: `atl-text` inserts into `name` and `calc` only); a Button with a background and padding
+  keeping no UIKit insets (M6b3a-5: no `framed` step in `atl-controls`); VoiceOver staying in the topmost
   modal window (M6b3a-7: an absence check in `atl-dialog-content` if the agent's walk honours
   `accessibilityViewIsModal`); the uikit panel's room after a window resize (M6b3c-13).
 - Code-path proof only on uikit (overhaul A4 to A8): the edit refusal (`editable`; the agent's
@@ -622,7 +625,7 @@ apps, or that no suite reads; each is a line to turn into a check when a stage n
 - Checks to add: a targetSdk 19 fixture's
   `window: frame none` and the light status bar flag (M3-6), layout XML attributes of the View
   constructor (PreM4-M4a-6), `check` and `switch` control sizes in `run-controls.sh` (M4b-8), flower_finder's
-  list (M6b1-2, TOOL-8), a Fragment's permission result (M6b1-16),
+  list scrolled by `dbg ui drag` (M6b1-2), a Fragment's permission result (M6b1-16),
   a focusable popup closed by an outside tap and a `ListPopupWindow` case (M6b3b-11), the drop-down not
   taking keys (M6b3b-12), `SystemUiTest` cases for `setDecorFitsSystemWindows(false)`,
   `FLAG_LAYOUT_NO_LIMITS`, cutout mode ALWAYS and show after hide (M6b3c-11, nav-8), the AOSP rows of
@@ -630,8 +633,8 @@ apps, or that no suite reads; each is a line to turn into a check when a stage n
   (M6b3a-10), a thread in the root ThreadGroup (MA2-4).
 - Pending lines with no owner until now: AppCompat and Material dialogs draw Android's own layouts
   (M6b3a-2); `setIcon`, `setIconAttribute` and ProgressDialog's secondary progress and number formats
-  are ignored (M6b3a-9); the agent's accessibility taps still reach Android views under an open menu
-  (M6b3b-7, [TOOL-8](general-todo.md#tool-8)).
+  are ignored (M6b3a-9); `dbg ui activate` still reaches Android views under an open menu, which a
+  finger's touch closes (M6b3b-7).
 - Code-path proof only (overhaul A7, A8): a toast's frame on uikit and gtk, uikit's autorelease pools,
   `ATLDialog`'s actions after a free, gtk's panel colours, gtk's one placement per allocation.
 - No test of Gravity FILL_HORIZONTAL on a dialog (M6b2-7); `atl-dialog-progress` doesn't compare the
@@ -785,7 +788,7 @@ they allow redistribution, and no upstream licence was read (Gravity Defied's fi
 
 ### DINE-15
 
-**A launcher test.** Nothing taps Add App, adds an app or reads a launcher tile: `dbg smoke` waits
+**A launcher test.** No step opens Add App, adds an app or reads a launcher tile: `dbg smoke` waits
 for `loaded N apps`, which an empty table passes. Wanted, once M8a's launcher lists the registry's
 rows: a row added, shown again after a relaunch (`tests/launcher/`, which has the edge classifier's
 test only), and a 40-character name in the launcher's four columns (truncation was seen only on
@@ -823,11 +826,6 @@ android phones do this, at least samsungs".
 
 ## TOOL
 
-### TOOL-4
-
-**`tools/dine dbg ui type` can't press return.** The agent inserts text with `insertText:`, and a
-UITextField takes an inserted newline as a space (`notes/dev-reference.md` "Debug agent").
-
 ### TOOL-5
 
 **gtk `ui back` reports only whether ATL's main loop was up,** not what Back did: it is
@@ -853,28 +851,12 @@ needs `hprof-conv`, `141-class-unload` and `150-loadlibrary` need upstream's nat
 `707-checker-invalid-profile` need dex2oat, which dine-art never runs: they stay expected
 failures (707's `check` also calls `./default-check`, which the harness doesn't provide). Reasons per test: `dine-art/tests/runtime/expectations/linux-x86_64.json`.
 
-### TOOL-8
-
-**Evaluate XCUITest for phone UI checks.** The debug agent (`native/dev/dbgagent`) walks the
-accessibility tree and activates elements; it can't synthesize touches, so taps at a point, a
-real touch on a field and swipes stay hand checks. Apple's UI automation (XCUITest, which
-Appium's WebDriverAgent also runs on) synthesizes taps and swipes at coordinates, and its test
-daemon should turn app accessibility on for each session. Our agent needs that flag too
-(`_AXSApplicationAccessibilityEnabled`): on 2026-11-08 it read 0 after a VoiceOver test, SwiftUI
-built no tree and `dbg ui` found nothing (the VoiceOver link is a guess from the log's timing);
-the agent now sets it for its own process at start.
-- Unchecked: building and signing an XCTest runner without Xcode (xtool builds apps; the runner
-  is a second app, one of a free Apple ID's three app IDs per 7 days); starting a session from
-  Linux (pymobiledevice3's testmanagerd client); whether a synthesized swipe triggers iOS's own
-  edge gestures (Home, Control Center); whether the daemon turns the flag on by itself on iOS 27.
-- Found 2026-11-08 (M6b3c's hand checks; the user asked to note it).
-
 ### TOOL-9
 
-**`tools/dine dbg ui` sees the key window only.** The walk misses a keyboard's `inputAccessoryView`
-(the pads' round return button), which sits in the keyboard's window: `ls` doesn't list it and a
-screenshot may not show it (`notes/dev-reference.md` "Debug agent").
-- Where: `native/dev/dbgagent`.
+**`tools/dine dbg ui ls` walks the key window only.** The walk misses a keyboard's
+`inputAccessoryView` (the pads' round return button), which sits in the keyboard's window: `ls`
+doesn't list it and a screenshot may not show it (`notes/dev-reference.md` "UI agent").
+- Where: uidrive's walk (`../dine-uidrive`, `src/uidrive/agent/ax.mm`).
 
 ### TOOL-14
 
@@ -887,15 +869,16 @@ rule that a library outside the embedder's symbol lists doesn't load has no test
 
 ### TOOL-15
 
-**The debug agent reaches only the tiles of the atl screen that are on the screen.** The grid is
-lazy (`LazyVGrid`) and `dbg ui` lists only built elements with a frame on the screen, so a smoke step
-can't tap a tile further down (seen 2026-11-21, overhaul A7: with a 29th tile before `config` the
-`atl-keyboard-dialog` step found no `keyboard dialog`). Workaround: five columns, so the iPhone 13
-shows the 36 tiles at once (seen 2026-11-22), with the tiles the scenarios tap first in
+**`dbg ui` reaches only the tiles of the atl screen that are on the screen.** The grid is lazy
+(`LazyVGrid`) and `dbg ui` lists only built elements with a frame on the screen, so a smoke step
+can't activate a tile further down (seen 2026-11-21, overhaul A7: with a 29th tile before `config`
+the `atl-keyboard-dialog` step found no `keyboard dialog`). Workaround: five columns, so the iPhone
+13 shows the 36 tiles at once (seen 2026-11-22), with the tiles the scenarios use first in
 `AtlView.swift`.
-- Fix: a scroll action in the agent (a grid that builds every tile isn't enough: the walk skips
-  what is off the screen).
-- Where: `apps/Dine/Sources/Dine/Dev/AtlView.swift`, `native/dev/dbgagent`.
+- Fix: a smoke `drag` step that scrolls the grid to the tile (untried: the grid fits the screen
+  today), or a scroll action in the agent. A grid that builds every tile isn't enough: the walk
+  skips what is off the screen.
+- Where: `apps/Dine/Sources/Dine/Dev/AtlView.swift`, `tools/py/dine/dbg/smoke.py`.
 
 ### TOOL-16
 
@@ -945,8 +928,8 @@ broken (found 2026-11-14 to 2026-11-21: the instruments audit, the A9 review, th
   never run (MA0-MA1-14).
 - The parts of `tools/dine ios` that need no phone have no test: `sync-ios-icons.sh` with a
   missing icon, `cmd_lldb`'s arguments, `tunnel_status`'s text (app-tools-17).
-- `smoke.run` (`tools/py/dine/dbg/smoke.py`): the relaunch rule, a declined tap, the `--network`
-  skip and the still-alive check have no unit test (app-tools-8).
+- `smoke.run` (`tools/py/dine/dbg/smoke.py`): the relaunch rule, a declined activation, the
+  `--network` skip and the still-alive check have no unit test (app-tools-8).
 - gtk's debug target: no check attaches lldb, sets a breakpoint and reads an expression
   (app-tools-3).
 - Test mode with several apps: no run has two apps answered from `ATL_DIALOG_ANSWERS` (each main
@@ -977,9 +960,9 @@ a product defect; the audit's id is in brackets.
   only the surface with Dine's size (phone-r3-5); value lines beside the markers are unread
   (`run hello`'s `map size 2`, `views createFromPath missing`, the art probe's) (phone-r2-1); a run
   leaves no scenario, pattern or verdict in the session log (phone-r3-7).
-- gtk's debug target: the unit tests stub ATL and the agent, so `dbg ui` against a real ATL (`type`,
-  `back`) runs in no check; `linux smoke input-gtk` and `text-gtk` drive the agent directly
-  (phone-r2-3, app-tools-4).
+- gtk's debug target: the unit tests stub ATL and the agent, so `dbg ui` against a real ATL
+  (`insert`, `back`) runs in no check; `linux smoke input-gtk` and `text-gtk` drive the agent
+  directly (phone-r2-3, app-tools-4).
 - CLI: no test runs `cli.main` for `test` or `linux`, and it turns a handler's non-int result into
   exit 0 (dispatch-r1-4); `test_server.py` takes 0.5 s for "the server is busy" (phone-r1-14).
 - No Linux build compiles the side without `test_hooks`; only the iOS release build does
@@ -993,11 +976,32 @@ a product defect; the audit's id is in brackets.
 - A0's fixes that no run proved: children ended on a signal, test APKs renamed into place, markers
   at the deadline, the abbreviated-flag refusal, the gd check without output (ledger A0).
 
+### TOOL-22
+
+**Recheck why iOS links use xtool's `ld64.lld`.** The toolchain file, `env.sh`,
+`notes/dev-reference.md` "iOS builds" and `docs/first-run.md` §9 say the system `ld64.lld` rejects
+the SDK's `.tbd` stubs. The system LLD 23.1.4 linked uidrive's agent dylib against UIKit and
+Foundation without error, with the same load commands; executables weren't tried.
+- Found 2026-11-25 (the toolchain's shared-library flag, left out in a test link).
+- Where: `tools/cmake/ios.toolchain.cmake`, `env.sh`, `notes/dev-reference.md`, `docs/first-run.md`.
+- Then: link Dine and artbridge with the system LLD; restate the reason, or drop the `-B` flags.
+
 ## Done
+
+### TOOL-8
+
+**Real touches and keys for phone UI checks without XCUITest: uidrive (`../dine-uidrive`),
+injected into dev builds.** 2026-11-25, dine 0efd5d5, 4558682, 59bd868; dine-uidrive
+af1c3de..35b68ea.
+
+### TOOL-4
+
+**Return can't be pressed in a field** (`dbg ui press return`). 2026-11-25, dine 154d4de,
+dine-uidrive 35b68ea.
 
 ### ATL-147
 
-**`dbg smoke atl-text` reads no field's own text.** 2026-11-21, overhaul A6: the debug agent lists a
+**`dbg smoke atl-text` reads no field's own text.** 2026-11-21, overhaul A6: the UI agent lists a
 field's text as its `accessibilityValue`, `atl-text` asserts it, and `text-gtk` does for gtk.
 
 ### ATL-18

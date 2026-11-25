@@ -138,7 +138,7 @@ primary app. These functions are app-runtime-timed, they are not some global mag
 - The hosts keep the handles of the apps they run; ATL's framework code never reads a host's
   handle. The gtk host runs one app per process: its D-Bus actions, back button and libc path
   rewrite, and the gtk ui backend (`host_app` in `gtk_ui.h`: `ui_window_app`, `ui_view_app`, the
-  debug agent, input's posted CANCEL), read that one handle.
+  gtk agent, input's posted CANCEL), read that one handle.
 - A gtk process runs one record, and that record is no more primary than any other; the cli host's
   test mode runs one record per `-l` or `--instrument` group.
 

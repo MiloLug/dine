@@ -18,7 +18,7 @@ Where the rest is (read the one a task touches):
 - `README.md`: layout, commands (the full list: `tools/dine <group> --help`), device connection,
   the debug server, interactive lldb.
 - `docs/first-run.md`: setup on a new PC, where each tool comes from, build caveats.
-- `notes/dev-reference.md`: details few tasks need (running ATL by hand, the debug agent, lldb
+- `notes/dev-reference.md`: details few tasks need (running ATL by hand, the UI agent, lldb
   internals, iOS build traps); its Contents list says when to read each section.
 - `notes/atl-port.md` (ATL slots, builds, milestones), `notes/decisions.md` (fork decisions),
   `notes/art-findings.md` (ART config), `notes/nav-gestures.md`, `notes/icons.md`.
@@ -58,12 +58,13 @@ tools/dine dbg start-server [--target gtk --app <apk>] | smoke [--network] [--li
 **Dev and release builds:** iOS builds are dev builds unless `DINE_RELEASE=1` is set on
 `ios build-atl` and then `ios run`; `ios run` stops when the ATL build's `test_hooks` doesn't
 match the flag. A release build leaves out every dev and test part: the dev screens in
-`apps/Dine/Sources/Dine/Dev/` (`#if DEBUG`; xtool `-c release`), the libs in `native/dev/` (debug
-agent, hello, runtimetests; Swift imports them only from `Sources/Dine/Dev/`), artbridge's
+`apps/Dine/Sources/Dine/Dev/` (`#if DEBUG`; xtool `-c release`), the libs in `native/dev/` (hello,
+runtimetests; Swift imports them only from `Sources/Dine/Dev/`), artbridge's
 `dev*.cpp` (ART's junit boot jars, `-Xcheck:jni`, probes), ATL's test hooks (meson `test_hooks`:
 the natives; `ATLTestHooks` stays in the shared api-impl.jar),
-`Resources/Dev.xcassets`, and the test APKs, test jars and junit jars (`out/ios/dev`, bundled as
-`dev/`). A release `ios run` ends with a check of its bundle (a new dev-only part gets a marker in
+`Resources/Dev.xcassets`, and the test APKs, test jars, junit jars and the UI agent
+`libuidrive.dylib` (`out/ios/dev`, bundled as `dev/`; `ios launch` injects the agent). A release
+`ios run` ends with a check of its bundle (a new dev-only part gets a marker in
 `tools/py/dine/ios.py` `DEV_MARKERS`). `dbg ui`, `dbg fresh` and `dbg smoke` need a dev build. A
 release build can't start an app until the launcher gets APK import (M8a).
 
@@ -72,7 +73,8 @@ release build can't start an app until the launcher gets APK import (M8a).
 hidden display; the task names which) and leave the server up for the next task; continue them with
 SendMessage. Spawn neither from plan mode: it blocks every launch, attach and tap.
 - `dine-peek` (Sonnet, fast): a fully specified read, e.g. "value of `self.native` at
-  `HelloView.swift:23` after tapping hello++", a log line after given taps, a smoke run, a screenshot.
+  `HelloView.swift:23` after activating hello++", a log line after given UI steps, a smoke run, a
+  screenshot.
 - `dine-debugger`: anything that needs diagnosis, stepping or judgment (why it crashes, where a value
   goes wrong).
 

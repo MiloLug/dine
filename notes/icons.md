@@ -37,7 +37,7 @@ How Dine gets its icons. The commands are in CLAUDE.md.
   the vector rendition ([TOOL-3](bug-tracker.md#tool-3)). Tint in code:
   `.renderingMode(.template)` with `.foregroundStyle(...)`.
 - Use `Image(decorative:)`. A plain `Image("Role")` adds the asset name to the accessibility label,
-  and the debug agent's taps match labels.
+  and `dbg ui` matches labels.
 - Pick the pack's largest size that fits. accord rasterizes at 1x, 2x and 3x the SVG's own size, so
   `app_generic_48` gives 144 px at 3x for a glyph of about 33 pt.
 - `UIImage.draw(at:)` renders a template image black. The probe's `DefaultApp` check expects black

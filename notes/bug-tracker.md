@@ -1217,7 +1217,7 @@ never reaches it.** headless and Android's rules are carried (`ui_scroll_disallo
 `linux smoke pan`); uikit's `ATLScrollView` is a `UIScrollView` whose pan takes a drag past the
 slop from a child that asked for the whole gesture. `alwaysBounceVertical` is off for a vertical
 node, so one whose content fits starts no pan (UIScrollView leaves a fitting drag to the child:
-unverified, no run drags on the phone); a horizontal node keeps `alwaysBounceHorizontal`, as
+unverified on the phone); a horizontal node keeps `alwaysBounceHorizontal`, as
 HorizontalScrollView takes a drag whatever its content.
 - Design, not implemented: `ui_scroll_disallow_intercept` arrives on the Android thread after a
   posted DOWN and UIKit's thread never waits for it, and with `delaysContentTouches` at its default
@@ -1227,8 +1227,8 @@ HorizontalScrollView takes a drag whatever its content.
   `gestureRecognizerShouldBegin:` override (a UIView API; the pan's delegate can't be reassigned),
   with `delaysContentTouches = NO` so Java gets the DOWN at once as on Android. The race between
   the DOWN and the pan stays.
-- State: open; found 2026-11-20 (overhaul A5b, audit A5-4); needs a run that can drag on the phone
-  (the debug agent has `tap` only and UIKit makes no `UITouch`).
+- State: open; found 2026-11-20 (overhaul A5b, audit A5-4); needs a run that drags on the phone
+  (`dbg ui drag`, a smoke `drag` step).
 - Where: `dine-atl/src/backends/ui/uikit/view.m` (`ATLScrollView`, `ui_scroll_disallow_intercept`).
 
 ### ATL-145
@@ -1527,6 +1527,16 @@ the installed APKs with it.
 - Where: `dine-atl/src/api-impl/android/app/Instrumentation.java` (`startActivitySync`),
   `src/api-impl/android/content/Intent.java` (`resolveActivity`).
 
+### ATL-182
+
+**On uikit, after Back or Home hides the keyboard while Java keeps an EditText's focus, a hardware
+key types nothing into it.** UIKit's first responder is then ATL's root view (UIKit logs
+`responder:<ATLView …> requiresKB:N`), so a key event goes to the key window and no text reaches
+the field; whether it reaches the view's `pressesBegan:` is unmeasured. Keys tagged with
+`UITextEffectsWindow` type nothing either. With the keyboard shown, the same keys type.
+- State: open; found 2026-11-25 with uidrive's `key` on the widgets APK's text activity (iOS 27.2).
+- Where: `dine-atl/src/backends/ui/uikit/` (the first responder once the keyboard hides).
+
 ## DINE
 
 ### DINE-1
@@ -1646,11 +1656,14 @@ no frame hook.
 
 ### TOOL-13
 
-**`dbg smoke art --network`, run alone, lost the app's debug agent once.** `art: run hello: FAILED`,
-`no usbmux connection to the app within 10s`, and the server showed no process afterwards.
+**`dbg smoke` fails now and then with `no usbmux connection to the app within 10s`.** `art: run
+hello: FAILED` with it (`dbg smoke art --network`, run alone), and the server showed no process
+afterwards.
 - State: unchecked; seen in 1 of 5 runs on 2026-11-14, right after a full smoke run. The syslog of
   that launch ends with `art probe ... done` and holds no crash, abort or signal line; crash reports
-  on the phone were not read.
+  on the phone were not read. Seen again on 2026-11-25 in a full `dbg smoke`: `atl-installer: atl:
+  FAILED` with the same message, on the first request after a relaunch whose own `ls` wait had
+  reached the agent; not in the 8 `atl-installer` runs after it.
 - Where: the saved lines are in `out/handoff/overhaul/a0/phone/art-fail-syslog.txt` (gitignored).
 
 ### TOOL-19
@@ -1663,6 +1676,51 @@ no frame hook.
 - Where: `tools/py/dine/linux.py` (`smoke`, `_script`), `dine-atl/tests/headless/run-*.sh`.
 - Fix: if it shows, run each check's children in a session that the handler ends, as the test
   harness's `spawn` does (`tests/harness/common.py`).
+
+### TOOL-20
+
+**`dbg smoke` fails a step on every reply that starts with the server's stale-code warning.**
+`logged` takes a fail pattern as found when the log query's reply doesn't start with `0 matches`;
+after an edit under `tools/py/dine` or uidrive's Python files every reply starts with `warning: the
+server runs older dbg code`, so the first fail pattern counts as found (`atl-controls: run controls:
+FAILED ('atl is still starting': 0 matches)`).
+- State: open; found 2026-11-25 (a file rewritten during a smoke run).
+- Where: `tools/py/dine/dbg/smoke.py` (`logged`).
+- Workaround: `tools/dine dbg stop-server; tools/dine dbg start-server` after such an edit.
+
+### TOOL-21
+
+**`build-ios-deps.sh` configures into an existing build dir without checking its cache.** Its
+`cmake_dep` passes the toolchain and source dir to a `out/ios/build/<name>` dir that may hold
+another toolchain's or source dir's cache (CMake refuses another source dir there); `ios_cmake`
+(`tools/libexec/ios-cmake.sh`) wipes such a dir first.
+- State: unchecked: never seen fail; it configures only when the library isn't installed.
+- Where: `tools/libexec/build-ios-deps.sh` (`cmake_dep`).
+- Fix: configure through `ios_cmake`.
+
+### TOOL-23
+
+**`dbg smoke lldb`'s `back` right after `detach` can leave HelloView on screen.** `lldb: back:
+FAILED waiting for 'Add App' on screen` / `timeout after 60s waiting for --ui 'Add App'`: the
+`ui back` reply came 0.55-0.65 s after `detach` with `went back (escape handled by
+SwiftUI.UIKitNavigationBar)` but still listed HelloView, and the launcher never showed. A `dbg ui
+back` afterwards went to the launcher.
+- State: open, cause unknown; seen in 2 of 14 runs of the `lldb` scenario with the UI agent
+  injected (2026-11-25), both on a fresh server whose first `expression` took 2.66 s and 2.8 s
+  (three fresh-server runs that passed: 1.8-1.9 s). A run without the UI agent injected gave the
+  same early reply once, and its navigation finished.
+- Where: `tools/py/dine/dbg/smoke.py` (the `lldb` scenario), Dine's navigation after a detach.
+- Workaround: rerun.
+
+### TOOL-24
+
+**A relaunch can get a prewarmed Dine process that has no UI agent.** Once, `dbg smoke`'s
+relaunch waited 30 s for the agent in vain: the process's environment held `ActivePrewarm=1` and
+neither `UIDRIVE_PORT` nor `DYLD_INSERT_LIBRARIES`, `libuidrive.dylib` wasn't loaded, and it ran at
+Dine's launcher. The DVT launch seemingly got a process iOS had prewarmed (mechanism unverified).
+- State: unchecked; seen once on 2026-11-25, not in the next 6 relaunches.
+- Where: `tools/py/dine/cli.py` (the relaunch polls `ui_ls` for 30 s and doesn't relaunch),
+  uidrive's `ios.launch`.
 
 ## Fixed
 

@@ -60,7 +60,7 @@ The rows below stay as the snapshot.
 | inbound `ActivateAction` `startActivity`, `startService`, `sendBroadcast`, payload `(sssa{sv}s)` | `main-executable/actions.c:49-53`, `dine-atl/doc/DBusIntentApi.md` | gtk only; delivered to `Context.this_application`; flags, type and categories are lost |
 | outbound `nativeStartExternalService` | `api-impl-jni/content/android_content_Context.c:226-236` | only `startService`, only when the target isn't loadable in-process and the intent names a package |
 | UnifiedPush, MPRIS, portals | `android_content_Context.c:199-213`, `android_app_NotificationManager.c` | own the package bus name, call desktop services |
-| debug agent socket | `backends/ui/gtk/agent.c:450-477` | `ATL_DBG_AGENT`, test hooks, gtk only |
+| gtk agent socket | `backends/ui/gtk/agent.c:450-477` | `ATL_DBG_AGENT`, test hooks, gtk only |
 | process spawn | `Activity.java:331` | the one spawn: `android-translation-layer --install` |
 
 All C.
@@ -80,7 +80,7 @@ All C.
 - Threads: the UIKit main thread (a CADisplayLink, `view.m:1015`; text measurement uses
   `dispatch_sync`, `view.m:898`); the Android main thread; a stdout/stderr relay to os_log
   (`artbridge.cpp:42-51`); one `loop_worker` per Java Looper thread
-  (`android_os_MessageQueue.c:27`). ART daemons and the debug agent thread: U.
+  (`android_os_MessageQueue.c:27`). ART daemons and the UI agent's thread: U.
 - The host API takes an app handle (`struct atl_app`): `nav.h`, `host.h`, `atl_embedded.h`,
   `dineart.h`, and listener events carry it. C
 - UIKit: a new `AppSurfaceView` per run, an `AppContainerController` presented full screen

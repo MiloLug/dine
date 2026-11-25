@@ -32,8 +32,8 @@ implements the feature. Slot rules and the milestone rule are in
   results reach the Android main thread through `loop_main_post`. Which thread each framework needs
   is checked in its item.
 - Target: the item's section of the OS features APK, graded on headless against `none`'s answers
-  and checked on the phone with `ios`: a `dbg smoke atl-os-features` step where the debug agent
-  sees the result, by hand otherwise. gtk is checked by hand, since its answers depend on the
+  and checked on the phone with `ios`: a `dbg smoke atl-os-features` step where `dbg ui` sees the
+  result, by hand otherwise. gtk is checked by hand, since its answers depend on the
   machine (clipboard contents, `/dev/input`, portals). The gtk Gravity Defied smoke and the runtime
   suite keep passing.
 - Order: reach-first. The OS features the triage APKs reach come first, then the ones common in

@@ -328,7 +328,7 @@ SCENARIOS = {
             Step("one", activate="one", ok=("popup row one",), fail=ATL_FAIL),
             # outside the popup: it closes (ACTION_OUTSIDE) and the activation's tap still reaches the activity
             Step("elsewhere", activate="elsewhere", ok=("popup dismissed", "popup elsewhere"), fail=ATL_FAIL),
-            # PopupMenu as iOS's own menu; the agent can't pick its items (a hand check), Back closes it
+            # PopupMenu as iOS's own menu; no step picks its items (a hand check), Back closes it
             Step("menu", activate="menu", ok=("menu: presented",), ui=("Copy", "Paste", "Bold", "More"), fail=ATL_FAIL),
             Step("Back closes the menu", back=True, ok=("menu dismissed",), fail=ATL_FAIL + ("nav: container dismissed",)),
             Step("toast", activate="toast", ok=('toast: shown "toasted"',), fail=ATL_FAIL),

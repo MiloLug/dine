@@ -29,9 +29,10 @@ symbols, ATL build, and a verification checklist.
 | `tools/systemd/usbmuxd-bridge.service` | `/var/run/usbmuxd` → Windows Apple Mobile Device Service (`127.0.0.1:27015`) |
 | `tools/systemd/dine-tunneld.service` | `pymobiledevice3 remote tunneld` (iOS 17+ developer services) |
 | `tools/cmake/ios.toolchain.cmake` | clang cross-compile → `arm64-apple-ios` with xtool's SDK |
-| `native/dev/` | libs only dev builds link: the debug agent, `hello` (C++ static lib smoke test), `runtimetests` |
+| `native/dev/` | libs only dev builds link: `hello` (C++ static lib smoke test), `runtimetests` |
 | `apps/Dine` | xtool SwiftUI app: launcher grid (SQLite); dev builds add `Sources/Dine/Dev/`: a hello++ screen linking `native/dev/hello`, a probe screen for the asset catalogs (`Resources/`: `AppIcon.icon`, `Assets.xcassets`, `Icons.xcassets` from the icon pack, dev-only `Dev.xcassets`), art and atl run screens |
 | `../dine-accord` | sibling repo where accord is worked on: Dine's `actool`, which compiles `apps/<App>/Resources` into `Assets.car` + icon plist keys. Dine runs the `accord` command, cargo-installed from its GitHub repo |
+| `../dine-uidrive` | sibling repo, uidrive: the UI agent that `ios launch` injects into dev builds (`dev/libuidrive.dylib`, built by `ios run`) and the Python client `dbg` talks to it with; `uv sync` installs it ([`docs/first-run.md`](docs/first-run.md)) |
 | `third_party/` | upstream clones (gitignored): bionic_translation, libopensles (Linux); lz4, xz, icu, wolfssl (iOS deps); fluentui-system-icons (the icon pack); `apks/`, the third-party test APKs |
 | `dine-art/` | submodule: our fork of art_standalone (ART + libcore), branch `dine` |
 | `dine-atl/` | submodule: our fork of android_translation_layer, branch `dine` |
@@ -123,11 +124,11 @@ tools/dine ios tunnel status
 tools/dine dbg start-server                       # fails if one already runs
 tools/dine dbg smoke                              # the smoke checks, one line per step; --list, --network
 tools/dine dbg fresh                              # syslog on, relaunch, wait until the UI answers
-tools/dine dbg ui tap hello                       # prints the screen it led to; ui type, ui back, ui ls
+tools/dine dbg ui activate hello                  # prints the screen it led to; ui ls, tap, insert
 tools/dine dbg attach                             # ~15 s for the first one per server, ~3.5 s later; the app is stopped
 tools/dine dbg bp add HelloView.swift:23
 tools/dine dbg continue
-tools/dine dbg ui tap hello                       # tapped 'hello++'; stopped at HelloView.body.getter …
+tools/dine dbg ui activate hello                  # activated 'hello++'; stopped at HelloView.body.getter …
 tools/dine dbg exec --po self                     # Swift; C: exec --lang c '(const char *)dine_hello()'
 tools/dine dbg bt; tools/dine dbg up; tools/dine dbg source
 tools/dine dbg log tail -n 20 --app; tools/dine dbg log grep 'art main'
@@ -139,16 +140,21 @@ tools/dine dbg stop-server                        # detaches; with --kill-app it
 - `wait --timeout S` conditions: `--stop`, `--at LOC`, `--log TEXT` (loose match:
   case-insensitive, punctuation ignored, words in order, each a prefix), `--log-re`, `--exit`,
   `--ui LABEL`; `--all` for every one. It starts at the last action (`--since mark`: `continue`,
-  step, `ui tap`, … and a launch), so a stop between `continue` and `wait` isn't missed, and
+  step, a `ui` action and a launch), so a stop between `continue` and `wait` isn't missed, and
   returns at once when the process stops
   elsewhere (exit 1) or exits/crashes (exit 3). Timeout: exit 2 with the recent events.
 - Exit codes: 0 ok, 1 error or bad state (the message names the command to run), 2 timeout,
   3 exited/crashed during a wait, 4 no server.
-- `ui ls|tap|type|back` go to the debug agent linked into Dine's dev builds (`native/dev/dbgagent`), so they need no
-  attach and don't pause the app: `ls` takes ~0.15 s, `tap`/`back` ~0.6–1 s including the wait
-  for the screen to settle. The agent runs only in a process started by `tools/dine ios launch`
-  (or `dbg fresh`, `ios run`). While lldb has the app stopped they refuse; a tap that hits a
-  breakpoint returns the stop.
+- `ui` verbs but `screenshot` go to the UI agent, uidrive's `libuidrive.dylib`, which `tools/dine ios launch` (and
+  `dbg fresh`, `ios run`) injects into a dev build's process
+  ([`notes/dev-reference.md`](notes/dev-reference.md) "UI agent"); an app started from the home
+  screen has none. They need no attach and don't pause the app. `ls`, `activate`, `insert`,
+  `back`, `action` and `appearance` act through accessibility, with no touch; `tap`, `drag` and
+  `press` are real input: a finger at an element's centre or at a point `@X,Y` in screen points,
+  and a hardware key. `windows` lists the app's windows; `--window N` sends a `tap` or `drag` to
+  one of them instead of the one the point hits. `ls` takes ~0.1 s; `activate`, `tap` and `back`
+  0.6 to 1 s including the wait for the screen to settle. While lldb has the app stopped they
+  refuse; an `activate` that hits a breakpoint returns the stop.
 - `dbg call <fn> [args]` calls a function in the app through lldb on its main thread (numbers
   as-is, other args as C strings): needs `attach`.
 - `log` listings start at the last launch (`ios launch`, `dbg fresh`; `--from 0`: the whole
@@ -159,8 +165,8 @@ tools/dine dbg stop-server                        # detaches; with --kill-app it
   `start-server`: restart the server.
 - One lldb target per server: attaching to the next process reuses it, with its breakpoints.
 - Nothing of `HelloView` runs before hello++ is opened: then `HelloView.swift:8` (its init) and
-  `HelloView.swift:23` (`body`/`onAppear`) fire. At launch `DineMain.init`,
-  `dine_dbg_agent_start` and `AppLibrary.init` (`AppLibrary.swift:31`) run.
+  `HelloView.swift:23` (`body`/`onAppear`) fire. At launch the UI agent's constructor
+  `UidriveLoaded`, then `DineMain.init` and `AppLibrary.init` (`AppLibrary.swift:31`) run.
 - Claude Code: the `dine-peek` (narrow reads) and `dine-debugger` subagents (`.claude/agents/`,
   gitignored) know this contract, for both targets.
 - Tests: `tools/dine test unit` runs the server against a scripted fake target
@@ -170,25 +176,27 @@ tools/dine dbg stop-server                        # detaches; with --kill-app it
 
 `--target gtk` debugs ATL's gtk build (`out/linux/build/dine-atl`, from `tools/dine linux build
 atl`) on the [hidden display](#linux-atl--art); no phone or tunnel. The server starts ATL itself:
-ATL's stdout and stderr are the log (`wait --log`, `log`), and the UI goes through a debug agent
-in ATL's test hooks (`dine-atl/src/backends/ui/gtk/agent.c`, the iOS agent's protocol).
+ATL's stdout and stderr are the log (`wait --log`, `log`), and the UI goes through the gtk agent
+in ATL's test hooks (`dine-atl/src/backends/ui/gtk/agent.c`): uidrive's protocol, with the
+differences uidrive's `PROTOCOL.md` lists.
 
 ```sh
 # the test APKs come from tools/dine linux smoke (here: linux smoke widgets) or ios run
 tools/dine dbg start-server --target gtk --app out/tests/apks/widgets.apk
 tools/dine dbg fresh --activity dev/dine/widgets/TextActivity   # default: the APK's launcher activity
-tools/dine dbg ui type name hi                    # an EditText's label is its hint, then "hint: text"
-tools/dine dbg ui tap fill                        # prints the screen it led to
+tools/dine dbg ui insert name hi                  # an EditText's label is its hint, then "hint: text"
+tools/dine dbg ui activate fill                   # prints the screen it led to
 tools/dine dbg ui screenshot                      # PNG cropped to ATL's windows
 tools/dine dbg attach                             # local, about 1 s; bp, step, exec, call as on iOS
 ```
 
-- `ui ls` lists the shown text of ATL's windows, dialogs included. `ui tap` gives a view one touch
-  at its centre through Java's dispatch, so GTK's own gesture handling doesn't run; an EditText
-  takes GTK's focus, a GTK dialog's buttons and list rows get activated. A tap Java doesn't take
-  reports "declined".
+- `ui ls` lists the shown text of ATL's windows, dialogs included. `ui activate` gives a view one
+  touch at its centre through Java's dispatch, so GTK's own gesture handling doesn't run; an
+  EditText takes GTK's focus, a GTK dialog's buttons and list rows get activated. A touch Java
+  doesn't take reports "declined".
 - `ui back` sends Android's Back; when it closes the last activity, ATL exits and `fresh` starts it
-  again. `ui action` and `dbg smoke` are iOS only (the gtk checks: `tools/dine linux smoke`).
+  again. `ui tap`, `drag`, `press`, `windows`, `action`, `appearance` and `dbg smoke` are iOS only
+  (the gtk checks: `tools/dine linux smoke`).
 - The app's data dir lives in the session dir and survives `fresh`.
 - lldb on gtk has no guard for threads waiting in the kernel and passes signals with lldb's
   defaults: under `-Xint` ART raises no SIGSEGV of its own (`notes/art-findings.md`, Signals).
@@ -199,7 +207,7 @@ tools/dine dbg attach                             # local, about 1 s; bp, step, 
 tools/dine ios lldb                                   # interactive
 tools/dine ios lldb Dine -- -b -o bt -o "process detach"   # scripted
 # Break in startup code: the app waits for the debugger, so set breakpoints, then continue.
-tools/dine ios lldb --suspended -- -b -o "b dine_dbg_agent_start" -o c -o bt -o "process detach"
+tools/dine ios lldb --suspended -- -b -o "b UidriveLoaded" -o c -o bt -o "process detach"
 tools/dine ios lldb --suspended -- -b -o "b AppLibrary.swift:31" -o c -o "po self" -o "process detach"
 # Unoptimized native libs (C++ locals not "optimized out"); plain ios run switches back.
 DINE_IOS_BUILD_TYPE=Debug tools/dine ios run
