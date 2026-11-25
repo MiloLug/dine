@@ -3,6 +3,7 @@
 import datetime
 import fcntl
 import hashlib
+import importlib.util
 import os
 import shutil
 from pathlib import Path
@@ -62,12 +63,18 @@ def new_session_dir() -> Path:
 
 
 def code_fingerprint() -> str:
-    """Changes when the server's Python changes: a server older than that runs stale code."""
+    """Changes when the server's Python changes, the imported uidrive's included: a server older
+    than that runs stale code."""
+    files = [p for p in sorted(PACKAGE.rglob("*.py"))
+             if not p.name.startswith("test_") and p.relative_to(PACKAGE).as_posix() not in CLIENT_ONLY]
+    # By absolute path: a switch between the checkout and an installed uidrive changes it too.
+    spec = importlib.util.find_spec("uidrive")
+    if spec and spec.origin:
+        files += [p for p in sorted(Path(spec.origin).parent.rglob("*.py")) if not p.name.startswith("test_")]
     h = hashlib.sha1()
-    for p in sorted(PACKAGE.rglob("*.py")):
-        if not p.name.startswith("test_") and p.relative_to(PACKAGE).as_posix() not in CLIENT_ONLY:
-            st = p.stat()
-            h.update(f"{p}:{st.st_size}:{st.st_mtime_ns}".encode())
+    for p in files:
+        st = p.stat()
+        h.update(f"{p}:{st.st_size}:{st.st_mtime_ns}".encode())
     return h.hexdigest()[:12]
 
 

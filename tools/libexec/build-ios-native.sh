@@ -24,19 +24,11 @@ if [[ ${#libs[@]} -eq 0 ]]; then
   done
 fi
 
-toolchain="$ROOT/tools/cmake/ios.toolchain.cmake"
+source "$ROOT/tools/libexec/ios-cmake.sh"
 for lib in "${libs[@]}"; do
   echo "==> $lib"
   build="$ROOT/out/ios/build/$lib"
-  # CMake keeps the toolchain path from the first configure; a moved toolchain needs a fresh dir.
-  if [[ -f $build/CMakeCache.txt ]] && ! grep -qF "CMAKE_TOOLCHAIN_FILE:FILEPATH=$toolchain" "$build/CMakeCache.txt"; then
-    rm -rf "$build"
-  fi
-  cmake -S "$ROOT/native/$lib" -B "$build" -G Ninja -Wno-unused-cli \
-    -DCMAKE_TOOLCHAIN_FILE="$toolchain" -DDINE_IOS_MIN="$DINE_IOS_MIN" -DDINE_DEV="$dev" \
-    -DCMAKE_BUILD_TYPE="${DINE_IOS_BUILD_TYPE:-RelWithDebInfo}" \
-    -DCMAKE_INSTALL_PREFIX="$ROOT/out/ios"
-  cmake --build "$build"
+  ios_cmake "$ROOT/native/$lib" "$build" -DDINE_DEV="$dev" -DCMAKE_INSTALL_PREFIX="$ROOT/out/ios"
   cmake --install "$build"
 done
 "$ROOT/tools/libexec/jni-symbols.sh"

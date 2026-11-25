@@ -98,6 +98,15 @@ class InstalledTest(unittest.TestCase):
                 with self.assertRaisesRegex(DineError, "ios run"):
                     ios.check_installed("App")
 
+    def test_install_fingerprint_covers_the_agent_sources(self):
+        agent = self.tmp / "agent"
+        agent.mkdir()
+        (agent / "x.mm").write_text("int x;")
+        with mock.patch.object(ios, "agent_src", return_value=agent):
+            first = ios.install_fingerprint("App")
+            os.utime(agent / "x.mm", ns=(1, 1))
+            self.assertNotEqual(ios.install_fingerprint("App"), first)
+
     def test_a_golden_edit_needs_no_install(self):
         (self.tmp / "dine-atl/tests/headless/nav").mkdir(parents=True)
         (self.tmp / "out/ios/App.installed").write_text(ios.install_fingerprint("App"))
@@ -190,6 +199,40 @@ class InstallTest(unittest.TestCase):
         self.assertFalse((self.tmp / "stamp").exists())
 
 
+class LaunchInjectTest(unittest.TestCase):
+    def setUp(self):
+        import uidrive.ios
+        self.uidrive_launch = mock.AsyncMock(return_value=42)
+        for patch in (mock.patch.object(ios, "require_tunnel"),
+                      mock.patch.object(ios, "_with_rsd", side_effect=lambda fn, timeout=30: asyncio.run(fn(object()))),
+                      mock.patch.object(ios, "_bundle_id", mock.AsyncMock(return_value="XTL-T.dev.dine.Dine")),
+                      mock.patch.object(uidrive.ios, "launch", self.uidrive_launch)):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def launched_with(self, release: str) -> dict:
+        import uidrive.ios
+        with mock.patch.dict(os.environ, {"DINE_RELEASE": release}):
+            self.assertEqual(ios.launch("Dine"), 42)
+        args, kwargs = self.uidrive_launch.await_args
+        self.assertEqual(args[1], "XTL-T.dev.dine.Dine")
+        self.assertEqual(kwargs["port"], uidrive.ios.DEFAULT_PORT)
+        return kwargs
+
+    def test_launch_injects_the_dev_payloads_dylib(self):
+        kwargs = self.launched_with("")
+        self.assertEqual((kwargs["dylib"], kwargs["inject"]), ("dev/libuidrive.dylib", True))
+
+    def test_release_launch_injects_nothing(self):
+        self.assertFalse(self.launched_with("1")["inject"])
+
+    def test_a_uidrive_error_is_a_dine_error(self):
+        import uidrive.ios
+        self.uidrive_launch.side_effect = uidrive.ios.NotInstalled("XTL-T.dev.dine.Dine")
+        with self.assertRaisesRegex(DineError, "launching Dine failed: XTL-T.dev.dine.Dine"):
+            ios.launch("Dine")
+
+
 class LaunchTest(unittest.TestCase):
     def test_a_refused_launch_names_the_phones_state(self):
         from pymobiledevice3.dtx.exceptions import DTXNsError
@@ -226,12 +269,15 @@ class ReleaseBundleTest(unittest.TestCase):
     def test_each_marker(self):
         for file, markers in ios.DEV_MARKERS.items():
             path = self.bundle / file.format(app="App")
-            before = path.read_bytes()
+            before = path.read_bytes() if path.exists() else None
             for marker in markers:
                 with self.subTest(marker):
-                    path.write_bytes(before + marker.encode() + b"\0")
+                    path.write_bytes((before or b"") + marker.encode() + b"\0")
                     self.assertIn(marker, "\n".join(self.problems()))
-            path.write_bytes(before)
+            if before is None:
+                path.unlink()
+            else:
+                path.write_bytes(before)
 
     def test_dev_archive_left_to_the_link(self):
         for name in ios.dev_archives():

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Build the dev build's bundle payload from its sources and stage it in out/ios/dev (bundled as
-# dev/): ATL's test APKs, the third-party APKs AtlView has tiles for, the runtime suite's authored
-# jars, ART's junit boot jars, and the package suite's installer app with the APK it installs
-# (dev/package/). Needs the Linux builds, whose jars the APKs compile against.
+# dev/): uidrive's agent dylib, ATL's test APKs, the third-party APKs AtlView has tiles for, the
+# runtime suite's authored jars, ART's junit boot jars, and the package suite's installer app with
+# the APK it installs (dev/package/). Needs the Linux builds, whose jars the APKs compile against.
 # DINE_RELEASE=1 leaves it empty.
 set -euo pipefail
 
@@ -14,6 +14,12 @@ HARNESS="$ROOT/tests/harness"
 rm -rf "$DEV"
 mkdir -p "$DEV"
 [[ ${DINE_RELEASE:-} == 1 ]] && exit 0
+
+# uidrive's agent, injected by `ios launch`
+source "$ROOT/tools/libexec/ios-cmake.sh"
+agent=$(python -m uidrive agent-src)   # an assignment, so set -e stops on a failed lookup
+ios_cmake "$agent" "$ROOT/out/ios/build/uidrive"
+install -m755 "$ROOT/out/ios/build/uidrive/libuidrive.dylib" "$DEV/"
 
 real=("$ROOT"/third_party/apks/{demo_app,org.happysanta.gd_29,AdaptiveIconDemo,views_widgets_samples_flower_finder,com.leocardz.multitouch.test_19,com.ashwin.example.accelerometerdemo}.apk)
 for f in "${real[@]}"; do

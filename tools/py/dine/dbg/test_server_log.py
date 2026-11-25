@@ -1,5 +1,8 @@
 """Server commands in-process with the fake target: log scoping and the stale-code warning."""
 
+import importlib.machinery
+import importlib.util
+import os
 import tempfile
 import threading
 import time
@@ -152,6 +155,22 @@ class FingerprintTest(unittest.TestCase):
             self.assertEqual(session.code_fingerprint(), first)
             (Path(d) / "server.py").write_text("ab")
             self.assertNotEqual(session.code_fingerprint(), first)
+
+    def test_code_fingerprint_covers_uidrive(self):
+        with tempfile.TemporaryDirectory() as d:
+            pkg = Path(d) / "uidrive"
+            pkg.mkdir()
+            for name in ("__init__.py", "client.py", "test_client.py"):
+                (pkg / name).write_text("a")
+            spec = importlib.machinery.ModuleSpec("uidrive", None, origin=str(pkg / "__init__.py"))
+            find_spec = importlib.util.find_spec
+            with mock.patch.object(session.importlib.util, "find_spec",
+                                   side_effect=lambda name, *a: spec if name == "uidrive" else find_spec(name, *a)):
+                first = session.code_fingerprint()
+                os.utime(pkg / "test_client.py", ns=(1, 1))
+                self.assertEqual(session.code_fingerprint(), first)
+                os.utime(pkg / "client.py", ns=(1, 1))
+                self.assertNotEqual(session.code_fingerprint(), first)
 
 
 if __name__ == "__main__":

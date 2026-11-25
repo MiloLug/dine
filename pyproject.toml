@@ -12,8 +12,12 @@ dependencies = []
 tools = [
   "pymobiledevice3>=11.31",   # device access: tunneld, DVT launch, debugserver, syslog, symbols
   "meson==1.12.1",            # ATL stack build (tools/dine linux build)
+  "uidrive",                  # UI agent the dev build injects: its dylib sources and client
 ]
 
 [tool.uv]
 package = false
 default-groups = ["tools"]
+
+[tool.uv.sources]
+uidrive = { path = "../dine-uidrive", editable = true }

@@ -19,6 +19,8 @@ from .paths import DineError
 TUNNELD = "http://127.0.0.1:49151/"
 # native/dev/dbgagent listens on this port on the phone when the app gets it in its environment.
 AGENT_ENV, AGENT_PORT = "DINE_DBG_AGENT_PORT", 47801
+# uidrive's agent in the dev payload, a path inside the bundle; build-ios-dev.sh builds it.
+AGENT_DYLIB = "dev/libuidrive.dylib"
 
 
 def pmd(*args: str, timeout: float = 60) -> str:
@@ -123,21 +125,22 @@ async def _bundle_id(rsd, app: str) -> str:
 
 
 def launch(app: str, suspended: bool = False) -> int:
-    """Launch through DVT with the debug agent on (kills a running instance first); returns the pid."""
+    """Launch through DVT (kills a running instance first), with uidrive's agent injected unless
+    DINE_RELEASE=1; returns the pid."""
+    import uidrive.client
+    import uidrive.ios
     from pymobiledevice3.dtx.exceptions import DTXNsError
     from pymobiledevice3.exceptions import PyMobileDevice3Exception
-    from pymobiledevice3.services.dvt.instruments.dvt_provider import DvtProvider
-    from pymobiledevice3.services.dvt.instruments.process_control import ProcessControl
     require_tunnel()
 
     async def run(rsd):
         bundle = await _bundle_id(rsd, app)
-        async with DvtProvider(rsd) as dvt, ProcessControl(dvt) as pc:
-            return await asyncio.wait_for(pc.launch(bundle, kill_existing=True, start_suspended=suspended,
-                                                    environment={AGENT_ENV: str(AGENT_PORT)}), 60)
+        return await uidrive.ios.launch(rsd, bundle, port=uidrive.ios.DEFAULT_PORT, dylib=AGENT_DYLIB,
+                                        suspended=suspended, inject=not release(),
+                                        env={AGENT_ENV: str(AGENT_PORT)})
     try:
         return _with_rsd(run, timeout=90)   # past the launch's own 60 s
-    except (AssertionError, TimeoutError, DTXNsError, PyMobileDevice3Exception) as e:
+    except (AssertionError, TimeoutError, DTXNsError, PyMobileDevice3Exception, uidrive.client.UidriveError) as e:
         raise DineError(f"launching {app} failed: {str(e) or type(e).__name__}\n(screen off or phone "
                         "locked, developer certificate not trusted, or the DDI unmounted after a reboot: "
                         "tools/dine ios tunnel start)") from None
@@ -304,6 +307,12 @@ def check_atl_build() -> None:
         raise DineError(problem)
 
 
+def agent_src() -> Path:
+    """uidrive's agent sources, which build-ios-dev.sh builds into the dev payload."""
+    import uidrive
+    return uidrive.agent_src()
+
+
 def install_fingerprint(app: str) -> str:
     """Changes when anything the installed app is built from does: what `ios run` bundles (archives,
     jars, the dev payload, assets) and the sources it builds itself."""
@@ -314,7 +323,7 @@ def install_fingerprint(app: str) -> str:
              # the dev payload's; only the dirs of tests/headless, whose files are scripts and goldens
              *sorted(d for d in (atl_tests / "headless").glob("*") if d.is_dir()),
              atl_tests / "package/fixtures", atl_tests / "package/keys",
-             paths.ROOT / "dine-art/tests/runtime/authored"]
+             paths.ROOT / "dine-art/tests/runtime/authored", agent_src()]
     h = hashlib.sha1()
     for root in roots:
         for p in sorted(root.rglob("*")) if root.is_dir() else [root]:
@@ -346,6 +355,7 @@ DEV_MARKERS = {
               "nav: surface ",          # Navigation.swift's #if DEBUG
               "ATL_DIALOG_ANSWERS", "ATL_DUMP_VIEWTREE", "Java_android_atl_ATLTestHooks_"),  # ATL's test_hooks
     "Assets.car": ("ProbeBadge",),      # Dev.xcassets
+    "dev/libuidrive.dylib": ("uidrive: injected into ",),   # uidrive's agent, built by build-ios-dev.sh
 }
 
 
