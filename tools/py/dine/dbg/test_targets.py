@@ -174,6 +174,20 @@ class IosRealInputTest(unittest.TestCase):
             with self.subTest(ms=ms), self.assertRaisesRegex(CmdError, r"--ms 1\.\.10000"):
                 self.target([], []).do_ui_drag("@1,1", "@2,2", ms=ms)
 
+    def test_ui_press_sends_down_then_up(self):
+        target = self.target([], [])
+        self.assertEqual(target.do_ui_press("return").splitlines()[0], "pressed return")
+        self.assertEqual([l for l in self.sent if l.startswith("key")], ["key down 40", "key up 40"])
+        self.assertTrue(self.sent[-1].startswith("settle"))
+        target.do_ui_press("Tab")
+        self.assertIn("key down 43", self.sent)
+
+    def test_ui_press_of_an_unknown_key_lists_the_names(self):
+        for arg in (None, "enter", "F1"):
+            with self.subTest(arg=arg), self.assertRaisesRegex(CmdError, r"^usage: tools/dine dbg ui press <key>: 0, 1, "):
+                self.target([], []).do_ui_press(arg)
+        self.assertEqual(self.sent, [])
+
     def test_windows_listing(self):
         self.assertEqual(self.target([], []).do_ui_windows().splitlines(),
                          ["#0 UIWindow level 0 ctx 5 key 0,0 390x844",

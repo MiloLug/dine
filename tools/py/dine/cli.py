@@ -354,10 +354,11 @@ def _dbg(sub):
         args=_log_args)
 
     def ui_setup(t):
-        t.add_argument("op", choices=["ls", "activate", "insert", "tap", "drag", "back", "action", "appearance", "windows",
-                                      "screenshot"])
+        t.add_argument("op", choices=["ls", "activate", "insert", "tap", "drag", "press", "back", "action", "appearance",
+                                      "windows", "screenshot"])
         t.add_argument("arg", nargs="?", help="activate, insert: label (loose match) or #N from ls; tap, drag (ios): "
-                                              "the same, or a screen point @X,Y; action (ios): an "
+                                              "the same, or a screen point @X,Y; press (ios): a key's name "
+                                              "(return, tab, escape, a, …); action (ios): an "
                                               "accessibility custom action's name (Back, Home, Recent apps); "
                                               "appearance (ios): light, dark or system; screenshot: path")
         t.add_argument("text", nargs="?", help="insert: the text put into the field; drag: where the finger lifts")
@@ -365,7 +366,8 @@ def _dbg(sub):
         t.add_argument("--window", type=int, help="tap, drag (ios): a window index from `ui windows` instead of the "
                                                   "one the point hits")
     req("ui", None, "app UI: ls | activate <label|#N> | insert <label|#N> <text> | tap <label|#N|@X,Y> | "
-                    "drag <from> <to> [--ms N] | back | action <name> | appearance <style> | windows | screenshot [path]",
+                    "drag <from> <to> [--ms N] | press <key> | back | action <name> | appearance <style> | windows | "
+                    "screenshot [path]",
         timeout=60, setup=ui_setup).set_defaults(
         func=lambda a: _request(a, f"ui_{a.op}", {k: v for k, v in (("arg", a.arg), ("text", a.text), ("ms", a.ms),
                                                                     ("window", a.window)) if v is not None}))

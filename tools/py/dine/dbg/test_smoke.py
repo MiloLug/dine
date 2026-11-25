@@ -146,15 +146,16 @@ class SmokeRunTest(unittest.TestCase):
                 sent.append((cmd, args, timeout))
             return server.call(cmd, args, timeout)
         steps = [smoke.Step("tap", tap="hello++"), smoke.Step("pop", drag=("@1,420", "@300,420", 2000)),
-                 smoke.Step("back", back=True)]
+                 smoke.Step("return", press="return"), smoke.Step("back", back=True)]
         with mock.patch.object(smoke.client, "call", call), \
                 mock.patch.dict(smoke.SCENARIOS, {"T": [smoke.Scenario("s", steps)]}), \
                 mock.patch.dict(smoke.STARTUP, {"T": "loaded"}):
             self.assertEqual(smoke.run("T", [], False, lambda: 1, out=lambda _: None), 0)
-            self.assertEqual(smoke.listing("T").splitlines()[1:3],
-                             ["  tap 'hello++'", "  drag '@1,420' to '@300,420' in 2000 ms"])
-        self.assertEqual(sent[:2], [("ui_tap", {"arg": "hello++"}, 30),
-                                    ("ui_drag", {"arg": "@1,420", "text": "@300,420", "ms": 2000}, 32)])
+            self.assertEqual(smoke.listing("T").splitlines()[1:4],
+                             ["  tap 'hello++'", "  drag '@1,420' to '@300,420' in 2000 ms", "  press return"])
+        self.assertEqual(sent[:3], [("ui_tap", {"arg": "hello++"}, 30),
+                                    ("ui_drag", {"arg": "@1,420", "text": "@300,420", "ms": 2000}, 32),
+                                    ("ui_press", {"arg": "return"}, 30)])
 
 
 class SmokeDebugTest(unittest.TestCase):

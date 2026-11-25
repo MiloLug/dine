@@ -229,6 +229,15 @@ class IosTarget(AgentUi, LldbCommands, Target):
         tail, _ = self._settle()
         return f"dragged {a} to {b} in {ms} ms" + tail
 
+    def do_ui_press(self, arg=None, timeout=60):
+        usage = uidrive.client.KEYS.get(arg.lower() if arg else arg)
+        if usage is None:
+            raise CmdError("usage: tools/dine dbg ui press <key>: " + ", ".join(sorted(uidrive.client.KEYS)))
+        self._agent(f"key down {usage}", timeout=10)
+        self._agent(f"key up {usage}", timeout=10)
+        tail, _ = self._settle()
+        return f"pressed {arg}" + tail
+
     def do_ui_windows(self, timeout=60):
         return "\n".join(
             f"#{i} {w['class']} level {_num(w['level'])} ctx {w['ctx']}" + (" key" if w["key"] else "")

@@ -17,6 +17,7 @@ class Step:
     activate: str | None = None  # an element's accessibility action, no touch
     tap: str | None = None      # a finger tap: label, #N or @X,Y
     drag: tuple[str, str, int] | None = None  # (from, to, ms): a real drag
+    press: str | None = None    # a key's name from uidrive.client.KEYS, pressed as a keyboard key
     back: bool = False
     action: str | None = None  # an accessibility custom action's name
     dbg: tuple[str, dict] | None = None  # a debug server command and its arguments
@@ -401,6 +402,9 @@ SCENARIOS = {
             # its label is over 4 KB: the agent takes a request of any length, and a text declines the activation
             Step("activate the long message", activate="A line of a long message", declined=True),
             Step("Close", activate="Close", ok=("text long closed",), fail=ATL_FAIL),
+            # no keyboard is up here, so the finger lands on the field and not on a key
+            Step("focus enter", tap="enter", ok=("text focus enter true",), fail=ATL_FAIL),
+            Step("Return in enter", press="return", ok=(r"text action enter \d+",), fail=ATL_FAIL),
             Step("Home", action="Home", ok=("nav: launcher root",), ui=("Add App",)),
         ], uses_vm=True, needs_clean=True, alive=True, check=_text_layout),
         Scenario("atl-dialog-keep", [
@@ -635,7 +639,7 @@ def listing(app: str) -> str:
         for st in sc.steps:
             what = " ".join((st.dbg[0], *map(str, st.dbg[1].values()))) if st.dbg else f"activate {st.activate!r}" if st.activate else f"insert {st.insert[1]!r} into {st.insert[0]!r}" if st.insert else \
                 f"tap {st.tap!r}" if st.tap else f"drag {st.drag[0]!r} to {st.drag[1]!r} in {st.drag[2]} ms" if st.drag else \
-                f"action {st.action!r}" if st.action else f"appearance {st.appearance}" if st.appearance else \
+                f"press {st.press}" if st.press else f"action {st.action!r}" if st.action else f"appearance {st.appearance}" if st.appearance else \
                 "back" if st.back else st.title
             lines.append(f"  {what}" + (f"; wait for {', '.join(st.ok)}" if st.ok else "")
                          + (f"; shows {', '.join(map(repr, st.ui))}" if st.ui else "")
@@ -731,11 +735,12 @@ def _run(app: str, names: list[str], network: bool, relaunch: Callable[[], int],
                     debugged.append(("bp", {"op": "rm", "spec": set_at[1]}))
                 if st.dbg[0] == "detach":
                     debugged.clear()   # a one-shot breakpoint went at its stop
-            elif st.activate or st.tap or st.drag or st.insert or st.back or st.action or st.appearance:
+            elif st.activate or st.tap or st.drag or st.press or st.insert or st.back or st.action or st.appearance:
                 resp = client.call("ui_activate", {"arg": st.activate}, timeout=30) if st.activate else \
                     client.call("ui_tap", {"arg": st.tap}, timeout=30) if st.tap else \
                     client.call("ui_drag", {"arg": st.drag[0], "text": st.drag[1], "ms": st.drag[2]},
                                 timeout=30 + st.drag[2] / 1000) if st.drag else \
+                    client.call("ui_press", {"arg": st.press}, timeout=30) if st.press else \
                     client.call("ui_insert", {"arg": st.insert[0], "text": st.insert[1]}, timeout=30) if st.insert else \
                     client.call("ui_action", {"arg": st.action}, timeout=30) if st.action else \
                     client.call("ui_appearance", {"arg": st.appearance}, timeout=30) if st.appearance else \
