@@ -50,6 +50,23 @@ class PickTest(unittest.TestCase):
         self.assertEqual(agent.screen(LAUNCHER), "Toolbar | Add App | art | hello++ | Apps")
 
 
+class PointTest(unittest.TestCase):
+    def test_point_parse(self):
+        self.assertEqual(agent.parse_point("@10,20.5"), (10.0, 20.5))
+        self.assertIsNone(agent.parse_point("hello"))
+        self.assertIsNone(agent.parse_point("#3"))
+
+    def test_point_parse_rejects_junk(self):
+        for junk in ("@", "@1", "@a,b", "@nan,1", "@1,inf", "@1,2,3"):
+            with self.subTest(junk=junk), self.assertRaisesRegex(CmdError, "@X,Y"):
+                agent.parse_point(junk)
+
+    def test_frames_of(self):
+        self.assertEqual(agent.frames_of({"frames": [[0, 1.5, 390, 44]]}), [(0.0, 1.5, 390.0, 44.0)])
+        # gtk's agent sends no frames
+        self.assertEqual(agent.frames_of({"labels": [[True, "a"]]}), [])
+
+
 class RequestTest(unittest.TestCase):
     def serve(self, reply: bytes | None):
         """A connect() whose peer reads one line and sends `reply` (None: never answers)."""

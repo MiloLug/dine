@@ -11,7 +11,8 @@ from .base import CmdError
 class AgentUi:
     """Mixin for a Target. It provides `_request(line, timeout)` (raises agent.AgentDown when nothing
     listens), `_stopped_at()` (where lldb holds the app, or None), `_no_agent()` and `_went_away()`
-    (what to say when the agent is missing before or after an action), and sets `_ui = []` and `_values = []`."""
+    (what to say when the agent is missing before or after an action), and sets `_ui = []`, `_values = []`
+    and `_frames = []`."""
 
     def _agent(self, line: str, timeout: float = 10) -> dict:
         if where := self._stopped_at():
@@ -25,6 +26,7 @@ class AgentUi:
         r = self._agent("ls")
         self._ui = agent.labels_of(r)
         self._values = agent.values_of(r)
+        self._frames = agent.frames_of(r)
         return self._ui
 
     def _settle(self) -> tuple[str, dict]:
@@ -38,6 +40,7 @@ class AgentUi:
             return f"; stopped at {r['stopped']}", r
         self._ui = agent.labels_of(r)
         self._values = agent.values_of(r)
+        self._frames = agent.frames_of(r)
         if not r["ran"]:
             return "; the app's main thread hasn't run it yet after 3 s (busy?)", r
         return "\nscreen: " + agent.screen(self._ui) + ("" if r["settled"] else " (still changing after 3 s)"), r

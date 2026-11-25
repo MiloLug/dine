@@ -111,5 +111,74 @@ class AgentUiTest(unittest.TestCase):
             self.ui(False).do_ui_insert("Button", "x")
 
 
+class IosRealInputTest(unittest.TestCase):
+    SCREEN = {"windows": [{"class": "UIWindow", "level": 0, "key": True, "ctx": 5, "hidden": False,
+                           "frame": [0, 0, 390, 844]},
+                          {"class": "UITextEffectsWindow", "level": 10, "key": False, "ctx": 0, "hidden": True,
+                           "frame": [0, 0, 100, 100]}]}
+
+    def target(self, labels, frames):
+        """An ios target whose agent answers `ls` with these labels and frames; `self.sent` records lines."""
+        target = ios.IosTarget(mock.Mock(), "Dine")
+        target._stopped_at = lambda: None
+        self.sent = []
+
+        def request(line, timeout):
+            self.sent.append(line)
+            if line == "ls":
+                return {"labels": [[True, l] for l in labels], "frames": frames}
+            if line == "windows":
+                return self.SCREEN
+            if line.startswith("settle"):
+                return {"labels": [[True, l] for l in labels], "frames": frames, "ran": True, "settled": True,
+                        "result": True}
+            return {"ok": True, "window": "UIWindow", "ctx": 5}
+        target._request = request
+        return target
+
+    def test_point_after_a_tap_reads_fresh_frames(self):
+        target = self.target(["a", "b"], [[0, 0, 10, 10], [100, 200, 50, 20]])
+        target._ui = [(True, "a"), (True, "b")]
+        target._frames = []
+        self.assertEqual(target._point("#1"), ("'b'", (125, 210)))
+        self.assertIn("ls", self.sent)
+
+    def test_point_of_offscreen_element_is_refused(self):
+        target = self.target(["a"], [[0, -500, 100, 40]])
+        with self.assertRaisesRegex(CmdError, "^'a' has no on-screen frame$"):
+            target._point("a")
+        target = self.target(["a"], [[10, 10, 0, 40]])
+        with self.assertRaisesRegex(CmdError, "^'a' has no on-screen frame$"):
+            target._point("a")
+
+    def test_point_as_given(self):
+        self.assertEqual(self.target([], [])._point("@1,420.5"), ("@1,420.5", (1.0, 420.5)))
+        self.assertEqual(self.sent, [])
+
+    def test_tap_sends_a_60ms_gesture_at_the_centre(self):
+        target = self.target(["a"], [[10, 20, 100, 40]])
+        self.assertEqual(target.do_ui_tap("a").splitlines()[0], "tapped 'a'")
+        self.assertIn('gesture {"fingers":[[[60,40,0],[60,40,60]]]}', self.sent)
+        self.assertTrue(self.sent[-1].startswith("settle"))
+        target.do_ui_tap("@5,6", window=2)
+        self.assertIn('gesture {"fingers":[[[5.0,6.0,0],[5.0,6.0,60]]],"window":2}', self.sent)
+
+    def test_drag_between_points_in_its_window(self):
+        target = self.target([], [])
+        self.assertEqual(target.do_ui_drag("@1,420", "@300,420", ms=250, window=0).splitlines()[0],
+                         "dragged @1,420 to @300,420 in 250 ms")
+        self.assertIn('gesture {"fingers":[[[1.0,420.0,0],[300.0,420.0,250]]],"window":0}', self.sent)
+
+    def test_drag_duration_is_bounded(self):
+        for ms in (0, -1, 10001):
+            with self.subTest(ms=ms), self.assertRaisesRegex(CmdError, r"--ms 1\.\.10000"):
+                self.target([], []).do_ui_drag("@1,1", "@2,2", ms=ms)
+
+    def test_windows_listing(self):
+        self.assertEqual(self.target([], []).do_ui_windows().splitlines(),
+                         ["#0 UIWindow level 0 ctx 5 key 0,0 390x844",
+                          "#1 UITextEffectsWindow level 10 ctx 0 hidden 0,0 100x100"])
+
+
 if __name__ == "__main__":
     unittest.main()

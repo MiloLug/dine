@@ -3,6 +3,7 @@ with Dine's label matching and wording. iOS: the injected uidrive agent, reached
 dine-atl src/backends/ui/gtk/agent.c, which speaks the same protocol over the Unix socket the
 target's `connect` opens."""
 
+import math
 import socket
 from typing import Callable
 
@@ -57,6 +58,24 @@ def request(line: str, timeout: float = 10, stopped: Callable[[], str | None] = 
 
 def labels_of(reply: dict) -> Labels:
     return [(bool(flag), label) for flag, label in reply.get("labels", [])]
+
+
+def frames_of(reply: dict) -> list[tuple[float, float, float, float]]:
+    """Each label's frame `(x, y, w, h)` in screen points, parallel to labels_of; gtk's agent sends none."""
+    return [tuple(map(float, f)) for f in reply.get("frames", [])]
+
+
+def parse_point(arg: str) -> tuple[float, float] | None:
+    """`@X,Y` as a screen point; None for anything else (a label or `#N`)."""
+    if not arg.startswith("@"):
+        return None
+    try:
+        x, y = map(float, arg[1:].split(","))
+    except ValueError:
+        x = y = math.nan
+    if not (math.isfinite(x) and math.isfinite(y)):
+        raise CmdError(f"bad point {arg!r}: @X,Y with finite numbers in screen points")
+    return x, y
 
 
 def values_of(reply: dict) -> list[str | None]:

@@ -15,6 +15,8 @@ from . import client
 class Step:
     title: str
     activate: str | None = None  # an element's accessibility action, no touch
+    tap: str | None = None      # a finger tap: label, #N or @X,Y
+    drag: tuple[str, str, int] | None = None  # (from, to, ms): a real drag
     back: bool = False
     action: str | None = None  # an accessibility custom action's name
     dbg: tuple[str, dict] | None = None  # a debug server command and its arguments
@@ -192,6 +194,16 @@ SCENARIOS = {
             Step("hello++", activate="hello++", ok=(r"Dine native: Hello from C\+\+",)),
             BACK,
         ]),
+        Scenario("touch", [
+            Step("hello++ by a finger tap", tap="hello++", ok=(r"Dine native: Hello from C\+\+",)),
+            Step("back swipe", drag=("@1,420", "@300,420", 250), ui=("Add App",)),
+            Step("atl", activate="atl"),
+            # the AtlView grid fits on the screen; lists scrolls
+            Step("lists by a finger tap", tap="lists", ok=(r"lists first [1-9]\d* of \d+ shown",), fail=ATL_FAIL, timeout=120),
+            # items 4-20 show before this drag, 18-34 after; `gone` is a substring test on the visible labels
+            Step("scroll", drag=("@195,650", "@195,250", 300), ui=("item 30",), gone=("item 10",)),
+            BACK,
+        ], uses_vm=True, needs_clean=True),
         Scenario("probe", [
             Step("probe", activate="probe", ok=(r"probe done \d+ ok 0 fail",), fail=(r"probe done \d+ ok [1-9]",)),
             BACK,
@@ -622,6 +634,7 @@ def listing(app: str) -> str:
         lines.append(f"{sc.name}" + (f" ({', '.join(flags)})" if flags else ""))
         for st in sc.steps:
             what = " ".join((st.dbg[0], *map(str, st.dbg[1].values()))) if st.dbg else f"activate {st.activate!r}" if st.activate else f"insert {st.insert[1]!r} into {st.insert[0]!r}" if st.insert else \
+                f"tap {st.tap!r}" if st.tap else f"drag {st.drag[0]!r} to {st.drag[1]!r} in {st.drag[2]} ms" if st.drag else \
                 f"action {st.action!r}" if st.action else f"appearance {st.appearance}" if st.appearance else \
                 "back" if st.back else st.title
             lines.append(f"  {what}" + (f"; wait for {', '.join(st.ok)}" if st.ok else "")
@@ -718,8 +731,11 @@ def _run(app: str, names: list[str], network: bool, relaunch: Callable[[], int],
                     debugged.append(("bp", {"op": "rm", "spec": set_at[1]}))
                 if st.dbg[0] == "detach":
                     debugged.clear()   # a one-shot breakpoint went at its stop
-            elif st.activate or st.insert or st.back or st.action or st.appearance:
+            elif st.activate or st.tap or st.drag or st.insert or st.back or st.action or st.appearance:
                 resp = client.call("ui_activate", {"arg": st.activate}, timeout=30) if st.activate else \
+                    client.call("ui_tap", {"arg": st.tap}, timeout=30) if st.tap else \
+                    client.call("ui_drag", {"arg": st.drag[0], "text": st.drag[1], "ms": st.drag[2]},
+                                timeout=30 + st.drag[2] / 1000) if st.drag else \
                     client.call("ui_insert", {"arg": st.insert[0], "text": st.insert[1]}, timeout=30) if st.insert else \
                     client.call("ui_action", {"arg": st.action}, timeout=30) if st.action else \
                     client.call("ui_appearance", {"arg": st.appearance}, timeout=30) if st.appearance else \

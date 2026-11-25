@@ -8,6 +8,8 @@ import sys
 import threading
 from pathlib import Path
 
+import uidrive.client
+
 from ... import ios, paths
 from ...paths import DineError
 from .. import agent
@@ -48,6 +50,8 @@ class IosTarget(AgentUi, LldbCommands, Target):
         self._syslog: subprocess.Popen | None = None
         self._ui: agent.Labels = []
         self._values: list[str | None] = []
+        self._frames: list[tuple[float, float, float, float]] = []
+        self._screen: tuple[float, float] | None = None
 
     def setup(self) -> None:
         from ..lldbhost import LldbHost
@@ -179,12 +183,68 @@ class IosTarget(AgentUi, LldbCommands, Target):
         tail, _ = self._settle()
         return f"appearance {arg}" + tail
 
+    def _windows(self) -> list[dict]:
+        return self._agent("windows")["windows"]
+
+    def _screen_size(self) -> tuple[float, float]:
+        """The largest window's size: the screen's, fetched once per server session."""
+        if not self._screen:
+            self._screen = max(((w["frame"][2], w["frame"][3]) for w in self._windows()), key=lambda s: s[0] * s[1])
+        return self._screen
+
+    def _point(self, arg: str) -> tuple[str, tuple[float, float]]:
+        """What `arg` names in replies, and its screen point: `@X,Y` as given, an element's frame centre."""
+        if (point := agent.parse_point(arg)) is not None:
+            return arg, point
+        i = self._pick(arg)
+        if len(self._frames) != len(self._ui):
+            # the labels came from a reply without frames
+            self._ls()
+            i = self._pick(arg)
+        if len(self._frames) != len(self._ui):
+            raise CmdError("the agent's ls reply has no frames")
+        label = self._ui[i][1]
+        x, y, w, h = self._frames[i]
+        cx, cy = x + w / 2, y + h / 2
+        sw, sh = self._screen_size()
+        if w <= 0 or h <= 0 or not (0 <= cx <= sw and 0 <= cy <= sh):
+            raise CmdError(f"{label!r} has no on-screen frame")
+        return repr(label), (round(cx), round(cy))
+
+    def do_ui_tap(self, arg=None, window=None, timeout=60):
+        if not arg:
+            raise CmdError("usage: tools/dine dbg ui tap <label|#N|@X,Y> [--window N]")
+        what, (x, y) = self._point(arg)
+        self._agent(uidrive.client.gesture_line([[(x, y, 0), (x, y, 60)]], window), timeout=10)
+        tail, _ = self._settle()
+        return f"tapped {what}" + tail
+
+    def do_ui_drag(self, arg=None, text=None, ms=300, window=None, timeout=60):
+        if not arg or not text or not 1 <= ms <= 10000:
+            raise CmdError("usage: tools/dine dbg ui drag <from> <to> [--ms 1..10000] [--window N]")
+        a, (x1, y1) = self._point(arg)
+        b, (x2, y2) = self._point(text)
+        # the reply comes after the gesture's last event
+        self._agent(uidrive.client.gesture_line([[(x1, y1, 0), (x2, y2, ms)]], window), timeout=ms / 1000 + 10)
+        tail, _ = self._settle()
+        return f"dragged {a} to {b} in {ms} ms" + tail
+
+    def do_ui_windows(self, timeout=60):
+        return "\n".join(
+            f"#{i} {w['class']} level {_num(w['level'])} ctx {w['ctx']}" + (" key" if w["key"] else "")
+            + (" hidden" if w["hidden"] else "") + " {},{} {}x{}".format(*map(_num, w["frame"]))
+            for i, w in enumerate(self._windows()))
+
     def do_ui_screenshot(self, arg=None):
         d = self.store.dir / "screenshots"
         d.mkdir(exist_ok=True)
         path = Path(arg) if arg else d / f"{self.store.cursor:06d}.png"
         path.write_bytes(ios.screenshot())
         return f"screenshot: {path}"
+
+
+def _num(v: float) -> str:
+    return str(int(v)) if float(v).is_integer() else f"{v:.2f}"
 
 
 def parked_in_kernel(queue: str | None, module: str | None) -> bool:
