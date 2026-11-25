@@ -14,10 +14,10 @@ go to gitignored dirs **inside the repo** (`out/`), never to `~/.local` or other
 |---|---|
 | **pacman** | `base-devel` (gcc, make, binutils, pkgconf), `git`, `curl`, `clang`, `lld`, `llvm` (llvm-ar/ranlib/otool/nm, dsymutil), `cmake`, `ninja`, `socat`, `libimobiledevice`, `fuse2`, `uv`, `rustup` (cargo for accord), `jdk8-openjdk`, `jdk21-openjdk` (runs d8), `ant` (ATL's incremental Java build), `patchelf`, ATL build libraries (below); for runtime tests: `smali`; for gtk runs on a hidden display: `sway`, `grim`, `dbus` (`dbus-run-session`) |
 | **AUR (paru)** | `swift-bin` (Swift 6.4 + its lldb), `ipsw-bin` (splits the phone's dyld shared cache), `wolfssl-jni`, `bsd-compat-headers`, `android-sdk-build-tools` (d8 for the ART/ATL dex build, zipalign; aapt2 for test APKs); for runtime tests: `jasmin` |
-| **uv → `.venv`** (`pyproject.toml`, `uv.lock`) | CPython 3.12, `pymobiledevice3`, `meson`, `uidrive` (from the sibling checkout `../dine-uidrive`, a clone of `github.com/MiloLug/dine-uidrive`) |
+| **uv → `.venv`** (`pyproject.toml`, `uv.lock`) | CPython 3.12, `pymobiledevice3`, `meson`, `uidrive` (from `github.com/MiloLug/dine-uidrive`, pinned to a commit) |
 | **cargo** | `accord` (`cargo install --git https://github.com/MiloLug/dine-accord`, into `~/.cargo/bin`, which must be on `PATH`): the `actool` that `ios run` calls |
 | **Manual, in repo** | xtool AppImage → `out/tools/bin/xtool`; `Xcode_27.xip` → `out/downloads/` (deleted after use) |
-| **Sibling repo** | [`wsl-quickack`](../../wsl-quickack) (`sudo make install`): keeps `quickack` on WSL's routes to Windows; [`dine-uidrive`](../../dine-uidrive) (section 2): uidrive, the UI agent dev builds inject and its Python client |
+| **Sibling repo** | [`wsl-quickack`](../../wsl-quickack) (`sudo make install`): keeps `quickack` on WSL's routes to Windows |
 | **Windows** | Apple Devices or iTunes (Apple Mobile Device Service) |
 
 State that tools manage themselves, outside the repo (leave it there):
@@ -123,8 +123,9 @@ source env.sh        # puts .venv/bin, out/tools/bin and tools/ on PATH (tools/d
 
 - `pyproject.toml` lists the tools in the `tools` dependency group (a default group, so plain
   `uv sync` installs it). Bump one with `uv lock --upgrade-package pymobiledevice3 && uv sync`.
-- `uidrive` is an editable path source (`../dine-uidrive` in `[tool.uv.sources]`): `uv sync` fails
-  unless that checkout sits next to this repo, and edits there reach `.venv` with no reinstall.
+- `uidrive` is a git source: `https://github.com/MiloLug/dine-uidrive.git` at the commit
+  `[tool.uv.sources]` names. Work that changes uidrive too uses a `../dine-uidrive` checkout
+  instead ([`notes/dev-reference.md`](../notes/dev-reference.md#ui-agent) "UI agent").
 - **Python is pinned to 3.12** on purpose: swift-bin's lldb links `libpython3.12`, which Arch
   doesn't ship, and `tools/libexec/lldb` (and the debug server) borrow it from this interpreter.
   pymobiledevice3 runs on the same one.

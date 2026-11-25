@@ -427,7 +427,7 @@ tools = [
 tools = [
     { name = "meson", specifier = "==1.12.1" },
     { name = "pymobiledevice3", specifier = ">=11.31" },
-    { name = "uidrive", editable = "../dine-uidrive" },
+    { name = "uidrive", git = "https://github.com/MiloLug/dine-uidrive.git?rev=a25614ab8646bea0f84bb9573108334fbbed30d4" },
 ]
 
 [[package]]
@@ -1343,16 +1343,10 @@ wheels = [
 [[package]]
 name = "uidrive"
 version = "0.1.0"
-source = { editable = "../dine-uidrive" }
+source = { git = "https://github.com/MiloLug/dine-uidrive.git?rev=a25614ab8646bea0f84bb9573108334fbbed30d4#a25614ab8646bea0f84bb9573108334fbbed30d4" }
 dependencies = [
     { name = "pymobiledevice3" },
 ]
-
-[package.metadata]
-requires-dist = [{ name = "pymobiledevice3", specifier = ">=11.31" }]
-
-[package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=9.2.0" }]
 
 [[package]]
 name = "urllib3"

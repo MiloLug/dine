@@ -986,18 +986,12 @@ Foundation without error, with the same load commands; executables weren't tried
 - Where: `tools/cmake/ios.toolchain.cmake`, `env.sh`, `notes/dev-reference.md`, `docs/first-run.md`.
 - Then: link Dine and artbridge with the system LLD; restate the reason, or drop the `-B` flags.
 
+## Done
+
 ### TOOL-25
 
-**Pin uidrive to its git source before Dine's `main` goes up.** Dine's `tools` group imports
-uidrive from the `../dine-uidrive` checkout (an editable path source in `[tool.uv.sources]`), so
-`uv sync` fails in a clone without that checkout next to it.
-- Found 2026-11-25 (uidrive's flaw check).
-- Where: `pyproject.toml`, `uv.lock`, `docs/first-run.md`, `notes/dev-reference.md` "UI agent".
-- Then: once uidrive's `main` is pushed, pin it in the `tools` group (`uv add --group tools`
-  with `uidrive @ git+https://github.com/MiloLug/dine-uidrive.git` and `--rev <sha>`), rerun the
-  unit tests, `ios run` and `dbg smoke` from the wheel, then push Dine's `main`.
-
-## Done
+**Pin uidrive to its git source before Dine's `main` goes up.** 2026-11-25, dine
+`dine: pin uidrive`, at dine-uidrive a25614a.
 
 ### TOOL-8
 

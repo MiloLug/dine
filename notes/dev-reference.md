@@ -10,8 +10,8 @@ touches. Commands and setup live in `tools/dine <group> --help`, `README.md` and
   checks, the test-hook env vars, the cli host's `-c` commands, authored test APKs.
 - [Smoke checks by eye](#smoke-checks-by-eye): what `atl-widgets` leaves on the phone to look at.
 - [UI agent](#ui-agent): how `dbg ui` reaches uidrive's agent in the app, what its walk sees, real
-  touches and keys, the gtk agent. Read before changing a `dbg ui` command, how Dine builds or
-  launches the agent, or the gtk agent.
+  touches and keys, where `.venv` gets uidrive, the gtk agent. Read before changing a `dbg ui`
+  command, how Dine builds or launches the agent, uidrive itself, or the gtk agent.
 - [lldb and the debug server](#lldb-and-the-debug-server): SB API traps, ObjC and symbol settings,
   Swift expression internals.
   Read before changing `tools/py/dine/dbg/` or `tools/libexec/lldb`.
@@ -65,10 +65,11 @@ bar at 50%, a grey box, the screen kept on. A full `dbg smoke` run relaunches Di
 
 ## UI agent
 
-`dbg ui` on iOS talks to uidrive's agent (`../dine-uidrive`), a dylib that runs inside the app; its
-wire format is that repo's `PROTOCOL.md`. `tools/libexec/build-ios-dev.sh` builds it with Dine's
-toolchain from the agent sources of the installed `uidrive` package (`python -m uidrive
-agent-src`) into `out/ios/dev`, so only dev builds bundle it, as `dev/libuidrive.dylib`.
+`dbg ui` on iOS talks to uidrive's agent (`github.com/MiloLug/dine-uidrive`), a dylib that runs
+inside the app; its wire format is that repo's `PROTOCOL.md`. `tools/libexec/build-ios-dev.sh`
+builds it with Dine's toolchain from the agent sources of the installed `uidrive` package
+(`python -m uidrive agent-src`) into `out/ios/dev`, so only dev builds bundle it, as
+`dev/libuidrive.dylib`.
 `tools/dine ios launch` (and `dbg fresh`, `ios run`, `ios lldb`) starts the app through DVT with
 `DYLD_INSERT_LIBRARIES` naming that file and `UIDRIVE_PORT=47802`, except under `DINE_RELEASE=1`.
 The agent's constructor turns app accessibility on and serves that port on the phone's loopback;
@@ -108,11 +109,18 @@ the server reaches it through usbmux.
 - The agent logs under the os_log subsystem `uidrive` (`dbg log grep uidrive`: `uidrive: injected
   into Dine`, `uidrive: listening on 127.0.0.1:47802`). A raw request:
   `.venv/bin/python -m uidrive ask --port 47802 '<line>'`.
-- `.venv` imports uidrive from the `../dine-uidrive` checkout
-  ([`docs/first-run.md`](../docs/first-run.md)). The install stamp of `ios run` covers the agent's
-  sources, so after an edit there `dbg smoke` refuses until `ios run`; the server's code check
-  covers uidrive's Python files, so after an edit there every reply starts with the stale-code
-  warning until the server restarts.
+- `.venv` installs uidrive from its git repo at the commit `[tool.uv.sources]` names
+  ([`docs/first-run.md`](../docs/first-run.md)). A change to uidrive and Dine together points the
+  `tools` group at a sibling checkout, so `.venv` imports its files with no reinstall:
+  `uv add --group tools --editable ../dine-uidrive`. Once uidrive's `main` is pushed, the pin goes
+  back to the pushed commit:
+  `uv add --group tools "uidrive @ git+https://github.com/MiloLug/dine-uidrive.git" --rev <sha>`.
+  Dine's `main` goes up only with the git source: `uv sync` in a clone without the checkout next to
+  it fails on the path source.
+- The install stamp of `ios run` covers the agent's sources and the server's code check uidrive's
+  Python files, both by path. After an edit to the agent's sources, or a switch of source,
+  `dbg smoke` refuses until `ios run`; after an edit to the Python files, or a switch, every reply
+  starts with the stale-code warning until the server restarts.
 
 The gtk target runs headless sway with the pixman renderer, not Xvfb (GTK's X11 path, while WSLg
 uses Wayland) or Broadway (another GDK backend, with a browser in the loop).

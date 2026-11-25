@@ -21,7 +21,7 @@ symbols, ATL build, and a verification checklist.
 | Path | What |
 |---|---|
 | `env.sh` | `PATH` (`.venv/bin`, `out/tools/bin`), `DINE_IOS_SDK`, `DINE_IOS_SWIFT_RESOURCES`, `DINE_LLDB`, Linux prefix/pkg-config paths |
-| `pyproject.toml`, `uv.lock` | Python tooling for the in-repo `.venv` (`uv sync`): Python 3.12, pymobiledevice3, meson |
+| `pyproject.toml`, `uv.lock` | Python tooling for the in-repo `.venv` (`uv sync`): Python 3.12, pymobiledevice3, meson, uidrive |
 | `docs/first-run.md` | setup on a new PC: every package, where each tool comes from |
 | `tools/dine` | the single entry point (sources `env.sh`); commands below, `tools/dine <group> --help` |
 | `tools/py/dine/` | its Python package: CLI, device helpers (`ios.py`), debug server and client (`dbg/`) |
@@ -32,7 +32,7 @@ symbols, ATL build, and a verification checklist.
 | `native/dev/` | libs only dev builds link: `hello` (C++ static lib smoke test), `runtimetests` |
 | `apps/Dine` | xtool SwiftUI app: launcher grid (SQLite); dev builds add `Sources/Dine/Dev/`: a hello++ screen linking `native/dev/hello`, a probe screen for the asset catalogs (`Resources/`: `AppIcon.icon`, `Assets.xcassets`, `Icons.xcassets` from the icon pack, dev-only `Dev.xcassets`), art and atl run screens |
 | `../dine-accord` | sibling repo where accord is worked on: Dine's `actool`, which compiles `apps/<App>/Resources` into `Assets.car` + icon plist keys. Dine runs the `accord` command, cargo-installed from its GitHub repo |
-| `../dine-uidrive` | sibling repo, uidrive: the UI agent that `ios launch` injects into dev builds (`dev/libuidrive.dylib`, built by `ios run`) and the Python client `dbg` talks to it with; `uv sync` installs it ([`docs/first-run.md`](docs/first-run.md)) |
+| `../dine-uidrive` | sibling repo where uidrive is worked on: the UI agent that `ios launch` injects into dev builds (`dev/libuidrive.dylib`, built by `ios run`) and the Python client `dbg` talks to it with. `uv sync` installs it from its GitHub repo at a pinned commit; [`notes/dev-reference.md`](notes/dev-reference.md#ui-agent) says how to use the checkout instead |
 | `third_party/` | upstream clones (gitignored): bionic_translation, libopensles (Linux); lz4, xz, icu, wolfssl (iOS deps); fluentui-system-icons (the icon pack); `apks/`, the third-party test APKs |
 | `dine-art/` | submodule: our fork of art_standalone (ART + libcore), branch `dine` |
 | `dine-atl/` | submodule: our fork of android_translation_layer, branch `dine` |
