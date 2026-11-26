@@ -1,7 +1,8 @@
-# OS features: one stage each
+# OS features
 
-M7 of `notes/atl-port.md`. An OS feature is an Android API whose implementation calls the host
-OS: hardware such as sensors, the vibrator and location; system integration such as the
+M7 of `notes/atl-port.md`, except notifications, media session, downloads and jobs: they need
+parts of M8 and are its stage M8f. An OS feature is an Android API whose implementation calls
+the host OS: hardware such as sensors, the vibrator and location; system integration such as the
 clipboard, share and notifications; and the OS's schedulers for background work (jobs, alarms).
 Android's `Service` components, the code an app runs in the background, are not OS features:
 item 21 maps foreground services to iOS, and starting apps as services is
@@ -9,10 +10,10 @@ item 21 maps foreground services to iOS, and starting apps as services is
 
 ATL implements OS features with Linux desktop code (GTK, D-Bus portals, ALSA, libsecret, sysfs)
 that only the gtk build has; headless and iOS builds throw `UnsatisfiedLinkError` when an app
-reaches it. Each OS feature moves behind the `os` slot in a stage of its own. Item 1 builds the
-OS features test APK and the slot; every later item adds its feature's section to that APK and
-implements the feature. Slot rules and the milestone rule are in
-`notes/atl-port.md`; what iOS runs while Dine is in the background is in
+reaches it. Each OS feature moves behind the `os` slot in an item of its own; `notes/atl-port.md`
+M7 groups the items into stages M7a to M7e. Item 1 builds the OS features test APK and the slot;
+every later item adds its feature's section to that APK and implements the feature. Slot rules
+and the milestone rule are in `notes/atl-port.md`; what iOS runs while Dine is in the background is in
 `notes/background-tasks.md`.
 
 ## Rules
@@ -36,9 +37,9 @@ implements the feature. Slot rules and the milestone rule are in
   result, by hand otherwise. gtk is checked by hand, since its answers depend on the
   machine (clipboard contents, `/dev/input`, portals). The gtk Gravity Defied smoke and the runtime
   suite keep passing.
-- Order: reach-first. The OS features the triage APKs reach come first, then the ones common in
-  apps, media, the two stubs, and last the ones that need parts of M8. M6c adds which APKs reach
-  each item. Other notes name an item by its feature, not its number.
+- Order: M7a to M7e, reach-first: the OS features the triage APKs reach come first, media last;
+  M8f's four come after M8d. M6c adds which APKs reach each item. Other notes name an item by
+  its feature, not its number.
 - A finished item gets an "as built" status in its section, as the milestones in
   `notes/atl-port.md` do.
 
@@ -181,6 +182,11 @@ Native paths below are under `dine-atl/src/api-impl-jni/`.
   Sensors' TYPE_ORIENTATION uses location today.
 - `none`: no providers, `getLastKnownLocation` null, every provider disabled.
 - `ios`: CoreLocation, with the iOS permission prompt and a usage string in Info.plist (base item).
+- Runtime permissions: `PackageManager.checkPermission` grants `ACCESS_FINE_LOCATION`,
+  `ACCESS_COARSE_LOCATION` and `RECORD_AUDIO` only when `ATL_UGLY_ENABLE_LOCATION` or
+  `ATL_UGLY_ENABLE_MICROPHONE` is set, and `Activity.requestPermissions` answers from it with no
+  dialog. Showing the iOS prompt for `requestPermissions` and answering `checkPermission` from
+  iOS's answer is this item's; the microphone item reuses it.
 - Done when: headless logs no providers; on the phone the prompt is accepted by hand and a fix
   arrives.
 
@@ -209,8 +215,8 @@ Native paths below are under `dine-atl/src/api-impl-jni/`.
 - Today: `audio/android_media_AudioRecord.c` captures through ALSA, off unless
   `ATL_UGLY_ENABLE_MICROPHONE` is set.
 - `none`: AudioRecord stays uninitialized, as on a device without a microphone.
-- `ios`: AVAudioEngine's input, with the iOS permission prompt and a usage string in Info.plist
-  (base item).
+- `ios`: AVAudioEngine's input, with the iOS permission prompt (through location's runtime
+  permissions) and a usage string in Info.plist (base item).
 - Done when: headless logs an uninitialized recorder; on the phone, after the prompt, 1 s of
   recording has a level above silence (by hand).
 

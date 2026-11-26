@@ -34,12 +34,18 @@ its row here changes when that block does.
 | [M6b3b](#m6b3b-window-state-and-popups) | window state and popups | done |
 | [M6b3c](#m6b3c-keyboard-screen-edges-config) | keyboard, screen edges, config | done |
 | [M6c](#m6c-search-ahead-of-m7) | search ahead of M7 | planned |
-| [M7](#m7-os-features) | OS features, items in `notes/os-features.md` | planned |
+| [M7](#m7-os-features) | OS features in `notes/os-features.md`, except M8f's | planned |
+| [M7a](#m7-os-features) | base, sensors, vibrator, connectivity | planned |
+| [M7b](#m7-os-features) | clipboard, MIME lookup, open links and files, share, file picker | planned |
+| [M7c](#m7-os-features) | keystore, location with runtime permissions, wallpaper and push stubs | planned |
+| [M7d](#m7-os-features) | audio output, microphone | planned |
+| [M7e](#m7-os-features) | media playback, media codecs | planned |
 | [M8a](#m8a-apk-import-and-launch) | APK import and launch | planned |
 | [M8b](#m8b-ios-lifecycle) | iOS lifecycle | planned |
 | [M8c](#m8c-navigation-settings-store) | navigation settings store | planned |
 | [M8d](#m8d-background-probes) | background probes | planned |
 | [M8e](#m8e-several-apps) | several apps | replaced by the multi-app stages |
+| [M8f](#m8f-background-os-features) | OS features that need M8: notifications, media session, downloads, jobs | planned |
 | [M9](#m9-heavy) | Compose, GL, WebView | planned |
 
 ## Decisions
@@ -260,8 +266,8 @@ runtime suite shows no regressions.
 
 From M5 on, a stage has one target graded on headless, plus a check on the phone where the target
 shows there. A milestone too big for that splits into lettered stages (M4a, M5a) before its work
-starts; a bare number means the whole milestone. M7's stages are the numbered items of
-`notes/os-features.md`.
+starts; a bare number means the whole milestone. M7's stages, M7a to M7e, group the numbered
+items of `notes/os-features.md`; M8f's stages are its items.
 
 A triage stage (M6a, M6c) is graded by its table, a design choice (M5a's renderer, multi-app's design)
 by the decision and its reason written into its section. The Dine-only stages M8b to M8d have no
@@ -1719,10 +1725,20 @@ a later stage or coded in `notes/bug-tracker.md` or `notes/general-todo.md`.
 
 ### M7: OS features
 
-The `os` slot, one stage per OS feature, each with `desktop-linux`, `none` and `ios` backends
-and a section in the OS features test APK: `notes/os-features.md`. Its notifications, media session,
-downloads and jobs items wait for parts of [M8a](#m8a-apk-import-and-launch),
-[M8b](#m8b-ios-lifecycle) and [M8d](#m8d-background-probes); each item says which.
+The `os` slot, one item per OS feature, each with `desktop-linux`, `none` and `ios` backends
+and a section in the OS features test APK: `notes/os-features.md`. Its notifications, media
+session, downloads and jobs items need parts of M8: they are stage
+[M8f](#m8f-background-os-features).
+
+The other items form five stages, grouped by reach and by the iOS work they share. A stage's target is its
+items' sections of the OS features APK on headless and their phone checks. M6c's table may move
+an item to another stage.
+- **M7a:** base, sensors, vibrator, connectivity: what the triage APKs reach.
+- **M7b:** clipboard, MIME lookup, open links and files, share, file picker: the pasteboard,
+  types, and the sheets and pickers shown from UIKit's thread.
+- **M7c:** keystore, location with runtime permissions, and the wallpaper and push stubs.
+- **M7d:** audio output, microphone: AVAudioSession and AVAudioEngine.
+- **M7e:** media playback, media codecs: AVPlayer, AudioToolbox, VideoToolbox.
 
 ### M8: inside Dine
 
@@ -1733,14 +1749,14 @@ below. The Dine-only stages M8b to M8d are left for later ([Milestones](#milesto
 
 #### M8a: APK import and launch
 
-Runs after multi-app MA1 and builds on its registry: an import installs the package (its registry
+Runs after multi-app MA1 and MA3 and builds on MA1's registry: an import installs the package (its registry
 row, its APK in `apps/<pkg>/`), and the launcher reads the registry's rows (`notes/multi-app-support/design.md` "Registry",
 `notes/filesystem/proposal.md` "Layout").
 
-- Import from Files, with document types through the Info.plist merge (the base item of
-  `notes/os-features.md`, if it isn't built yet). From the PC an APK reaches Files by a Safari
-  download over the LAN (untried), or `pymobiledevice3 apps push --documents` puts it in Dine's
-  Documents (needs `UIFileSharingEnabled`; unverified for a development-signed app on iOS 27).
+- Import from Files, with document types through the Info.plist merge (M7's base item). From the
+  PC an APK reaches Files by a Safari download over the LAN (untried), or `pymobiledevice3 apps
+  push --documents` puts it in Dine's Documents (needs `UIFileSharingEnabled`; unverified for a
+  development-signed app on iOS 27).
 - The APK goes to `apps/<pkg>/` and the app's data to `data/<pkg>/`, both in the prefix
   `Application Support/dine` that MA1's dev-screen runs already use (`dine_atl_run`'s
   `prefix_dir`).
@@ -1757,9 +1773,8 @@ row, its APK in `apps/<pkg>/`), and the launcher reads the registry's rows (`not
 - An APK without a launcher activity installs (an extension) and gets no tile; import warns about
   native libraries (`lib/*/*.so`), which iOS won't load.
 - At start `dine_atl_run` passes no activity and Java picks the launcher one
-  (`Activity.createMainActivity`). With none it calls `System.exit(1)`, which would end Dine: the
-  embedded host returns an error instead, until multi-app MA3 makes `System.exit` end only the
-  calling app.
+  (`Activity.createMainActivity`). With none it calls `System.exit(1)`, which ends only that app
+  (multi-app MA3).
 - The running apps list (`RunningApps`) and the run states that `notes/nav-gestures.md` Behaviour
   specifies, on the launcher's tiles. Several apps' list (an entry per task, each app's state, a
   close action) is MA8.
@@ -1804,8 +1819,8 @@ A dev screen answers the open questions in `notes/background-tasks.md` on the ph
 3 and question 2's "exists and submits" take one log line each, question 5 one tap on the prompt;
 question 1 needs days of runs, question 4 the user's hands (another app playing audio); questions
 6 to 8 are code reads or the user's decisions. The task identifiers and background modes come
-through the Info.plist merge. The answers go into `notes/background-tasks.md` and set the
-notifications, media session, downloads and jobs items of `notes/os-features.md`.
+through the Info.plist merge. The answers go into `notes/background-tasks.md` and set the iOS
+design of [M8f](#m8f-background-os-features)'s items.
 
 #### M8e: several apps
 
@@ -1813,6 +1828,12 @@ Several apps at once on every backend: the roadmap is `notes/multi-app-support/t
 design (approved 2026-11-02) and findings sit next to it, and `notes/steps.md` orders its stages
 against this file's. Its stages replace this one; M8a's import builds on its registry (stage
 MA1).
+
+#### M8f: background OS features
+
+The notifications, media session, downloads and jobs items of `notes/os-features.md`, one stage
+each under that file's rules. Each needs parts of M8a, M8b or M8d (its item says which), so they
+run after M8d, whose answers set their iOS design.
 
 ### M9: heavy
 

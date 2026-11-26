@@ -16,5 +16,14 @@
 - todos::TOOL-8, TOOL-4 (uidrive, ../dine-uidrive) - done
 - todos::TOOL-5 - next
 - atl-port::M6c - planned
+- atl-port::M7a - planned
+- atl-port::M7b - planned
+- atl-port::M7c - planned
+- atl-port::M7d - planned
+- atl-port::M7e - planned
+- multi-app::MA3 - planned
+- atl-port::M8a - planned
+- multi-app::MA4 - planned
+- multi-app::B1 - planned
 
 ...
