@@ -427,7 +427,7 @@ tools = [
 tools = [
     { name = "meson", specifier = "==1.12.1" },
     { name = "pymobiledevice3", specifier = ">=11.31" },
-    { name = "uidrive", git = "https://github.com/MiloLug/dine-uidrive.git?rev=a25614ab8646bea0f84bb9573108334fbbed30d4" },
+    { name = "uidrive", git = "https://github.com/MiloLug/dine-uidrive.git?rev=8572418da7914e7d5a8227d8029a0e69334081ff" },
 ]
 
 [[package]]
@@ -1343,7 +1343,7 @@ wheels = [
 [[package]]
 name = "uidrive"
 version = "0.1.0"
-source = { git = "https://github.com/MiloLug/dine-uidrive.git?rev=a25614ab8646bea0f84bb9573108334fbbed30d4#a25614ab8646bea0f84bb9573108334fbbed30d4" }
+source = { git = "https://github.com/MiloLug/dine-uidrive.git?rev=8572418da7914e7d5a8227d8029a0e69334081ff#8572418da7914e7d5a8227d8029a0e69334081ff" }
 dependencies = [
     { name = "pymobiledevice3" },
 ]

@@ -20,4 +20,4 @@ package = false
 default-groups = ["tools"]
 
 [tool.uv.sources]
-uidrive = { git = "https://github.com/MiloLug/dine-uidrive.git", rev = "a25614ab8646bea0f84bb9573108334fbbed30d4" }
+uidrive = { git = "https://github.com/MiloLug/dine-uidrive.git", rev = "8572418da7914e7d5a8227d8029a0e69334081ff" }
