@@ -113,6 +113,23 @@ class GtkTargetTest(unittest.TestCase):
             with self.assertRaises(agent.AgentClosed):
                 self.target._request("ls", 1)
 
+    def back(self, settle: dict) -> str:
+        self.target._stopped_at = lambda: None
+        self.target._request = lambda line, timeout: settle if line.startswith("settle") else {"ok": True}
+        return self.target.do_ui_back()
+
+    def test_back_says_what_it_closed(self):
+        reply = {"labels": [[True, "A"]], "settled": True, "ran": True}
+        for result, text in (("menu", "the menu closed"), ("dialog", "the dialog closed"),
+                             ("window", "the popup window closed"), ("activity", "the activity finished"),
+                             (None, "no menu, dialog, window or activity closed")):
+            self.assertEqual(self.back({**reply, "result": result}).splitlines()[0], f"went back; {text}")
+
+    def test_back_says_nothing_closed_before_it_ran(self):
+        self.assertEqual(self.back({"labels": [], "settled": False, "ran": False, "result": None}),
+                         "went back; the app's main thread hasn't run it yet after 3 s (busy?)")
+        self.assertEqual(self.back({"stopped": "main.c:1"}), "went back; stopped at main.c:1")
+
     def test_preflight(self):
         with self.assertRaisesRegex(DineError, "no APK"):
             gtk.GtkTarget.preflight(str(self.tmp / "app.apk"))

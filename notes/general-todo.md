@@ -826,11 +826,6 @@ android phones do this, at least samsungs".
 
 ## TOOL
 
-### TOOL-5
-
-**gtk `ui back` reports only whether ATL's main loop was up,** not what Back did: it is
-`atl_nav_back`'s result.
-
 ### TOOL-6
 
 **An ATL test hook `ATL_SCREENSHOT=<file>` that saves a window to PNG after its first frame,** and
@@ -961,8 +956,8 @@ a product defect; the audit's id is in brackets.
   (`run hello`'s `map size 2`, `views createFromPath missing`, the art probe's) (phone-r2-1); a run
   leaves no scenario, pattern or verdict in the session log (phone-r3-7).
 - gtk's debug target: the unit tests stub ATL and the agent, so `dbg ui` against a real ATL
-  (`insert`, `back`) runs in no check; `linux smoke input-gtk` and `text-gtk` drive the agent
-  directly (phone-r2-3, app-tools-4).
+  (`insert`, `back`) runs in no check; `linux smoke input-gtk`, `text-gtk` and `back-gtk` drive the
+  agent directly (phone-r2-3, app-tools-4).
 - CLI: no test runs `cli.main` for `test` or `linux`, and it turns a handler's non-int result into
   exit 0 (dispatch-r1-4); `test_server.py` takes 0.5 s for "the server is busy" (phone-r1-14).
 - No Linux build compiles the side without `test_hooks`; only the iOS release build does
@@ -987,6 +982,11 @@ Foundation without error, with the same load commands; executables weren't tried
 - Then: link Dine and artbridge with the system LLD; restate the reason, or drop the `-B` flags.
 
 ## Done
+
+### TOOL-5
+
+**gtk `ui back` reports only whether ATL's main loop was up.** 2026-11-26, dine-atl e01f2b40,
+dine-uidrive 167b9a3.
 
 ### TOOL-25
 

@@ -194,7 +194,8 @@ tools/dine dbg attach                             # local, about 1 s; bp, step, 
   touch at its centre through Java's dispatch, so GTK's own gesture handling doesn't run; an
   EditText takes GTK's focus, a GTK dialog's buttons and list rows get activated. A touch Java
   doesn't take reports "declined".
-- `ui back` sends Android's Back; when it closes the last activity, ATL exits and `fresh` starts it
+- `ui back` sends Android's Back and says what it closed: the menu, the dialog, a popup window, the
+  activity, or none of them; when it closes the last activity, ATL exits and `fresh` starts it
   again. `ui tap`, `drag`, `press`, `windows`, `action`, `appearance` and `dbg smoke` are iOS only
   (the gtk checks: `tools/dine linux smoke`).
 - The app's data dir lives in the session dir and survives `fresh`.

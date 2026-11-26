@@ -14,8 +14,8 @@
 - bugs::ATL-8, ATL-12, ATL-11, ATL-9, ATL-75 - done
 - bugs::ART-6, ART-23, ART-5, ART-2, ART-8 - done
 - todos::TOOL-8, TOOL-4 (uidrive, ../dine-uidrive) - done
-- todos::TOOL-5 - next
-- atl-port::M6c - planned
+- todos::TOOL-5 - done
+- atl-port::M6c - next
 - atl-port::M7a - planned
 - atl-port::M7b - planned
 - atl-port::M7c - planned

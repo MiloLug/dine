@@ -19,6 +19,10 @@ from .agentui import AgentUi
 from .base import CmdError, Target
 from .lldbcmds import LldbCommands, lldb_env, without_lldb_env
 
+# the agent's `back` result: what Back closed
+BACK_CLOSED = {"menu": "the menu closed", "dialog": "the dialog closed", "window": "the popup window closed",
+               "activity": "the activity finished", None: "no menu, dialog, window or activity closed"}
+
 
 class GtkTarget(AgentUi, LldbCommands, Target):
     name = "gtk"
@@ -199,9 +203,7 @@ class GtkTarget(AgentUi, LldbCommands, Target):
                 raise
             # Back closed the last activity
             return f"went back; ATL exited ({self._exit_text()})"
-        if r.get("ran") and not r.get("result"):
-            raise CmdError("ATL took no Back: its main loop isn't up yet")
-        return "went back" + tail
+        return "went back" + (f"; {BACK_CLOSED[r['result']]}" if r.get("ran") else "") + tail
 
     def do_ui_screenshot(self, arg=None):
         d = self.store.dir / "screenshots"

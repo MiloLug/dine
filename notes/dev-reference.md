@@ -139,8 +139,12 @@ thread on gtk.
   GtkText takes `gtk_widget_grab_focus`, a dialog's own GtkButton or list row `gtk_widget_activate`.
 - `insert` puts the text at the GtkText's cursor (`gtk_editable_insert_text`), so `edit.c` reports
   the edit as it does a keyboard's.
-- `back` is `atl_nav_back`; its result is only whether the app ran and ATL's main loop was up
-  ([TOOL-5](general-todo.md#tool-5)).
+- `back` runs Back at once (`activity_back`, what `atl_nav_back` posts) and replies what it
+  closed, from the state just before and after: `"menu"` (the open PopupMenu), `"dialog"` or
+  `"window"` (a shown window over the activity hides: a Dialog's, or another's such as a
+  drop-down's), `"activity"` (the current one finishes), else null. gtk shows no keyboard, so
+  there's no word for one. Back on the root activity ends ATL on gtk, so the `settle` after it may get no reply.
+  `linux smoke back-gtk` drives it (`tools/py/dine/gtkback.py`).
 - `at N "LABEL"` replies the centre of element N in the app window (px). `touch down|move|up|cancel SEQ
   X Y` feeds one pointer's event at X, Y through `input_pointer`, the function GTK's own pointer
   events reach after `on_pointer_event` read them; SEQ is a made-up handle for the pointer (0: the

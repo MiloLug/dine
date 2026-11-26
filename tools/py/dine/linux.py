@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from . import display, gtkinput, gtktext, paths
+from . import display, gtkback, gtkinput, gtktext, paths
 from .paths import DineError
 
 GTK_BUILD = paths.ATL_GTK_BUILD
@@ -249,6 +249,15 @@ def _input_gtk() -> str | None:
             or gtkinput.run(_gtk_env()))
 
 
+def _back_gtk() -> str | None:
+    _need_gtk()
+    return (_dialog_apk(GTK_BUILD)
+            or _script("apk.py", sys.executable, paths.ROOT / "tests/harness/apk.py", HEADLESS_TESTS / "nav", NAV_APK)
+            or _script("apk.py", sys.executable, paths.ROOT / "tests/harness/apk.py", HEADLESS_TESTS / "windows", WINDOWS_APK,
+                       "--atl", GTK_BUILD)
+            or gtkback.run(_gtk_env()))
+
+
 def _text_gtk() -> str | None:
     _need_gtk()
     return _widgets_apk(GTK_BUILD) or gtktext.run(_gtk_env())
@@ -290,6 +299,7 @@ CHECKS = [
     Check("windows", "headless: windows.apk's window state from an activity and a dialog in order with the task's moves, none from a stopped activity; a dialog's insets at 160 and 480 dpi; the order and frames of WindowManager windows (an overlay and a toast above the dialogs, a dialog's place kept by a hide and a show), where dialogs and a popup are placed in the bars and the display, a popup, an AutoCompleteTextView's drop-down, a menu, and toasts with their durations; a dialog's views are drawn", _windows),
     Check("windows-gtk", "gtk: windows.apk's SelfActivity drives itself through a popup below its anchor, a native menu answered from the script and a toast, in that order; the on-screen keyboard's dialog takes a title and cancel-on-touch-outside (on a private D-Bus)", _windows_gtk),
     Check("input-gtk", "gtk: pointer events fed through the gtk agent: in the dialog APK's OutsideActivity a touch outside its dialog closes it from its own UP, the next gesture reaches the activity behind, and two pointers get ids 0 and 1; in the nav APK an activity that finishes on its DOWN gets a CANCEL and the activity below gets nothing of that gesture; in widgets.apk keys fed through the key controllers move focus and click, a release with no press goes nowhere, and a key's code is its hardware key's whatever the modifiers; in windows.apk a touch outside a popup that watches outside touches closes it and reaches the activity", _input_gtk),
+    Check("back-gtk", "gtk: the gtk agent's back replies what Back closed: windows.apk's PopupMenu (menu) and AutoCompleteTextView drop-down (window), the dialog APK's OutsideActivity dialog (dialog), nav.apk's activity over the root (activity), and nothing for ModalActivity's alert that can't be canceled, which stays", _back_gtk),
     Check("text-gtk", "gtk: widgets.apk's TextActivity: text put through the gtk agent's insert into a GtkText goes through Java's filter and the field shows Java's text, also after Java's setText and inserting on; a Return pressed with an inserted character in one main-loop call reaches Java's key listener after the character; InputStateActivity's fields keep GTK's input in a disabled ScrollView and at alpha 0, and a field under blocksDescendants gives GTK's focus back; an alert's long message leaves its view room", _text_gtk),
     Check("keyboard", "headless: windows.apk's fields under an IME inset: adjustPan moves the window up only as far as the field needs, adjustResize lays it out above the keyboard (keyboard-pan.viewtree, keyboard-resize.viewtree), both also against what their layout alone would give and at 480 dpi; no mode follows the scroll container; a dialog is placed above the keyboard and a popup follows its field (keyboard-dialog-*, keyboard-popup*); stateVisible and an adjustResize window going forward open the keyboard", _keyboard),
     Check("config", "headless: windows.apk under night changes from cli -c: an activity whose manifest covers uiMode, its view, its dialogs' views (a hidden one too) and the Application hear them and resolve night resources; one that doesn't keeps its configuration, its dialog's view too; the screen's size in dp at 160 and 480 dpi", _config),

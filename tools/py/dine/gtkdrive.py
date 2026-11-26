@@ -195,6 +195,14 @@ class Session:
         """One key event through the window's key controllers; whether Java took it."""
         return self.ask(f"key {what} {keyval} {keycode} {state}")["handled"]
 
+    def back(self) -> str | None:
+        """Android's Back through the agent: what it closed ("menu", "dialog", "window", "activity"), or None."""
+        self.ask("back")
+        r = self.ask("settle 3000")
+        if not r["ran"]:
+            raise self.fail("the agent's back didn't run within 3 s")
+        return r["result"]
+
 
 def _json(text: str) -> str:
     return json.dumps(text)
