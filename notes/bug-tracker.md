@@ -386,7 +386,9 @@ mime type takes intents of any type with no data.
 reads JAR (v1) signatures only, so such a package reports no signatures, every unsigned package
 matches it in the install rules, and `checkSignatures` calls it not signed. APKs with a minimum SDK
 of 24 or more may carry no v1 signature (apksigner's default).
-- State: unchecked against a real v2-only APK.
+- State: open. AdaptiveIconDemo (minimum SDK 26) is one: an APK Signing Block and no v1 files in
+  `META-INF/`; its install logs `Package com.example.adaptiveicondemo has no certificates at entry
+  AndroidManifest.xml; ignoring!` and goes on (M6c, headless).
 - Where: `dine-atl/src/api-impl/android/content/pm/PackageParser.java` `collectCertificates`.
 
 ### ATL-36
@@ -684,13 +686,14 @@ horizontal place is [ATL-79](#atl-79).
 
 ### ATL-81
 
-**Every start logs an NPE from the system package's certificates, and a finalizer NPE after it.**
+**Every gtk start logs an NPE from the system package's certificates, and a finalizer NPE after it.**
 `ATLLoadedApp.getSystemApplication` calls `collectCertificates` on framework-res's Package, which
 has no archive path: `new JarFile(null)` throws in `new File(null)`
 (`W/PackageParser: Exception reading null`). The half-built ZipFile's finalizer then throws
 `Uncaught exception thrown by finalizer … CloseGuard.close() on a null object reference`: its
 `guard` initializer never ran, and dine-art's `ZipFile.close` doesn't null-check `guard`.
-- State: open; found 2026-11-09 (flower_finder on gtk). Other builds unchecked.
+- State: open; found 2026-11-09 (flower_finder on gtk). M6c's headless runs of the six triage APKs
+  log neither line; uikit unchecked.
 - Where: `dine-atl/src/api-impl/android/atl/ATLLoadedApp.java:137`,
   `src/api-impl/android/content/pm/PackageParser.java` `collectCertificates`;
   `dine-art/libcore/ojluni/src/main/java/java/util/zip/ZipFile.java` `close`.
@@ -729,6 +732,11 @@ AT_MOST 0 after the clamp. In flower_finder it fires for three views on each lay
 to 18 when it goes from 10 to 9), and on each keystroke in Add Flower for a view of 240.
 - State: open; found 2026-11-09. Which parent passes the 0, and whether the measured height is
   wrong beyond the warning: unchecked.
+- Also: on gtk flower_finder's detail screen at 960x540 shows no "Remove this flower" button, after
+  `gtk_widget_size_allocate()` warnings with heights -22 and -20 and this warning for 320 and 240
+  (M6c; repro `tap Rose`). On headless, which doesn't run `ui_view_measure`, the button gets the
+  9 px that the title, image and text leave of 484 (`MaterialButton 360,475 240x9`). What Android's
+  vertical LinearLayout gives it at that size: unchecked.
 - Where: `dine-atl/src/backends/ui/gtk/view.c` `ui_view_measure`.
 
 ### ATL-85
@@ -1536,6 +1544,29 @@ the field; whether it reaches the view's `pressesBegan:` is unmeasured. Keys tag
 `UITextEffectsWindow` type nothing either. With the keyboard shown, the same keys type.
 - State: open; found 2026-11-25 with uidrive's `key` on the widgets APK's text activity (iOS 27.2).
 - Where: `dine-atl/src/backends/ui/uikit/` (the first responder once the keyboard hides).
+
+### ATL-183
+
+**Gravity Defied's "Installed mods" screen ends the app: api-impl has no
+`LeadingMarginSpan.LeadingMarginSpan2`.** GD's `LevelNameLeadingMarginSpan2` implements it, so
+loading the class in `LevelsMenuScreen$AsyncAddElements.doInBackground` throws
+`NoClassDefFoundError: Failed resolution of: Landroid/text/style/LeadingMarginSpan$LeadingMarginSpan2;`
+on an AsyncTask thread, and the uncaught handler exits 10. "Open installed" after installing a
+levels pack takes the same path. API 29 declares the interface as extending `LeadingMarginSpan`
+and `WrapTogetherSpan`, and api-impl has no `WrapTogetherSpan` either (`current-10.txt`).
+- State: open; found 2026-11-26 (M6c, headless and gtk).
+- Repro: headless, `-c`, `-l org/happysanta/gd/GDActivity`; `tap Mods>`, `tap Installed mods>`.
+- Where: `dine-atl/src/api-impl/android/text/style/LeadingMarginSpan.java`.
+- Fix: add both interfaces; whether Layout applies a LeadingMarginSpan2's line count is unchecked.
+
+### ATL-186
+
+**The cli host's `tap <text>` taps a text node outside the window and reports it as tapped.** In
+Gravity Defied's Help and Options pages, `tap Back` printed `tap: Back 489,721` in a 540 px tall
+window and nothing happened; after two drags scrolled it into view, `tap: Back 489,313` worked.
+- State: open; found 2026-11-26 (M6c, headless).
+- Where: `dine-atl/src/backends/ui/headless/input.c` (`find_text`).
+- Fix: say `tap: off screen <text>`, or scroll the node into view first.
 
 ## DINE
 

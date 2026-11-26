@@ -38,8 +38,9 @@ and the milestone rule are in `notes/atl-port.md`; what iOS runs while Dine is i
   machine (clipboard contents, `/dev/input`, portals). The gtk Gravity Defied smoke and the runtime
   suite keep passing.
 - Order: M7a to M7e, reach-first: the OS features the triage APKs reach come first, media last;
-  M8f's four come after M8d. M6c adds which APKs reach each item. Other notes name an item by
-  its feature, not its number.
+  M8f's four come after M8d. An item's Reach line names the triage APKs that reach it
+  ([M6c](atl-port.md#m6c-search-ahead-of-m7)'s table). Other notes name an item by its feature, not
+  its number.
 - A finished item gets an "as built" status in its section, as the milestones in
   `notes/atl-port.md` do.
 
@@ -71,8 +72,11 @@ Native paths below are under `dine-atl/src/api-impl-jni/`.
 - `none`: `getDefaultSensor` null and an empty sensor list, as on a device without sensors.
 - `ios`: CoreMotion. Orientation comes from the device attitude, so sensors don't wait for the
   location item; whether `desktop-linux` keeps the bearing route is decided here.
-- Reach: accelerometerdemo registers an accelerometer listener in `onCreate`; on headless it
-  stops at `SensorManager.register_accelerometer_listener_native`.
+- Reach: accelerometerdemo's `MainActivity.initViews`, from `onCreate`, calls `getDefaultSensor`
+  and the 3-argument `registerListener` for TYPE_ACCELEROMETER. On headless it stops there at
+  `SensorManager.register_accelerometer_listener_native` and exits 10; on gtk it logs `cannot
+  register accelerometer listener: cannot open /sys/bus/iio/devices` on this PC and reaches
+  `onResume` (M6c).
 - Done when: headless logs no sensors; the phone logs accelerometer readings.
 
 ## 3. Vibrator
@@ -86,7 +90,11 @@ Native paths below are under `dine-atl/src/api-impl-jni/`.
   (today `vibrate(10)`) is decided here; it draws nothing, so not the ui slot.
 - `none`: `hasVibrator` false; `vibrate` does nothing.
 - `ios`: haptics, Core Haptics for durations and patterns.
-- Reach: multitouch references Vibrator and asks for the VIBRATE permission (static read).
+- Reach (M6c, headless): multitouch's `MultiTouch.onTouchEvent` calls `Vibrator.vibrate`, and
+  Gravity Defied's keypad (`KeyboardController.press`) calls `View.performHapticFeedback` with
+  "Vibrate on touch" on, its default (`tap 8` on the keypad). A first touch in either resolves
+  `Vibrator.native_constructor`, which multitouch builds only in the branch that calls `vibrate`
+  next; the stub's -1 sends `vibrate` to a `Slog.v` line, which the log doesn't show.
 - Done when: headless logs `hasVibrator` false; on the phone a 100 ms vibrate is felt (by hand).
 
 ## 4. Connectivity
@@ -97,7 +105,12 @@ Native paths below are under `dine-atl/src/api-impl-jni/`.
 - `ios`: NWPathMonitor, mirrored for the synchronous calls.
 - Reach: Gravity Defied calls it only in `Helpers.isOnline`, whose callers are its level-download
   paths (`LevelsManager.downloadLevel`, `DownloadLevelsMenuScreen`, `WaitForNetworkConnection`);
-  compose_demo's image loader references it (static reads).
+  compose_demo's image loader references it (static reads). On headless `Mods>`, `Download mods>`
+  throws `UnsatisfiedLinkError` for `nativeGetNetworkAvailable` from `getActiveNetworkInfo` in
+  `DownloadLevelsMenuScreen.checkNetwork`; the touch listener's caller clears it and the screen
+  stays empty. On gtk in a network namespace with no network, the same step shows `Waiting for
+  network connection…` (M6c). Past it come `API.getLevels` (apache `DefaultHttpClient`) and a
+  level's `DownloadFile` (`URL.openConnection`) to `http://gdtr.net/`, not run.
 - Done when: headless logs a connected network and a callback; on the phone the network state
   follows Wi-Fi going off and on (by hand).
 
@@ -187,6 +200,9 @@ Native paths below are under `dine-atl/src/api-impl-jni/`.
   `ATL_UGLY_ENABLE_MICROPHONE` is set, and `Activity.requestPermissions` answers from it with no
   dialog. Showing the iOS prompt for `requestPermissions` and answering `checkPermission` from
   iOS's answer is this item's; the microphone item reuses it.
+- Reach: no triage APK asks for a location. AppCompat's `TwilightManager` in accelerometerdemo and
+  flower_finder calls `LocationManager` only in night mode AUTO_TIME, which neither app sets (M6c,
+  static).
 - Done when: headless logs no providers; on the phone the prompt is accepted by hand and a fix
   arrives.
 
@@ -200,6 +216,9 @@ Native paths below are under `dine-atl/src/api-impl-jni/`.
   timing; SoundPool loads and plays silently; the volume is fixed.
 - `ios`: AVAudioEngine for AudioTrack and SoundPool; AVAudioSession for volume and focus, its
   category picked from the app's audio usage (a game mixes with other audio, media takes over).
+- Reach: no triage APK plays audio. AppCompat's `onKeyUpPanel` in accelerometerdemo and
+  flower_finder calls `AudioManager.playSoundEffect` when the MENU key opens a panel, and neither
+  app defines an options menu (M6c, static).
 - Done when: on headless writing 1 s of a tone takes about 1 s; on the phone the tone is heard (by
   hand).
 
@@ -297,10 +316,17 @@ Native paths below are under `dine-atl/src/api-impl-jni/`.
   opt-in keep-alive (`notes/background-tasks.md`, Options), chosen from M8d's answers; their
   Info.plist keys come through the base item.
 - Needs: M8b (the iOS lifecycle) and M8d (the background probes).
-- Reach: Gravity Defied sets an AlarmManager alarm in `GDActivity.doRestartApp` (static read).
+- Reach: Gravity Defied's Full Reset (`Options>`, `Clear highscore>`, `Full Reset>`, `Yes`, then
+  `Ok` in its dialog) finishes its activity and calls `GDActivity.doRestartApp`, which sets an
+  `AlarmManager` alarm 100 ms out to start the activity again. With its last activity gone ATL exits
+  0, the in-process alarm dies with it, and the app doesn't come back; gtk does the same, and nothing
+  restarts it within 110 s. The log prints the delay, in ms, through `DateUtils.formatElapsedTime`,
+  which takes seconds (`setExact() delay: 1:40`). An alarm that outlives the process and that log
+  line are this item's (M6c).
 - Done when: headless runs a job and an alarm (in-process, as today); on the phone a job runs
   after Dine went to the background (by hand; it may take hours).
 
 ## Later
 
+- Wake locks: [ATL-184](general-todo.md#atl-184).
 - MIME lookup by a sniffer of its own: magic bytes and the extension, maybe more on iOS.

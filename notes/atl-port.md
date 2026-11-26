@@ -33,7 +33,7 @@ its row here changes when that block does.
 | [M6b3a](#m6b3a-dialogs-on-the-phone) | dialogs on the phone | done |
 | [M6b3b](#m6b3b-window-state-and-popups) | window state and popups | done |
 | [M6b3c](#m6b3c-keyboard-screen-edges-config) | keyboard, screen edges, config | done |
-| [M6c](#m6c-search-ahead-of-m7) | search ahead of M7 | planned |
+| [M6c](#m6c-search-ahead-of-m7) | search ahead of M7 | done |
 | [M7](#m7-os-features) | OS features in `notes/os-features.md`, except M8f's | planned |
 | [M7a](#m7-os-features) | base, sensors, vibrator, connectivity | planned |
 | [M7b](#m7-os-features) | clipboard, MIME lookup, open links and files, share, file picker | planned |
@@ -1714,14 +1714,80 @@ stage, M9); one that blocks nothing gets a code in `notes/bug-tracker.md` (a def
 `notes/general-todo.md`. An OS feature's findings also go into its item in
 `notes/os-features.md`.
 
-Known from static reads, not run:
-- accelerometerdemo registers an accelerometer listener in `onCreate` (sensors).
-- multitouch references Vibrator.
-- Gravity Defied calls ConnectivityManager only from its level-download paths, and sets an
-  AlarmManager alarm in `GDActivity.doRestartApp` (jobs).
-
 **Done when:** the table (APK, what it hits, owner) is in this section, and each entry is named in
 a later stage or coded in `notes/bug-tracker.md` or `notes/general-todo.md`.
+
+**Status: done (2026-11-26).** The six triage APKs ran on headless under `-c` with
+`-X -verbose:jni`, whose `Found native code for` line marks a native's first call, a stub's
+included. Gravity Defied ran in a network namespace with only `lo`, since its menus reach
+`http://gdtr.net/`. Where headless stopped, gtk ran the same steps through `tools/dine dbg` on a
+hidden display, Gravity Defied in the same kind of namespace. A dexdump read listed each APK's calls
+into the OS-feature classes and walked their callers back to a manifest component's methods. Each
+screen's text nodes were tapped once, apart from Gravity Defied's toggles, its difficulty, track and
+league pickers, Go to Main, the in-game Options and Help and the Clear highscore answers, and some
+of flower_finder's rows. The MENU key was pressed on each app that reached a screen, on Gravity
+Defied's Play Menu only.
+
+| APK | What it hits | Found by | Owner |
+|---|---|---|---|
+| accelerometerdemo | `MainActivity.initViews` (from `onCreate`): `SensorManager.registerListener` throws `UnsatisfiedLinkError` for `register_accelerometer_listener_native`, exit 10 | headless; gtk reaches `onResume` with no IIO device | [sensors](os-features.md#2-sensors) (M7a) |
+| multitouch | `MultiTouch.onTouchEvent`: `Vibrator.vibrate` | headless | [vibrator](os-features.md#3-vibrator) (M7a) |
+| Gravity Defied | keypad, `KeyboardController.press`: `View.performHapticFeedback` | headless | [vibrator](os-features.md#3-vibrator) (M7a) |
+| Gravity Defied | `Mods>`, `Download mods>`: `Helpers.isOnline` throws `UnsatisfiedLinkError` for `ConnectivityManager.nativeGetNetworkAvailable`, cleared by the touch listener's caller | headless; gtk shows `Waiting for network connection…` | [connectivity](os-features.md#4-connectivity) (M7a) |
+| Gravity Defied | past `isOnline`: `API.getLevels` (apache `DefaultHttpClient`) and a level's `DownloadFile` (`URL.openConnection`); neither HTTP stack has run on ATL | static | [connectivity](os-features.md#4-connectivity) (M7a) unblocks it |
+| Gravity Defied | a level download, `DownloadFile$AsyncDownloadTask.onPreExecute`: `PowerManager.newWakeLock` | static | [ATL-184](general-todo.md#atl-184) |
+| Gravity Defied | Full Reset, `finish()`, then `GDActivity.doRestartApp`'s `AlarmManager.set`; ATL exits and the alarm with it, so the app doesn't come back | headless, gtk | [jobs](os-features.md#21-jobs-and-foreground-services-jobscheduler-workmanager-alarmmanager-service) (M8f) |
+| Gravity Defied | `Mods>`, `Installed mods>`: `NoClassDefFoundError` for `LeadingMarginSpan$LeadingMarginSpan2`, exit 10 | headless, gtk | [ATL-183](bug-tracker.md#atl-183) |
+| Gravity Defied | its file browser (`Install levels.mrg`) over `Environment.getExternalStorageDirectory()`, the app's data dir, goes up to the prefix's `data/` | headless | [ATL-103](general-todo.md#atl-103), [ATL-32](general-todo.md#atl-32) |
+| Gravity Defied, multitouch | the options menu never shows; MENU opens nothing | headless | [ATL-42](general-todo.md#atl-42) |
+| flower_finder | the detail screen's "Remove this flower" is missing on gtk (9 px tall on headless) | gtk, headless | [ATL-84](bug-tracker.md#atl-84) |
+| AdaptiveIconDemo | a v2-only signature: installs as unsigned | headless | [ATL-35](bug-tracker.md#atl-35) |
+| (layer) | `Build.MODEL` and most other `Build` fields say "unknown" | code | [ATL-185](general-todo.md#atl-185) |
+| (input) | `-c`'s `tap` reports a tap on a text node outside the window | headless | [ATL-186](bug-tracker.md#atl-186) |
+| (input) | gtk's `dbg ui` has no point tap or drag; `activate` misses a row out of view | gtk | [TOOL-28](general-todo.md#tool-28) |
+
+demo_app and AdaptiveIconDemo call no OS-feature class and run every step without a fault; so do
+flower_finder's list, detail, remove, Add Flower and scrolling.
+
+No owner, since no app path reaches them:
+- Behind a setting the app doesn't make: AppCompat's `TwilightManager` → `LocationManager` (night
+  mode AUTO_TIME) in accelerometerdemo and flower_finder, and androidx's
+  `PowerManager.isPowerSaveMode` (AUTO_BATTERY) in flower_finder; AppCompat's `onKeyUpPanel`
+  → `AudioManager.playSoundEffect` in both, on a panel menu neither app defines.
+- No caller from a component: the support and androidx copies of ConnectivityManagerCompat,
+  NotificationManagerCompat, MediaSessionCompat and TransportMediator (MediaSession,
+  RemoteControlClient), AlarmManager and
+  JobScheduler helpers, FileProvider (no app declares it), CursorLoader's `ContentResolver.query`
+  and `WebView.findAddress`; in Gravity Defied, ACRA's `NotificationManager.notify`,
+  `TelephonyManager.getDeviceId`, its Google Forms upload and its `ACTION_SEND` mail, since nothing
+  calls `ACRA.init`.
+
+Not run: Gravity Defied's level list scroll and level download (behind the connectivity stop and the
+network), and `API.sendKeyboardLogs`, which no menu element found starts. On gtk, the keypad, the game and
+multitouch's canvas ([TOOL-28](general-todo.md#tool-28)).
+
+Limits: on headless a path ends at its first gtk-only native, so what lies past it comes from the
+static read; gtk's answers depend on this PC (no IIO device, no vibra device); a call made by
+reflection or only through an intent shows only as a string (ACRA's `ACTION_SEND`).
+
+Repro:
+- Headless, after `source env.sh`, from `out/linux/build/dine-atl-headless`: `RUN_FROM_BUILDDIR=1
+  DINE_PREFIX=<dir> ./android-translation-layer -c <apk> -l <activity> -X -Xint -X -verbose:jni`,
+  with `unshare -rn` in front for Gravity Defied; send each `-c` line once the previous screen
+  shows. The lines per row:
+  - accelerometerdemo: none (`-l com/ashwin/example/accelerometerdemo/MainActivity`).
+  - multitouch's vibrate: `touch down 0 400 300`, `touch up 0 400 300`; its options menu:
+    `key down 82`, `key up 82`.
+  - Gravity Defied (`-l org/happysanta/gd/GDActivity`): the keypad `tap 8`; Download mods
+    `tap Mods>`, `tap Download mods>`; Installed mods `tap Mods>`, `tap Installed mods>`; the file
+    browser `tap Mods>`, `tap Install levels.mrg`, `answer shared_prefs/`, `answer ..`,
+    `answer ..`; Full Reset `tap Options>`, a drag up to `Clear highscore>`, `tap Clear
+    highscore>`, `tap Full Reset>`, `tap Yes`, `answer Ok`; the options menu `tap Play Menu>`,
+    `key down 82`, `key up 82`.
+  - flower_finder (`-l com/example/recyclersample/flowerList/FlowersListActivity`): `tap Rose`,
+    `dump`.
+- Static: `dexdump -d <apk> | grep -n '<class descriptor>'`, then the callers by the enclosing
+  method header.
 
 ### M7: OS features
 
@@ -1731,8 +1797,7 @@ session, downloads and jobs items need parts of M8: they are stage
 [M8f](#m8f-background-os-features).
 
 The other items form five stages, grouped by reach and by the iOS work they share. A stage's target is its
-items' sections of the OS features APK on headless and their phone checks. M6c's table may move
-an item to another stage.
+items' sections of the OS features APK on headless and their phone checks.
 - **M7a:** base, sensors, vibrator, connectivity: what the triage APKs reach.
 - **M7b:** clipboard, MIME lookup, open links and files, share, file picker: the pasteboard,
   types, and the sheets and pickers shown from UIKit's thread.

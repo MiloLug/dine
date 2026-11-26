@@ -156,7 +156,8 @@ of them run as one OS user under one prefix on Linux and in one sandbox on iOS
 (`notes/multi-app-support/design.md`, the trust point). Much later. On Linux a per-app sandbox
 (bubblewrap or similar) is one candidate; iOS gives one sandbox to all of Dine, so there the layer
 would have to do it. Nothing checked. Linux mounts and storage permissions are the later stage of
-the filesystem slot (`notes/filesystem/proposal.md`).
+the filesystem slot (`notes/filesystem/proposal.md`). Gravity Defied's file browser goes up from
+its data dir to the prefix's `data/` and lists it (M6c, headless).
 
 ### ATL-42
 
@@ -165,6 +166,11 @@ drawn: the title, the Up button, tabs (`NAVIGATION_MODE_TABS`) and the options m
 (`onCreateOptionsMenu`, action items, overflow) reach no build. gtk's header bar comes from the
 gtk host, not from ActionBar. A native bar per backend (UINavigationBar and a UIMenu on iOS, the
 header bar and a menu on gtk) would show them; no stage owns it.
+- Reach (M6c, headless): multitouch's `onCreateOptionsMenu` inflates one always-shown action
+  with a submenu of 7 checkable items, and Gravity Defied adds one item per current command and
+  calls `invalidateOptionsMenu` on each screen change. Neither menu shows, and the MENU key
+  (`key down 82`, `key up 82`) opens nothing. dine-atl calls neither `onCreatePanelMenu` nor
+  `onPreparePanel`; whether multitouch's AppCompat delegate would build the menu itself: unchecked.
 
 ### ATL-43
 
@@ -273,7 +279,8 @@ built:
 - Context's dirs: `getExternalFilesDir(type)` returns `getFilesDir()` and ignores the type, and
   `getCacheDir()` is `/tmp/atl_cache/<pkg>` on every build (both code-checked);
 - shared storage with Android's public dirs, and the hidden `Android/data`, `Android/obb` and
-  `Android/media`;
+  `Android/media`: `Environment.getExternalStorageDirectory()` returns the app's data dir, so
+  Gravity Defied's own file browser (`Mods>`, `Install levels.mrg`) opens there (M6c, headless);
 - install-time storage permissions in place of today's grant to every app;
 - a `DocumentsProvider`: `createDocument` and `copyDocument` throw, and a tree URI from the picker
   has no provider behind it;
@@ -706,6 +713,30 @@ constants. An app built with the SDK runs unaffected (it inlines constants), one
 reflection doesn't. Wanted: a compare of api-impl's public and protected API against
 `current-10.txt` for the classes we touched.
 
+### ATL-184
+
+**Wake locks: an OS feature with no `notes/os-features.md` item.** `PowerManager.WakeLock` keeps a
+held flag in Java and calls no OS. Gravity Defied takes one for a level download
+(`DownloadFile$AsyncDownloadTask.onPreExecute`, reached from `LevelMenuElement.handleAction` through
+`LevelsManager.downloadLevel`; a static chain, not run, since the download list sits behind the
+connectivity item's stop). flower_finder's AppCompat calls `PowerManager.isPowerSaveMode` only in
+night mode AUTO_BATTERY, which the app doesn't set. What a wake lock maps to on iOS (the idle timer,
+background time in `notes/background-tasks.md`) is open; the item would join M7 or M8f.
+- Found 2026-11-26 (M6c). Repro: `dexdump -d org.happysanta.gd_29.apk | grep -n 'PowerManager'`.
+- Where: `dine-atl/src/api-impl/android/os/PowerManager.java`.
+
+### ATL-185
+
+**Most `Build` fields read "unknown".** `SystemProperties` sets only `ro.build.version.sdk`,
+`ro.build.version.codename`, `ro.product.brand`, `ro.build.tags`, `ro.build.type` and the ABIs, so
+`Build.MODEL`, `DEVICE`, `PRODUCT`, `BOARD`, `HARDWARE`, `ID`, `DISPLAY`, `SERIAL` and
+`VERSION.INCREMENTAL` get `Build`'s "unknown" default (`VERSION.RELEASE` is derived from `SDK_INT`),
+and `MANUFACTURER` is hardcoded "HTC". Which device the layer claims to be, per backend, is
+unchosen.
+- Found 2026-11-26 (M6c: ATL's startup reads them before any app code, `Grabbing String prop
+  ro.product.model, default unknown`; code-checked).
+- Where: `dine-atl/src/api-impl/android/os/SystemProperties.java`, `src/api-impl/android/os/Build.java`.
+
 ## DINE
 
 ### DINE-6
@@ -980,6 +1011,18 @@ Foundation without error, with the same load commands; executables weren't tried
 - Found 2026-11-25 (the toolchain's shared-library flag, left out in a test link).
 - Where: `tools/cmake/ios.toolchain.cmake`, `env.sh`, `notes/dev-reference.md`, `docs/first-run.md`.
 - Then: link Dine and artbridge with the system LLD; restate the reason, or drop the `-B` flags.
+
+### TOOL-28
+
+**The gtk target's `dbg ui` can't drive a canvas, and `activate` misses a row out of view.** Its
+verbs are `ls`, `activate`, `insert`, `back` and `screenshot`, so on gtk a canvas app (Gravity
+Defied's keypad and game, multitouch) and an unlabelled view can't be driven, and M6c's gtk runs
+stopped there; the cli host's `-c` `touch` and `key` lines do these on headless, and the ios
+target's `ui tap @X,Y`, `drag` and `press` on the phone. In Gravity Defied's Options, `ui activate "Clear
+highscore>"` with the row scrolled out of view opened nothing, and after it `Perspective` read Off;
+the cause is unchecked.
+- Found 2026-11-26 (M6c).
+- Where: `tools/py/dine/dbg/targets/agentui.py`, dine-atl's gtk agent.
 
 ## Done
 
