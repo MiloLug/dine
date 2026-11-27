@@ -16,7 +16,12 @@
 - todos::TOOL-8, TOOL-4 (uidrive, ../dine-uidrive) - done
 - todos::TOOL-5 - done
 - atl-port::M6c - done
-- atl-port::M7a - next
+- new-test-suite::TS1 - next
+- new-test-suite::TS2 - planned
+- new-test-suite::TS3 - planned
+- new-test-suite::TS4 - planned
+- new-test-suite::TS5 - planned
+- atl-port::M7a - planned
 - atl-port::M7b - planned
 - atl-port::M7c - planned
 - atl-port::M7d - planned

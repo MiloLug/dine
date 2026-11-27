@@ -6,7 +6,8 @@ A generic Android app runner for iOS, built as a translation layer ("Wine for An
 ATL + ART, distributed by sideloading. Read `notes/meta.md` for the why, the iOS constraints (no
 JIT, code signing, one process, App Store rules) and the agreed layer architecture. Which stage is
 done and which is next: the Stages table at the top of `notes/atl-port.md`, the multi-app stages in
-`notes/multi-app-support/todo.md`, and `notes/steps.md` for their order. Open defects:
+`notes/multi-app-support/todo.md`, the test-suite stages in `notes/new-test-suite.md`, and
+`notes/steps.md` for their order. Open defects:
 `notes/bug-tracker.md`; other open work no stage owns: `notes/general-todo.md`. A defect found
 outside a stage's own work, or work no stage owns, gets a code there (`ART-n`, `ATL-n`, `DINE-n`,
 `TOOL-n`; each file's header has the rules), and other notes link the code.
